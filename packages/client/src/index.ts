@@ -7,6 +7,10 @@ export {
 } from './client.js';
 export { testCodeKey, type CodeStorage } from './storage.js';
 export type {
+  DeviceAssetEntry,
+  DeviceAssetManifest,
+  HintError,
+  HintShow,
   PlaybackProgress,
   SessionState,
   Welcome,

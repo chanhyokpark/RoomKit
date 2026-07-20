@@ -2,12 +2,18 @@ import { io, type Socket } from 'socket.io-client';
 import {
   AckSchema,
   DEVICE_NAMESPACE,
+  DeviceAssetManifestSchema,
   DeviceEvents,
   FATAL_CONNECT_ERRORS,
+  HintErrorSchema,
+  HintShowSchema,
   PlaybackProgressSchema,
   WelcomeSchema,
   WireCommandSchema,
   SessionStateSchema,
+  type DeviceAssetManifest,
+  type HintError,
+  type HintShow,
   type JsonValue,
   type PlaybackProgress,
   type SessionState,
@@ -63,6 +69,12 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
   progress: [PlaybackProgress];
   sessionState: [SessionState];
   status: [ConnectionStatus, string?];
+  /**
+   * A hint step to render — the reply to submitHint/requestHintStep, or an
+   * operator push. Mirrored to every socket of the hint device.
+   */
+  hint: [HintShow];
+  hintError: [HintError];
 }
 
 const SEEN_COMMANDS_LIMIT = 200;
@@ -158,6 +170,16 @@ export class RoomKitClient {
       const parsed = PlaybackProgressSchema.safeParse(payload);
       if (parsed.success) this.emitter.emit('progress', parsed.data);
     });
+
+    socket.on(DeviceEvents.hintShow, (payload: unknown) => {
+      const parsed = HintShowSchema.safeParse(payload);
+      if (parsed.success) this.emitter.emit('hint', parsed.data);
+    });
+
+    socket.on(DeviceEvents.hintError, (payload: unknown) => {
+      const parsed = HintErrorSchema.safeParse(payload);
+      if (parsed.success) this.emitter.emit('hintError', parsed.data);
+    });
   }
 
   disconnect(): void {
@@ -177,6 +199,45 @@ export class RoomKitClient {
    */
   sendProgress(commandId: string, lineIndex: number): void {
     this.socket?.emit(DeviceEvents.progress, { commandId, lineIndex });
+  }
+
+  /**
+   * Hint-device only: submit a player-entered hint code. The result arrives
+   * as a 'hint' (or 'hintError') event.
+   */
+  submitHint(code: string): void {
+    this.socket?.emit(DeviceEvents.hintSubmit, { code });
+  }
+
+  /** Stateless step advance: request the exact 0-based step to show. */
+  requestHintStep(hintId: string, step: number): void {
+    this.socket?.emit(DeviceEvents.hintNext, { hintId, step });
+  }
+
+  /**
+   * Fetch the media manifest this device should pre-cache. URLs are presigned
+   * (~6h — see urlExpiresAt); re-call to refresh. Rejects when not connected,
+   * on timeout, or when the socket has no theme (e.g. mid-reattach).
+   */
+  fetchAssetManifest(timeoutMs = 10_000): Promise<DeviceAssetManifest> {
+    const socket = this.socket;
+    if (!socket) return Promise.reject(new Error('not connected'));
+    return new Promise((resolve, reject) => {
+      socket
+        .timeout(timeoutMs)
+        .emit(
+          DeviceEvents.assetManifest,
+          {},
+          (err: Error | null, ack: unknown) => {
+            if (err) return reject(new Error('manifest request timed out'));
+            const parsed = DeviceAssetManifestSchema.safeParse(ack);
+            if (!parsed.success) {
+              return reject(new Error('no manifest available'));
+            }
+            resolve(parsed.data);
+          },
+        );
+    });
   }
 
   on<K extends keyof RoomKitClientEvents>(

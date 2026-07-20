@@ -2,6 +2,8 @@ import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { RoomKitClient, testCodeKey } from '@roomkit/client';
 import type {
+  HintError,
+  HintShow,
   PlaybackProgress,
   Welcome,
   WirePlayCommand,
@@ -93,11 +95,12 @@ describe('@roomkit/client (e2e)', () => {
       code: `spk-${randomUUID().slice(0, 8)}`,
       data: { displayName: '스피커' },
     });
+    // The screen doubles as the hint device for the client hint API tests.
     const screenId = await mk({
       kind: 'device',
       name: 'screen',
       code: `scr-${randomUUID().slice(0, 8)}`,
-      data: { displayName: '스크린' },
+      data: { displayName: '스크린', isHintDevice: true },
     });
     const playerId = await mk({
       kind: 'player',
@@ -123,6 +126,17 @@ describe('@roomkit/client (e2e)', () => {
       kind: 'message',
       name: 'done-signal',
       data: { displayName: 'done-signal', fields: [] },
+    });
+    const hintId = await mk({
+      kind: 'hint',
+      name: 'first-puzzle',
+      code: '0707',
+      data: {
+        steps: [
+          { textHtml: '<p>h1</p>', imageKey: null },
+          { textHtml: '<p>h2</p>', imageKey: null },
+        ],
+      },
     });
     await mk({
       kind: 'event',
@@ -167,6 +181,7 @@ describe('@roomkit/client (e2e)', () => {
       themeId,
       speakerId,
       screenId,
+      hintId,
       speakerCode: codes.find((c) => c.deviceId === speakerId)!.code,
       screenCode: codes.find((c) => c.deviceId === screenId)!.code,
       sessionId: session.id as string,
@@ -289,5 +304,56 @@ describe('@roomkit/client (e2e)', () => {
     const progress = await progressPromise;
     expect(progress.lineIndex).toBe(1);
     expect(progress.commandId).toBe(screenPlay!.id); // rewritten by the relay
+  });
+
+  it('submits hint codes and requests steps via the hint API', async () => {
+    const { screenCode, hintId } = await fixture();
+    const rk = client(screenCode);
+    const ready = waitFor<Welcome>((res) => rk.on('welcome', res));
+    rk.connect();
+    await ready;
+
+    const shown = waitFor<HintShow>((res) => rk.on('hint', res));
+    rk.submitHint('0707');
+    expect(await shown).toMatchObject({
+      hintId,
+      code: '0707',
+      step: 0,
+      stepCount: 2,
+      textHtml: '<p>h1</p>',
+    });
+
+    const next = waitFor<HintShow>((res) => rk.on('hint', res));
+    rk.requestHintStep(hintId, 1);
+    expect(await next).toMatchObject({ hintId, step: 1, textHtml: '<p>h2</p>' });
+
+    const error = waitFor<HintError>((res) => rk.on('hintError', res));
+    rk.submitHint('9999');
+    expect(await error).toMatchObject({ reason: 'unknown_code', code: '9999' });
+  });
+
+  it('fetches the device asset manifest', async () => {
+    const { speakerCode, screenCode, speakerId } = await fixture();
+    const speaker = client(speakerCode);
+    const screen = client(screenCode);
+    const ready = Promise.all([
+      waitFor<Welcome>((res) => speaker.on('welcome', res)),
+      waitFor<Welcome>((res) => screen.on('welcome', res)),
+    ]);
+    speaker.connect();
+    screen.connect();
+    await ready;
+
+    // speaker side of the player: the dialogue's line files
+    const manifest = await speaker.fetchAssetManifest();
+    expect(manifest.deviceId).toBe(speakerId);
+    expect(manifest.urlExpiresAt).toBeGreaterThan(Date.now());
+    expect(manifest.entries.map((e) => e.fileKey).sort()).toEqual([
+      'themes/c/l1.mp3',
+      'themes/c/l2.mp3',
+    ]);
+
+    // screen side: the theme has no video assets
+    expect((await screen.fetchAssetManifest()).entries).toEqual([]);
   });
 });
