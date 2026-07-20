@@ -111,13 +111,14 @@ If the return value is `false`, the sequence stops → guard logic works without
 ## Session Model
 
 ```
-Session: id, themeId, mode(test|production), phaseId, state(running|paused|ended),
+Session: id, themeId, mode(test|production), phaseId, state(created|running|paused|ended),
          vars(json), startedAt, endedAt,
          timerEndsAt, timerRemainingMs (while paused)
 ```
 
+- **Lifecycle**: sessions are created **idle** (`created`) and started explicitly from the dashboard (start button; warns when devices are offline). Devices may connect to an idle session so the operator can check online status before starting. The timer arms and `session:start` fires only on start
 - **Production**: one concurrent session per theme. Production devices (physical, registered by code) automatically belong to this session
-- **Test**: multiple sessions may exist. On creation, a per-session **test device code** is issued for each device
+- **Test**: multiple sessions may exist. On creation, the operator **enters a test device code** for each device (the form pre-fills suggestions). Codes are freed when the session ends
   - Testers attach devices with the test code — the tauri player in **testing mode**, or any `@roomkit/client` consumer (there is no virtual device page in studio; studio only runs/manages test sessions)
   - Clients store the test code in localStorage to auto-rejoin on reconnect
   - Test-mode clients show skip buttons for dialogue/video (tauri testing mode, M5)
@@ -184,7 +185,7 @@ NestJS modules:
   - Tab per phase workspace + a "common" workspace
   - Event card list → clicking an event opens an iOS-Shortcuts-style vertical command stack editor (drag to reorder, add from a command palette)
   - When picking an asset in a command parameter, a new asset can be created inline (modal)
-- **Operation (management)**: session dashboard — current phase, countdown timer (with adjust controls), runnable event buttons (`manualTriggerable`), forced phase switch, live logs, device online status, hint push, bulk device reset, test session runner (create test sessions, show issued device codes)
+- **Operation (management)**: session dashboard — session start (with offline-device warning and optional pre-start bulk reset), current phase, countdown timer (with adjust controls), runnable event buttons (`manualTriggerable`), forced phase switch, live logs, device online status, hint push, bulk device reset, test session runner (create test sessions with operator-entered device codes)
 
 ## Clients
 
