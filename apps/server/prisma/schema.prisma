@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Theme {
+  id          String   @id @default(uuid())
+  name        String
+  timeLimitMs Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assets Asset[]
+  tags   Tag[]
+  phases Phase[]
+  events Event[]
+}
+
+// Enum values match the lowercase AssetKind in @roomkit/shared verbatim,
+// so no mapping layer is needed at the API boundary.
+enum AssetKind {
+  device
+  bgm
+  dialogue
+  sfx
+  video
+  hint
+  player
+  website
+  message
+}
+
+model Asset {
+  id        String    @id @default(uuid())
+  themeId   String
+  theme     Theme     @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  kind      AssetKind
+  name      String
+  // device (user-set) and hint (auto 4-digit) only; NULLs don't collide in the unique index
+  code      String?
+  // Per-kind payload, zod-validated against @roomkit/shared schemas at the API boundary
+  data      Json
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tags      Tag[]
+
+  @@unique([themeId, kind, code])
+  @@index([themeId, kind])
+}
+
+model Tag {
+  id      String @id @default(uuid())
+  themeId String
+  theme   Theme  @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  name    String
+  color   String
+  assets  Asset[]
+
+  @@unique([themeId, name])
+}
+
+model Phase {
+  id      String @id @default(uuid())
+  themeId String
+  theme   Theme  @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  name    String
+  order   Int
+  events  Event[]
+}
+
+enum TriggerKind {
+  device
+  manual
+  system
+}
+
+model Event {
+  id                String      @id @default(uuid())
+  themeId           String
+  theme             Theme       @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  // null = common event (valid in every phase); survives phase deletion as common
+  phaseId           String?
+  phase             Phase?      @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  name              String
+  triggerKind       TriggerKind
+  // device event name (device) or system hook name (system)
+  triggerName       String?
+  manualTriggerable Boolean     @default(false)
+  allowReentry      Boolean     @default(false)
+  sequence          Json        @default("[]")
+}
