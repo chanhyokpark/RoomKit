@@ -118,9 +118,9 @@ Session: id, themeId, mode(test|production), phaseId, state(running|paused|ended
 
 - **Production**: one concurrent session per theme. Production devices (physical, registered by code) automatically belong to this session
 - **Test**: multiple sessions may exist. On creation, a per-session **test device code** is issued for each device
-  - Testers open a virtual device page (inside studio) in a browser, or attach a physical device using the test code
+  - Testers attach devices with the test code — the tauri player in **testing mode**, or any `@roomkit/client` consumer (there is no virtual device page in studio; studio only runs/manages test sessions)
   - Clients store the test code in localStorage to auto-rejoin on reconnect
-  - Test-mode clients show skip buttons for dialogue/video
+  - Test-mode clients show skip buttons for dialogue/video (tauri testing mode, M5)
 - Server restart recovery: session state (vars, phase, timer) is persisted to the DB. Sequences that were mid-flight are allowed to be lost but are logged (v1 simplification)
 
 ### Countdown Timer
@@ -151,9 +151,11 @@ Two namespaces:
 
 | Direction | Event | Payload |
 |---|---|---|
-| S→C | `command` | `{ id, type, ... }` (play, stop, navigate, reset, message, …) |
+| S→C | `welcome` | `{ device, session }` — sent once on successful attach |
+| S→C | `command` | `{ id, type, ... }` (play, stop, navigate, reset, message; play carries presigned media URLs) |
 | C→S | `ack` | `{ commandId, status }` — resolves waitUntilEnd |
 | C→S | `trigger` | `{ event, payload? }` — reports a game event |
+| C→S / S→C | `progress` | `{ commandId, lineIndex }` — dialogue line sync from speaker, relayed to the screen device |
 | C→S | `hint:submit` / S→C `hint:show` | hint device only |
 | S→C | `session:state` | broadcast of phase changes, pause, remaining timer, etc. |
 
@@ -182,7 +184,7 @@ NestJS modules:
   - Tab per phase workspace + a "common" workspace
   - Event card list → clicking an event opens an iOS-Shortcuts-style vertical command stack editor (drag to reorder, add from a command palette)
   - When picking an asset in a command parameter, a new asset can be created inline (modal)
-- **Operation (management)**: session dashboard — current phase, countdown timer (with adjust controls), runnable event buttons (`manualTriggerable`), forced phase switch, live logs, device online status, hint push, bulk device reset, open virtual devices (test)
+- **Operation (management)**: session dashboard — current phase, countdown timer (with adjust controls), runnable event buttons (`manualTriggerable`), forced phase switch, live logs, device online status, hint push, bulk device reset, test session runner (create test sessions, show issued device codes)
 
 ## Clients
 
@@ -226,8 +228,8 @@ Subtitle HTML and eval code are authored only by the creator (admin account) —
 ## Milestones
 
 1. **M1 Core**: shared protocol, server (auth/themes/assets CRUD, S3), studio asset management
-2. **M2 Runtime**: sessions, sequence runtime, countdown timer, /device gateway, js library, test sessions + virtual devices
+2. **M2 Runtime**: sessions + test sessions (REST), sequence runtime, countdown timer, /device + minimal /admin gateways, session logs, `@roomkit/client`
 3. **M3 Editor**: phase/event editing UI, command stack editor, inline asset creation
-4. **M4 Operation**: admin dashboard, logs, hint flow, manual trigger / phase switch
-5. **M5 Clients**: tauri player (asset cache, playback, subtitles), helper script
+4. **M4 Operation**: admin dashboard, test session runner UI, logs UI, hint flow, manual trigger / phase switch
+5. **M5 Clients**: tauri player (asset cache, playback, subtitles, testing mode w/ skip buttons), helper script
 6. **M6 Polish**: theme duplication, dialogue zip upload, error handling & reconnect hardening
