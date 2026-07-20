@@ -34,6 +34,12 @@ export const DeviceEvents = {
   hintError: 'hint:error',
   /** S→C: broadcast of session state (phase, pause, timer). */
   sessionState: 'session:state',
+  /**
+   * C→S with a socket.io ack: request the media manifest this device should
+   * pre-cache (`DeviceAssetManifest`, or null when the socket has no theme).
+   * Works while attached to a session and while lobby-parked.
+   */
+  assetManifest: 'assets:manifest',
 } as const;
 
 /** Events on the /admin namespace (studio). */
@@ -150,6 +156,34 @@ export const WelcomeSchema = z.object({
   session: SessionStateSchema,
 });
 export type Welcome = z.infer<typeof WelcomeSchema>;
+
+/**
+ * One cacheable media file for a device. Upload fileKeys are immutable
+ * (`themes/{themeId}/{uuid}/{filename}`), so fileKey presence in a local
+ * cache is the freshness check — no hash needed. Dialogues contribute one
+ * entry per line.
+ */
+export const DeviceAssetEntrySchema = z.object({
+  assetId: z.uuid(),
+  kind: z.enum(['bgm', 'sfx', 'video', 'dialogue']),
+  name: z.string(),
+  /** Dialogue line id (dialogue entries only). */
+  lineId: z.uuid().optional(),
+  fileKey: z.string(),
+  /** Presigned GET URL for downloading into the cache. */
+  url: z.url(),
+});
+export type DeviceAssetEntry = z.infer<typeof DeviceAssetEntrySchema>;
+
+/** Ack payload of `assets:manifest`. */
+export const DeviceAssetManifestSchema = z.object({
+  themeId: z.uuid(),
+  deviceId: z.uuid(),
+  /** Epoch ms when the presigned urls expire; re-request before then. */
+  urlExpiresAt: z.number().int().nonnegative(),
+  entries: z.array(DeviceAssetEntrySchema),
+});
+export type DeviceAssetManifest = z.infer<typeof DeviceAssetManifestSchema>;
 
 /** /admin connection auth payload (admin JWT). */
 export const AdminAuthSchema = z.object({ token: z.string().min(1) });
