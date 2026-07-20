@@ -1,0 +1,2 @@
+- prefer using CLI tools like pnpm and nest. Request user to run command if it's interactive.
+- use pnpm for all projects.
