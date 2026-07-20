@@ -34,7 +34,7 @@ export type DoneFn = (status?: 'done' | 'failed') => void;
 export interface RoomKitClientOptions {
   /** http(s) origin of the RoomKit server, e.g. `http://localhost:3000`. */
   serverUrl: string;
-  /** Production device code, or a `tst_…` test code. */
+  /** Production device code, or an operator-issued test code. */
   deviceCode: string;
   /** Optional label sent in the handshake (log niceness only). */
   deviceName?: string;
@@ -131,10 +131,12 @@ export class RoomKitClient {
       if (!parsed.success) return;
       const welcome = parsed.data;
       this.lastSessionState = welcome.session;
+      // A test-mode welcome means the code we used is a test code — persist
+      // it for auto-rejoin (codes carry no reserved prefix).
       if (
         welcome.session.mode === 'test' &&
         this.options.persistTestCode !== false &&
-        this.usedCode?.startsWith('tst_')
+        this.usedCode
       ) {
         this.storage.setItem(this.storageKey, this.usedCode);
       }
