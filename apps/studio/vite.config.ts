@@ -4,6 +4,16 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	// @roomkit/shared is a CommonJS workspace package — force pre-bundling so
+	// browser imports work in dev and prod builds.
+	optimizeDeps: {
+		include: ['@roomkit/shared']
+	},
+	build: {
+		commonjsOptions: {
+			include: [/@roomkit\/shared/, /node_modules/]
+		}
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({

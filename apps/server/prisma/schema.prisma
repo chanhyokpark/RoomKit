@@ -16,8 +16,6 @@ model Theme {
 
   assets Asset[]
   tags   Tag[]
-  phases Phase[]
-  events Event[]
 }
 
 // Enum values match the lowercase AssetKind in @roomkit/shared verbatim,
@@ -32,30 +30,33 @@ enum AssetKind {
   player
   website
   message
+  phase
+  event
 }
 
 model Asset {
-  id        String    @id @default(uuid())
-  themeId   String
-  theme     Theme     @relation(fields: [themeId], references: [id], onDelete: Cascade)
-  kind      AssetKind
-  name      String
+  id          String    @id @default(uuid())
+  themeId     String
+  theme       Theme     @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  kind        AssetKind
+  name        String
+  description String    @default("")
   // device (user-set) and hint (auto 4-digit) only; NULLs don't collide in the unique index
-  code      String?
+  code        String?
   // Per-kind payload, zod-validated against @roomkit/shared schemas at the API boundary
-  data      Json
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  tags      Tag[]
+  data        Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tags        Tag[]
 
   @@unique([themeId, kind, code])
   @@index([themeId, kind])
 }
 
 model Tag {
-  id      String @id @default(uuid())
+  id      String  @id @default(uuid())
   themeId String
-  theme   Theme  @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  theme   Theme   @relation(fields: [themeId], references: [id], onDelete: Cascade)
   name    String
   color   String
   assets  Asset[]
@@ -63,33 +64,5 @@ model Tag {
   @@unique([themeId, name])
 }
 
-model Phase {
-  id      String @id @default(uuid())
-  themeId String
-  theme   Theme  @relation(fields: [themeId], references: [id], onDelete: Cascade)
-  name    String
-  order   Int
-  events  Event[]
-}
-
-enum TriggerKind {
-  device
-  manual
-  system
-}
-
-model Event {
-  id                String      @id @default(uuid())
-  themeId           String
-  theme             Theme       @relation(fields: [themeId], references: [id], onDelete: Cascade)
-  // null = common event (valid in every phase); survives phase deletion as common
-  phaseId           String?
-  phase             Phase?      @relation(fields: [phaseId], references: [id], onDelete: SetNull)
-  name              String
-  triggerKind       TriggerKind
-  // device event name (device) or system hook name (system)
-  triggerName       String?
-  manualTriggerable Boolean     @default(false)
-  allowReentry      Boolean     @default(false)
-  sequence          Json        @default("[]")
-}
+// Phases and events are assets (kind = phase / event); their payloads live in
+// Asset.data like every other kind.

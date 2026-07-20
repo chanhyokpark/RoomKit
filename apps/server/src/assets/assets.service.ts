@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import {
   assetDataSchemas,
   CODED_ASSET_KINDS,
+  EventDataSchema,
   PlayerDataSchema,
   type AssetKind,
   type CreateAssetInput,
@@ -63,6 +64,7 @@ export class AssetsService {
       themeId,
       kind: input.kind,
       name: input.name,
+      description: input.description ?? '',
       data: input.data as Prisma.InputJsonValue,
       tags: input.tagIds
         ? { connect: input.tagIds.map((id) => ({ id })) }
@@ -122,6 +124,7 @@ export class AssetsService {
         where: { id },
         data: {
           name: input.name,
+          description: input.description,
           code: input.code,
           data,
           tags: input.tagIds
@@ -182,16 +185,29 @@ export class AssetsService {
     kind: AssetKind,
     data: unknown,
   ) {
-    if (kind !== 'player') return;
-    const { speakerDeviceId, screenDeviceId } = PlayerDataSchema.parse(data);
-    const deviceIds = [...new Set([speakerDeviceId, screenDeviceId])];
-    const count = await this.prisma.asset.count({
-      where: { id: { in: deviceIds }, themeId, kind: 'device' },
-    });
-    if (count !== deviceIds.length) {
-      throw new BadRequestException(
-        'speakerDeviceId/screenDeviceId must reference device assets in this theme',
-      );
+    if (kind === 'player') {
+      const { speakerDeviceId, screenDeviceId } = PlayerDataSchema.parse(data);
+      const deviceIds = [...new Set([speakerDeviceId, screenDeviceId])];
+      const count = await this.prisma.asset.count({
+        where: { id: { in: deviceIds }, themeId, kind: 'device' },
+      });
+      if (count !== deviceIds.length) {
+        throw new BadRequestException(
+          'speakerDeviceId/screenDeviceId must reference device assets in this theme',
+        );
+      }
+    }
+    if (kind === 'event') {
+      const { phaseId } = EventDataSchema.parse(data);
+      if (phaseId === null) return;
+      const count = await this.prisma.asset.count({
+        where: { id: phaseId, themeId, kind: 'phase' },
+      });
+      if (count !== 1) {
+        throw new BadRequestException(
+          'phaseId must reference a phase asset in this theme',
+        );
+      }
     }
   }
 }

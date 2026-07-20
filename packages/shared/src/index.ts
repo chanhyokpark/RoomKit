@@ -2,7 +2,6 @@ export * from './json.js';
 export * from './theme.js';
 export * from './tag.js';
 export * from './assets.js';
-export * from './phase.js';
 export * from './event.js';
 export * from './commands.js';
 export * from './protocol.js';

@@ -46,11 +46,13 @@ Every asset, phase, event, and device belongs to a theme. Themes must be duplica
 
 ### Assets
 
-Common fields: `id`, `themeId`, `name`, `tags[]`, `createdAt`. File-backed assets hold an S3 key. Uploads use presigned URLs (the server only handles metadata), except dialogue zip uploads, which the server receives, extracts, and pushes to S3 file by file.
+Common fields: `id`, `themeId`, `name`, `description`, `tags[]`, `createdAt`. File-backed assets hold an S3 key. Uploads use presigned URLs (the server only handles metadata), except dialogue zip uploads, which the server receives, extracts, and pushes to S3 file by file.
+
+Every kind — including Phase and Event — is stored as an `Asset` row (`kind` enum + per-kind `data` JSON validated by zod).
 
 | Asset | Fields / behavior |
 |---|---|
-| Device | `name`, `code` (unique within theme, used for production device registration). Test device codes are issued separately and stored in the client's localStorage |
+| Device | `name` (logical identifier), `displayName` (human-friendly label for UIs), `code` (unique within theme, used for production device registration). Test device codes are issued separately and stored in the client's localStorage |
 | BGM | one audio file |
 | Dialogue | multiple ordered voice files. Per-file subtitle (HTML allowed). `keepSubtitleAfterEnd` flag. On zip upload, lines are created in filename order; subtitles are filled in on the edit screen |
 | SFX | one audio file |
@@ -58,10 +60,10 @@ Common fields: `id`, `themeId`, `name`, `tags[]`, `createdAt`. File-backed asset
 | Hint | `code` (auto-generated, unique within theme — 4 digits by default, manually editable), array of steps. Each step is text (HTML) + optional image |
 | Player | logical output group. `speakerDeviceId`, `screenDeviceId` (device that renders subtitles/video), `subtitleCss`. Dialogue/video playback commands target a player, not a raw device |
 | Website | only a `url` is registered. If the site is shown inside the player's iframe, it must have the helper script embedded; a standalone site connects with `@roomkit/client` instead |
-| Message | payload template delivered to a device. `payload` (JSON or string). Selected in the "send message to device" command |
+| Message | payload **schema** delivered to a device. `displayName` + `fields[]` (`key`, `label`, `type`: string/number/boolean/json, `required`). The asset only defines the shape; concrete values are entered dynamically in the editor when authoring a "send message to device" command |
 | Tag | `name`, `color`. Many-to-many with assets, organization only (no runtime meaning) |
 | Phase | `name`, `order`. Game progression stage. A session is always in exactly one phase |
-| Event | see below |
+| Event | `phaseId` (null = common), `triggerKind`, `triggerName`, `manualTriggerable`, `allowReentry`, `sequence`. See below |
 
 ### Events and Sequences
 
@@ -88,7 +90,7 @@ A sequence is stored as an array of commands (JSON). The runtime lives on the se
 | Play/stop BGM | bgm, player, `loop` | infinite loop toggle |
 | Wait | duration (ms) | server timer. Pauses together with session pause |
 | Navigate device to website | device, website | sends `navigate(url)` to the device |
-| Send message to device | device, message | sends the payload to the device. Tauri relays it to the iframe via postMessage |
+| Send message to device | device, message, values | builds the payload from the message asset's field schema + values entered in the editor, then sends it to the device. Tauri relays it to the iframe via postMessage |
 | Switch phase | phase | changes the session phase + runs phase hooks *(not a command in the original plan, but added so "jump to a specific phase" is usable from sequences too)* |
 | Call event | event | runs another event's sequence (for reuse; proposed addition) |
 | Reset all devices | — | sends `reset` to every device in the session (bulk version of "reset device") |
@@ -175,7 +177,7 @@ NestJS modules:
 
 ## Studio (apps/studio)
 
-- **Authoring**: theme list → asset management (tag filters), editor
+- **Authoring**: theme list → asset management (kind tabs, tag filters; audio/video/dialogue lines are directly playable from the list), editor
 - **Editor**:
   - Tab per phase workspace + a "common" workspace
   - Event card list → clicking an event opens an iOS-Shortcuts-style vertical command stack editor (drag to reorder, add from a command palette)

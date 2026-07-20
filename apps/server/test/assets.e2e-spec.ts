@@ -38,13 +38,16 @@ describe('Assets (e2e)', () => {
     const device = await createAsset({
       kind: 'device',
       name: 'button',
+      description: 'red button on the desk',
       code: 'btn-1',
-      data: {},
+      data: { displayName: 'Red Button' },
     }).expect(201);
     const deviceId = device.body.id as string;
     expect(device.body).toMatchObject({
       kind: 'device',
       code: 'btn-1',
+      description: 'red button on the desk',
+      data: { displayName: 'Red Button' },
       tags: [],
     });
 
@@ -52,7 +55,7 @@ describe('Assets (e2e)', () => {
       kind: 'device',
       name: 'screen',
       code: 'screen-1',
-      data: {},
+      data: { displayName: 'Screen' },
     }).expect(201);
 
     await createAsset({
@@ -119,7 +122,46 @@ describe('Assets (e2e)', () => {
     await createAsset({
       kind: 'message',
       name: 'unlock msg',
-      data: { payload: { action: 'unlock', slot: 3 } },
+      data: {
+        displayName: 'Unlock',
+        fields: [
+          { key: 'action', label: 'Action', type: 'string', required: true },
+          { key: 'slot', label: 'Slot', type: 'number', required: false },
+        ],
+      },
+    }).expect(201);
+
+    const phase = await createAsset({
+      kind: 'phase',
+      name: 'chapter 1',
+      data: { order: 1 },
+    }).expect(201);
+
+    await createAsset({
+      kind: 'event',
+      name: 'door opened',
+      data: {
+        phaseId: phase.body.id as string,
+        triggerKind: 'device',
+        triggerName: 'door-open',
+        manualTriggerable: false,
+        allowReentry: false,
+        sequence: [],
+      },
+    }).expect(201);
+
+    // common event (valid in every phase)
+    await createAsset({
+      kind: 'event',
+      name: 'global reset',
+      data: {
+        phaseId: null,
+        triggerKind: 'manual',
+        triggerName: null,
+        manualTriggerable: true,
+        allowReentry: false,
+        sequence: [],
+      },
     }).expect(201);
   });
 
@@ -128,8 +170,43 @@ describe('Assets (e2e)', () => {
       kind: 'device',
       name: 'dup',
       code: 'btn-1',
-      data: {},
+      data: { displayName: 'Dup' },
     }).expect(409));
+
+  it('rejects an event referencing a non-phase id', async () => {
+    const bgm = await createAsset({
+      kind: 'bgm',
+      name: 'not a phase',
+      data: { fileKey: 'k' },
+    }).expect(201);
+    await createAsset({
+      kind: 'event',
+      name: 'bad event',
+      data: {
+        phaseId: bgm.body.id as string,
+        triggerKind: 'manual',
+        triggerName: null,
+        manualTriggerable: true,
+        allowReentry: false,
+        sequence: [],
+      },
+    }).expect(400);
+  });
+
+  it('round-trips the description field on update', async () => {
+    const sfx = await createAsset({
+      kind: 'sfx',
+      name: 'described',
+      data: { fileKey: 'k' },
+    }).expect(201);
+    expect(sfx.body.description).toBe('');
+    const updated = await auth(
+      request(app.getHttpServer())
+        .patch(`/api/themes/${themeId}/assets/${sfx.body.id}`)
+        .send({ description: 'plays when the safe opens' }),
+    ).expect(200);
+    expect(updated.body.description).toBe('plays when the safe opens');
+  });
 
   it('auto-generates a 4-digit hint code', async () => {
     const hint = await createAsset({

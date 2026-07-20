@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { SequenceSchema } from './commands.js';
+import { TriggerKindSchema } from './event.js';
 import { JsonValueSchema } from './json.js';
 import { TagSchema } from './tag.js';
 
@@ -12,12 +14,19 @@ export const AssetKindSchema = z.enum([
   'player',
   'website',
   'message',
+  'phase',
+  'event',
 ]);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
 
 // Per-kind `data` payloads. Device/Hint `code` is a top-level asset field, not in data.
 
-export const DeviceDataSchema = z.object({}).strict();
+export const DeviceDataSchema = z
+  .object({
+    /** Human-friendly label shown in UIs; `name` stays the logical identifier. */
+    displayName: z.string(),
+  })
+  .strict();
 export type DeviceData = z.infer<typeof DeviceDataSchema>;
 
 export const BgmDataSchema = z.object({ fileKey: z.string().min(1) });
@@ -67,10 +76,51 @@ export type PlayerData = z.infer<typeof PlayerDataSchema>;
 export const WebsiteDataSchema = z.object({ url: z.url() });
 export type WebsiteData = z.infer<typeof WebsiteDataSchema>;
 
+export const MessageFieldTypeSchema = z.enum(['string', 'number', 'boolean', 'json']);
+export type MessageFieldType = z.infer<typeof MessageFieldTypeSchema>;
+
+/**
+ * One field of a message payload schema. The asset only defines the shape;
+ * concrete values are filled in by the sequence editor's "send message"
+ * command per use.
+ */
+export const MessageFieldSchema = z.object({
+  /** Payload property name. Unique within the message. */
+  key: z.string().min(1),
+  /** Editor-facing label for the value input. */
+  label: z.string(),
+  type: MessageFieldTypeSchema,
+  required: z.boolean(),
+});
+export type MessageField = z.infer<typeof MessageFieldSchema>;
+
 export const MessageDataSchema = z.object({
-  payload: z.union([z.string(), JsonValueSchema]),
+  /** Human-friendly label shown in UIs; `name` stays the logical identifier. */
+  displayName: z.string(),
+  /** Payload schema definition — values are provided in the editor. */
+  fields: z.array(MessageFieldSchema),
 });
 export type MessageData = z.infer<typeof MessageDataSchema>;
+
+export const PhaseDataSchema = z.object({
+  /** Progression order (ascending). */
+  order: z.number().int(),
+});
+export type PhaseData = z.infer<typeof PhaseDataSchema>;
+
+export const EventDataSchema = z.object({
+  /** Phase asset id. Null = common event, valid in every phase. */
+  phaseId: z.uuid().nullable(),
+  triggerKind: TriggerKindSchema,
+  /** Device event name (device) or system hook name (system); null for manual. */
+  triggerName: z.string().nullable(),
+  manualTriggerable: z.boolean(),
+  /** Re-entry of a running event is blocked by default. */
+  allowReentry: z.boolean(),
+  /** Authored in the M3 editor; kept verbatim by the asset manager. */
+  sequence: SequenceSchema,
+});
+export type EventData = z.infer<typeof EventDataSchema>;
 
 /** Full data schema per kind — used to validate `data` on create. */
 export const assetDataSchemas = {
@@ -83,6 +133,8 @@ export const assetDataSchemas = {
   player: PlayerDataSchema,
   website: WebsiteDataSchema,
   message: MessageDataSchema,
+  phase: PhaseDataSchema,
+  event: EventDataSchema,
 } as const;
 
 /** Kinds whose assets carry a theme-unique `code`. */
@@ -90,6 +142,7 @@ export const CODED_ASSET_KINDS = ['device', 'hint'] as const satisfies AssetKind
 
 const baseCreateFields = {
   name: z.string().min(1),
+  description: z.string().optional(),
   tagIds: z.array(z.uuid()).optional(),
 };
 
@@ -99,7 +152,7 @@ export const CreateAssetInputSchema = z.discriminatedUnion('kind', [
     ...baseCreateFields,
     /** Unique within theme; used for production device registration. */
     code: z.string().min(1),
-    data: DeviceDataSchema.default({}),
+    data: DeviceDataSchema,
   }),
   z.object({ kind: z.literal('bgm'), ...baseCreateFields, data: BgmDataSchema }),
   z.object({ kind: z.literal('dialogue'), ...baseCreateFields, data: DialogueDataSchema }),
@@ -115,6 +168,8 @@ export const CreateAssetInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player'), ...baseCreateFields, data: PlayerDataSchema }),
   z.object({ kind: z.literal('website'), ...baseCreateFields, data: WebsiteDataSchema }),
   z.object({ kind: z.literal('message'), ...baseCreateFields, data: MessageDataSchema }),
+  z.object({ kind: z.literal('phase'), ...baseCreateFields, data: PhaseDataSchema }),
+  z.object({ kind: z.literal('event'), ...baseCreateFields, data: EventDataSchema }),
 ]);
 export type CreateAssetInput = z.infer<typeof CreateAssetInputSchema>;
 
@@ -124,6 +179,7 @@ export type CreateAssetInput = z.infer<typeof CreateAssetInputSchema>;
  */
 export const UpdateAssetInputSchema = z.object({
   name: z.string().min(1).optional(),
+  description: z.string().optional(),
   tagIds: z.array(z.uuid()).optional(),
   /** Only meaningful for device/hint assets; rejected for other kinds. */
   code: z.string().min(1).optional(),
@@ -135,6 +191,7 @@ const assetEnvelopeFields = {
   id: z.uuid(),
   themeId: z.uuid(),
   name: z.string(),
+  description: z.string(),
   code: z.string().nullable(),
   tags: z.array(TagSchema),
   createdAt: z.coerce.date(),
@@ -151,5 +208,7 @@ export const AssetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player'), ...assetEnvelopeFields, data: PlayerDataSchema }),
   z.object({ kind: z.literal('website'), ...assetEnvelopeFields, data: WebsiteDataSchema }),
   z.object({ kind: z.literal('message'), ...assetEnvelopeFields, data: MessageDataSchema }),
+  z.object({ kind: z.literal('phase'), ...assetEnvelopeFields, data: PhaseDataSchema }),
+  z.object({ kind: z.literal('event'), ...assetEnvelopeFields, data: EventDataSchema }),
 ]);
 export type Asset = z.infer<typeof AssetSchema>;
