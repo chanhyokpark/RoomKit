@@ -12,6 +12,8 @@ class ConnectionStore {
 	detail = $state<string | undefined>(undefined);
 	welcome = $state<Welcome | null>(null);
 	session = $state<SessionState | null>(null);
+	/** When `session` was received — timerRemainingMs is a snapshot; clients tick locally. */
+	sessionReceivedAt = $state(0);
 
 	client: RoomKitClient | null = null;
 
@@ -30,9 +32,11 @@ class ConnectionStore {
 		client.on('welcome', (welcome) => {
 			this.welcome = welcome;
 			this.session = welcome.session;
+			this.sessionReceivedAt = Date.now();
 		});
 		client.on('sessionState', (session) => {
 			this.session = session;
+			this.sessionReceivedAt = Date.now();
 		});
 		client.connect();
 		return client;

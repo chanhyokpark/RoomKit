@@ -159,6 +159,7 @@ Two namespaces:
 | C→S / S→C | `progress` | `{ commandId, lineIndex }` — dialogue line sync from speaker, relayed to the screen device |
 | C→S | `hint:submit` / S→C `hint:show` | hint device only |
 | S→C | `session:state` | broadcast of phase changes, pause, remaining timer, etc. |
+| C→S (ack) | `assets:manifest` | request → `DeviceAssetManifest`: the media files this device should pre-cache (speaker → bgm/sfx/dialogue lines, screen → video) with presigned URLs. Served while attached or lobby-parked |
 
 **`/admin`** — for studio. Authenticated with the admin token.
 
@@ -203,22 +204,30 @@ rk.on('message', (payload) => ...);
 rk.on('navigate', (url) => ...);
 // playback commands are exposed as callbacks — playback itself is up to the user; call ack when done
 rk.on('play', (cmd, done) => ...);
+// hint UIs (any device/website) are built on these — the player has none built in
+rk.submitHint('0417');
+rk.requestHintStep(hintId, 1);
+rk.on('hint', (show) => ...);
+rk.on('hintError', (err) => ...);
+// media manifest for pre-caching (presigned URLs, ~6h)
+const manifest = await rk.fetchAssetManifest();
 ```
 
 ### Tauri client (apps/player)
 
-- Built on `@roomkit/client`. First-run setup screen for server URL and device code
-- On connect, receives the asset list needed by this device and downloads it to a local cache (hash-based refresh)
-- Fullscreen lock, system shortcut blocking
+- Built on `@roomkit/client`. A **launcher** window opens on every start: server URL + a device list (label, device code, kiosk toggle), persisted to `config.json`. Each device opens as its own stage window (`device-<id>`), so several devices can run on one machine for testing
+- On connect, fetches `assets:manifest` and downloads the files to a local cache (fileKey-based refresh — upload keys are immutable, so presence = fresh). Cache miss streams the wire command's presigned URL and backfills in the background
+- Fullscreen kiosk lock per device (window-level: fullscreen, always-on-top, hidden cursor, close prevention, browser-shortcut suppression; escape chord Ctrl+Shift+Alt+F12). OS chords (Win key, Alt+Tab) cannot be blocked from an app — use Windows Assigned Access for a hard lock
 - Implements audio (dialogue/BGM/SFX mixed simultaneously), video, and subtitle overlay (applies the player's `subtitleCss`, renders subtitle HTML) directly
-- Websites are shown in an embedded webview (iframe) — communicates with the helper script via postMessage
-- Test mode: skip button overlay during playback
+- Websites are shown in an embedded webview (iframe) — communicates with the helper script via postMessage (`@roomkit/shared` `helper.ts` envelopes; the player buffers until the helper's `hello`)
+- No hint UI in the player: hint UIs are built by client/helper consumers
+- Test mode: skip button overlay (dialogue/video) + status bar (connection, session state, timer)
 
 ### @roomkit/helper (iframe embed script)
 
 Embedded via `<script>` into websites that are opened **inside the player's iframe** (via the "navigate device to website" command). It does not open its own connection — all trigger/message traffic goes through the parent (tauri) via `postMessage`, riding on the player's existing device connection.
 
-The API is a subset of the client library: `trigger()`, `on('message')`.
+The API is a subset of the client library: `trigger()`, `on('message')`, plus the hint surface (`submitHint()`, `requestHintStep()`, `on('hint')`, `on('hintError')`). The postMessage envelopes live in `@roomkit/shared` (`helper.ts`); the iife bundle (`dist/roomkit-helper.global.js`, ~1.5KB, defines `window.RoomKitHelper`) does structural checks only, while the player validates with the zod schemas.
 
 Websites opened standalone (in a regular browser, outside the player) and other platforms are devices in their own right: they use `@roomkit/client` to connect to the websocket directly with their own device code, not the helper script.
 

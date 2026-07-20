@@ -28,8 +28,8 @@ export default defineConfig({
 			}
 		})
 	],
-	// Tauri expects a fixed dev port (studio owns 5173).
-	server: { port: 5174, strictPort: true },
+	// Tauri expects a fixed dev port (studio owns 5173/5174).
+	server: { port: 5175, strictPort: true },
 	clearScreen: false,
 	envPrefix: ['VITE_', 'TAURI_']
 });

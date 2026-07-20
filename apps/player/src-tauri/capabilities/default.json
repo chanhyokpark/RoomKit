@@ -13,9 +13,6 @@
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-cursor-visible",
     "store:default",
-    "os:default",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister",
-    "global-shortcut:allow-unregister-all"
+    "os:default"
   ]
 }
