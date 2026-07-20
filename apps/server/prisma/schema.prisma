@@ -14,8 +14,9 @@ model Theme {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  assets Asset[]
-  tags   Tag[]
+  assets   Asset[]
+  tags     Tag[]
+  sessions Session[]
 }
 
 // Enum values match the lowercase AssetKind in @roomkit/shared verbatim,
@@ -66,3 +67,75 @@ model Tag {
 
 // Phases and events are assets (kind = phase / event); their payloads live in
 // Asset.data like every other kind.
+
+// Enum values match the lowercase shared schemas verbatim (like AssetKind).
+enum SessionMode {
+  test
+  production
+}
+
+enum SessionState {
+  running
+  paused
+  ended
+}
+
+enum LogLevel {
+  info
+  warn
+  error
+}
+
+model Session {
+  id      String       @id @default(uuid())
+  themeId String
+  theme   Theme        @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  mode    SessionMode
+  state   SessionState @default(running)
+  // Asset id (kind = phase). No FK: asset deletion must not cascade into live sessions.
+  phaseId String?
+  vars    Json         @default("{}")
+
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  // Exactly one of these is set while a timer exists: timerEndsAt while
+  // running, timerRemainingMs while paused.
+  timerEndsAt      DateTime?
+  timerRemainingMs Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deviceCodes SessionDeviceCode[]
+  logs        SessionLog[]
+
+  // A partial unique index (hand-written in the migration) additionally
+  // enforces one non-ended production session per theme.
+  @@index([themeId, state])
+}
+
+model SessionDeviceCode {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Asset id (kind = device); no FK for the same reason as Session.phaseId.
+  deviceId  String
+  // "tst_"-prefixed so it can never collide with a production Asset.code;
+  // globally unique so the /device handshake can look up by code alone.
+  code      String  @unique
+
+  @@unique([sessionId, deviceId])
+}
+
+model SessionLog {
+  id        Int      @id @default(autoincrement())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  at        DateTime @default(now())
+  level     LogLevel
+  kind      String
+  message   String
+  data      Json?
+
+  @@index([sessionId, id])
+}
