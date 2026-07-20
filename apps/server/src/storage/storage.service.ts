@@ -41,11 +41,11 @@ export class StorageService {
     );
   }
 
-  presignGet(key: string): Promise<string> {
+  presignGet(key: string, expiresIn = PRESIGN_EXPIRES_IN): Promise<string> {
     return getSignedUrl(
       this.s3,
       new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-      { expiresIn: PRESIGN_EXPIRES_IN },
+      { expiresIn },
     );
   }
 }

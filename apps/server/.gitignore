@@ -3,8 +3,8 @@
 /node_modules
 /build
 
-# Logs
-logs
+# Logs (root-level runtime log dir only — src/logs is a Nest module)
+/logs
 *.log
 npm-debug.log*
 pnpm-debug.log*

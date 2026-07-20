@@ -9,6 +9,10 @@ import { UploadsModule } from './uploads/uploads.module';
 import { ThemesModule } from './themes/themes.module';
 import { TagsModule } from './tags/tags.module';
 import { AssetsModule } from './assets/assets.module';
+import { LogsModule } from './logs/logs.module';
+import { RuntimeModule } from './runtime/runtime.module';
+import { SessionsModule } from './sessions/sessions.module';
+import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
   imports: [
@@ -20,6 +24,10 @@ import { AssetsModule } from './assets/assets.module';
     ThemesModule,
     TagsModule,
     AssetsModule,
+    LogsModule,
+    RuntimeModule,
+    SessionsModule,
+    GatewayModule,
   ],
   controllers: [HealthController],
 })
