@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "infra": "./compose.sh",
     "dev:server": "pnpm --filter @roomkit/shared build && pnpm --filter server start:dev",
+    "dev:player": "pnpm --filter player dev",
     "dev:shared": "pnpm --filter @roomkit/shared dev",
     "dev:client": "pnpm --filter @roomkit/client dev",
     "test:e2e": "pnpm --filter server test:e2e"

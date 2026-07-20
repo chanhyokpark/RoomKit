@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+/* The stage is a kiosk surface: black canvas, no accidental interactions. */
+html,
+body,
+#app {
+	height: 100%;
+	margin: 0;
+	background: #000;
+	color: #fff;
+	overflow: hidden;
+}
+
+body[data-mode='stage'] {
+	user-select: none;
+	-webkit-user-select: none;
+	cursor: default;
+}
+
+body[data-mode='stage'].kiosk {
+	cursor: none;
+}

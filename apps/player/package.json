@@ -1,0 +1,36 @@
+{
+	"name": "player",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "tauri dev",
+		"dev:web": "vite",
+		"build": "vite build",
+		"build:app": "tauri build",
+		"preview": "vite preview",
+		"check": "svelte-check --tsconfig ./tsconfig.json",
+		"tauri": "tauri"
+	},
+	"dependencies": {
+		"@roomkit/client": "workspace:*",
+		"@roomkit/shared": "workspace:*",
+		"@tauri-apps/api": "^2.9.0",
+		"@tauri-apps/plugin-global-shortcut": "^2.3.0",
+		"@tauri-apps/plugin-os": "^2.3.1",
+		"@tauri-apps/plugin-store": "^2.4.0",
+		"socket.io-client": "^4.8.3",
+		"zod": "^4.1.0"
+	},
+	"devDependencies": {
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tailwindcss/vite": "^4.3.0",
+		"@tauri-apps/cli": "^2.9.0",
+		"@types/node": "^24",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"tailwindcss": "^4.3.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.16"
+	}
+}
