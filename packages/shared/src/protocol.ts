@@ -26,8 +26,12 @@ export const DeviceEvents = {
   progress: 'progress',
   /** C→S: hint device submits an entered code. */
   hintSubmit: 'hint:submit',
+  /** C→S: hint device requests a specific step of an already-shown hint. */
+  hintNext: 'hint:next',
   /** S→C: show a hint step on the hint device. */
   hintShow: 'hint:show',
+  /** S→C: hint request rejected (wrong code, bad step, unauthorized, paused). */
+  hintError: 'hint:error',
   /** S→C: broadcast of session state (phase, pause, timer). */
   sessionState: 'session:state',
 } as const;
@@ -68,8 +72,18 @@ export type Trigger = z.infer<typeof TriggerSchema>;
 export const HintSubmitSchema = z.object({ code: z.string().min(1) });
 export type HintSubmit = z.infer<typeof HintSubmitSchema>;
 
+/** Stateless step advance: the client asks for the exact step it wants next. */
+export const HintNextSchema = z.object({
+  hintId: z.uuid(),
+  /** 0-based step being requested; server validates bounds. */
+  step: z.number().int().nonnegative(),
+});
+export type HintNext = z.infer<typeof HintNextSchema>;
+
 export const HintShowSchema = z.object({
   hintId: z.uuid(),
+  /** Theme-unique hint code (also shown for admin-pushed hints). */
+  code: z.string(),
   /** 0-based step index. */
   step: z.number().int().nonnegative(),
   stepCount: z.number().int().positive(),
@@ -78,10 +92,33 @@ export const HintShowSchema = z.object({
 });
 export type HintShow = z.infer<typeof HintShowSchema>;
 
+export const HintErrorReasonSchema = z.enum([
+  /** hint:submit — code matched no hint in the theme. */
+  'unknown_code',
+  /** hint:next — hintId is not a hint in this theme. */
+  'unknown_hint',
+  /** hint:next — step is out of range. */
+  'invalid_step',
+  /** Sender's device asset is not flagged isHintDevice. */
+  'not_hint_device',
+  /** Session is paused, ended, or not live. */
+  'session_not_running',
+]);
+export type HintErrorReason = z.infer<typeof HintErrorReasonSchema>;
+
+export const HintErrorSchema = z.object({
+  reason: HintErrorReasonSchema,
+  /** Echo of the submitted code (unknown_code only). */
+  code: z.string().optional(),
+  hintId: z.uuid().optional(),
+});
+export type HintError = z.infer<typeof HintErrorSchema>;
+
 export const SessionModeSchema = z.enum(['test', 'production']);
 export type SessionMode = z.infer<typeof SessionModeSchema>;
 
-export const SessionStateValueSchema = z.enum(['running', 'paused', 'ended']);
+/** Sessions are created idle ('created') and started explicitly by the operator. */
+export const SessionStateValueSchema = z.enum(['created', 'running', 'paused', 'ended']);
 export type SessionStateValue = z.infer<typeof SessionStateValueSchema>;
 
 export const TimerStateSchema = z.enum(['running', 'paused', 'expired']);

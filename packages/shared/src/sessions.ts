@@ -18,10 +18,40 @@ export const SessionSchema = z.object({
 });
 export type Session = z.infer<typeof SessionSchema>;
 
-export const CreateSessionInputSchema = z.object({
-  themeId: z.uuid(),
-  mode: SessionModeSchema,
+/** Operator-entered test code for one device (test sessions only). */
+export const DeviceCodeInputSchema = z.object({
+  deviceId: z.uuid(),
+  code: z.string().min(1),
 });
+export type DeviceCodeInput = z.infer<typeof DeviceCodeInputSchema>;
+
+/**
+ * Sessions are created idle; POST /sessions/:id/start begins the game.
+ * `deviceCodes` is required for test mode (may be empty) and rejected for
+ * production mode.
+ */
+export const CreateSessionInputSchema = z
+  .object({
+    themeId: z.uuid(),
+    mode: SessionModeSchema,
+    deviceCodes: z.array(DeviceCodeInputSchema).optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.mode === 'test' && input.deviceCodes === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['deviceCodes'],
+        message: 'deviceCodes is required for test sessions',
+      });
+    }
+    if (input.mode === 'production' && input.deviceCodes !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['deviceCodes'],
+        message: 'deviceCodes is only allowed for test sessions',
+      });
+    }
+  });
 export type CreateSessionInput = z.infer<typeof CreateSessionInputSchema>;
 
 export const TestDeviceCodeSchema = z.object({
@@ -57,3 +87,11 @@ export type SwitchPhaseInput = z.infer<typeof SwitchPhaseInputSchema>;
 
 export const ManualTriggerInputSchema = z.object({ eventId: z.uuid() });
 export type ManualTriggerInput = z.infer<typeof ManualTriggerInputSchema>;
+
+/** Admin pushes an arbitrary hint step to the theme's hint device(s). */
+export const PushHintInputSchema = z.object({
+  hintId: z.uuid(),
+  /** 0-based; defaults to the first step. */
+  step: z.number().int().nonnegative().default(0),
+});
+export type PushHintInput = z.infer<typeof PushHintInputSchema>;

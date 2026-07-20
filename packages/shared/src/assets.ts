@@ -25,6 +25,8 @@ export const DeviceDataSchema = z
   .object({
     /** Human-friendly label shown in UIs; `name` stays the logical identifier. */
     displayName: z.string(),
+    /** This device runs the hint code-entry UI; hint:submit/next and admin pushes target it. */
+    isHintDevice: z.boolean().default(false),
   })
   .strict();
 export type DeviceData = z.infer<typeof DeviceDataSchema>;
