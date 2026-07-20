@@ -17,7 +17,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "DATABASE_URL=postgresql://roomkit:roomkit@localhost:5433/roomkit_test prisma migrate deploy && jest --config ./test/jest-e2e.json --runInBand"
+    "test:e2e": "pnpm --filter @roomkit/client build && DATABASE_URL=postgresql://roomkit:roomkit@localhost:5433/roomkit_test prisma migrate deploy && jest --config ./test/jest-e2e.json --runInBand"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
@@ -43,6 +43,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
+    "@roomkit/client": "workspace:*",
     "@types/bcryptjs": "^3.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
