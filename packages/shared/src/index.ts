@@ -5,4 +5,7 @@ export * from './assets.js';
 export * from './event.js';
 export * from './commands.js';
 export * from './protocol.js';
+export * from './wire.js';
+export * from './sessions.js';
+export * from './logs.js';
 export * from './uploads.js';

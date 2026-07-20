@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JsonValueSchema } from './json.js';
 
 /**
  * Sequence command definitions. The runtime (M2) executes these on the server;
@@ -31,7 +32,13 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('stopBgm'), playerId: z.uuid() }),
   z.object({ type: z.literal('wait'), durationMs: z.number().int().positive() }),
   z.object({ type: z.literal('navigate'), deviceId: z.uuid(), websiteId: z.uuid() }),
-  z.object({ type: z.literal('sendMessage'), deviceId: z.uuid(), messageId: z.uuid() }),
+  z.object({
+    type: z.literal('sendMessage'),
+    deviceId: z.uuid(),
+    messageId: z.uuid(),
+    /** Concrete values for the message asset's field schema, entered in the editor. */
+    values: z.record(z.string(), JsonValueSchema),
+  }),
   z.object({ type: z.literal('switchPhase'), phaseId: z.uuid() }),
   z.object({ type: z.literal('callEvent'), eventId: z.uuid() }),
   z.object({ type: z.literal('resetAllDevices') }),
