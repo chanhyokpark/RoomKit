@@ -5,7 +5,7 @@ import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
 
 const LoginInputSchema = z.object({
-  email: z.email(),
+  id: z.string().min(1),
   password: z.string().min(1),
 });
 type LoginInput = z.infer<typeof LoginInputSchema>;
@@ -18,11 +18,11 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   login(@Body(new ZodValidationPipe(LoginInputSchema)) input: LoginInput) {
-    return this.authService.login(input.email, input.password);
+    return this.authService.login(input.id, input.password);
   }
 
   @Get('me')
   me() {
-    return { email: this.authService.adminEmail() };
+    return { id: this.authService.adminId() };
   }
 }

@@ -11,18 +11,15 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async login(
-    email: string,
-    password: string,
-  ): Promise<{ accessToken: string }> {
-    const adminEmail = this.config.get('ADMIN_EMAIL', { infer: true });
+  async login(id: string, password: string): Promise<{ accessToken: string }> {
+    const adminId = this.config.get('ADMIN_ID', { infer: true });
     const passwordHash = this.config.get('ADMIN_PASSWORD_HASH', {
       infer: true,
     });
 
-    const emailMatches = email === adminEmail;
+    const idMatches = id === adminId;
     const passwordMatches = await compare(password, passwordHash);
-    if (!emailMatches || !passwordMatches) {
+    if (!idMatches || !passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -30,7 +27,7 @@ export class AuthService {
     return { accessToken };
   }
 
-  adminEmail(): string {
-    return this.config.get('ADMIN_EMAIL', { infer: true });
+  adminId(): string {
+    return this.config.get('ADMIN_ID', { infer: true });
   }
 }

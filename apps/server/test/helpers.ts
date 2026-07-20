@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 
-export const ADMIN_EMAIL = 'admin@test.local';
+export const ADMIN_ID = 'test-admin';
 export const ADMIN_PASSWORD = 'test-password';
 
 export async function createTestApp(): Promise<INestApplication> {
@@ -19,7 +19,7 @@ export async function createTestApp(): Promise<INestApplication> {
 export async function login(app: INestApplication): Promise<string> {
   const res = await request(app.getHttpServer())
     .post('/api/auth/login')
-    .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+    .send({ id: ADMIN_ID, password: ADMIN_PASSWORD })
     .expect(200);
   return res.body.accessToken as string;
 }

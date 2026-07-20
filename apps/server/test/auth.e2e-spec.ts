@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, createTestApp, login } from './helpers';
+import { ADMIN_ID, ADMIN_PASSWORD, createTestApp, login } from './helpers';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
@@ -22,19 +22,19 @@ describe('Auth (e2e)', () => {
   it('rejects a wrong password', () =>
     request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: ADMIN_EMAIL, password: 'wrong' })
+      .send({ id: ADMIN_ID, password: 'wrong' })
       .expect(401));
 
-  it('rejects a wrong email', () =>
+  it('rejects a wrong id', () =>
     request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'nobody@test.local', password: ADMIN_PASSWORD })
+      .send({ id: 'nobody', password: ADMIN_PASSWORD })
       .expect(401));
 
   it('rejects a malformed body with 400', () =>
     request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ email: 'not-an-email' })
+      .send({ password: 'x' })
       .expect(400));
 
   it('issues a token for valid credentials and authorizes /auth/me', async () => {
@@ -44,7 +44,7 @@ describe('Auth (e2e)', () => {
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    expect(res.body).toEqual({ email: ADMIN_EMAIL });
+    expect(res.body).toEqual({ id: ADMIN_ID });
   });
 
   it('guards routes without a token', () =>

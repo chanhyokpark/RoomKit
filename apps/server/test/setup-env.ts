@@ -6,7 +6,7 @@ process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ??
   'postgresql://roomkit:roomkit@localhost:5433/roomkit_test';
 process.env.JWT_SECRET = 'e2e-test-secret-not-for-production';
-process.env.ADMIN_EMAIL = 'admin@test.local';
+process.env.ADMIN_ID = 'test-admin';
 process.env.ADMIN_PASSWORD_HASH = hashSync('test-password', 4);
 
 process.env.S3_ENDPOINT ??= 'http://localhost:9000';

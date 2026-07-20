@@ -8,7 +8,7 @@ A toolkit for building, managing, and running escape room games. This document i
 |---|---|
 | Scope | One server manages **multiple themes** |
 | Deployment | **Cloud server** (Postgres + S3-compatible storage) |
-| Auth | **Single admin account** (one email+password, session cookie/JWT) |
+| Auth | **Single admin account** (one id+password, JWT Bearer) |
 | Production sessions | **One concurrent session per theme**. Multiple rooms of the same theme are handled by duplicating the theme |
 | Test sessions | Multiple concurrent test sessions per theme |
 | Website asset | **External URL registration only**. Sites opened inside the player's iframe embed the helper script; standalone websites and other platforms use `@roomkit/client` instead |
