@@ -12,6 +12,8 @@
 	import ThemeSwitcher from './theme-switcher.svelte';
 
 	const activeThemeId = $derived(page.params.themeId ?? themesStore.themes[0]?.id);
+	const inEditor = $derived(page.url.pathname.endsWith('/editor'));
+	const inOperation = $derived(page.url.pathname.endsWith('/operation'));
 
 	function handleLogout() {
 		auth.logout();
@@ -30,7 +32,9 @@
 				<Sidebar.Menu>
 					<Sidebar.MenuItem>
 						{#if activeThemeId}
-							<Sidebar.MenuButton isActive={page.params.themeId !== undefined}>
+							<Sidebar.MenuButton
+								isActive={page.params.themeId !== undefined && !inEditor && !inOperation}
+							>
 								{#snippet child({ props })}
 									<a
 										href={resolve('/(app)/themes/[themeId]', { themeId: activeThemeId })}
@@ -49,18 +53,44 @@
 						{/if}
 					</Sidebar.MenuItem>
 					<Sidebar.MenuItem>
-						<Sidebar.MenuButton aria-disabled="true" class="pointer-events-none opacity-50">
-							<WorkflowIcon />
-							<span>에디터</span>
-							<span class="ml-auto text-xs text-muted-foreground">M3</span>
-						</Sidebar.MenuButton>
+						{#if activeThemeId}
+							<Sidebar.MenuButton isActive={inEditor}>
+								{#snippet child({ props })}
+									<a
+										href={resolve('/(app)/themes/[themeId]/editor', { themeId: activeThemeId })}
+										{...props}
+									>
+										<WorkflowIcon />
+										<span>에디터</span>
+									</a>
+								{/snippet}
+							</Sidebar.MenuButton>
+						{:else}
+							<Sidebar.MenuButton aria-disabled="true" class="pointer-events-none opacity-50">
+								<WorkflowIcon />
+								<span>에디터</span>
+							</Sidebar.MenuButton>
+						{/if}
 					</Sidebar.MenuItem>
 					<Sidebar.MenuItem>
-						<Sidebar.MenuButton aria-disabled="true" class="pointer-events-none opacity-50">
-							<MonitorPlayIcon />
-							<span>운영</span>
-							<span class="ml-auto text-xs text-muted-foreground">M4</span>
-						</Sidebar.MenuButton>
+						{#if activeThemeId}
+							<Sidebar.MenuButton isActive={inOperation}>
+								{#snippet child({ props })}
+									<a
+										href={resolve('/(app)/themes/[themeId]/operation', { themeId: activeThemeId })}
+										{...props}
+									>
+										<MonitorPlayIcon />
+										<span>운영</span>
+									</a>
+								{/snippet}
+							</Sidebar.MenuButton>
+						{:else}
+							<Sidebar.MenuButton aria-disabled="true" class="pointer-events-none opacity-50">
+								<MonitorPlayIcon />
+								<span>운영</span>
+							</Sidebar.MenuButton>
+						{/if}
 					</Sidebar.MenuItem>
 				</Sidebar.Menu>
 			</Sidebar.GroupContent>

@@ -21,7 +21,7 @@ export interface DraftDialogueLine {
  * needs it (nullable file keys before upload, numbers as raw input text).
  */
 export type Draft =
-	| { kind: 'device'; displayName: string }
+	| { kind: 'device'; displayName: string; isHintDevice: boolean }
 	| { kind: 'bgm' | 'sfx' | 'video'; fileKey: string | null }
 	| { kind: 'dialogue'; keepSubtitleAfterEnd: boolean; lines: DraftDialogueLine[] }
 	| { kind: 'hint'; steps: HintStep[] }

@@ -31,12 +31,15 @@
 		themeId,
 		editing,
 		tags,
+		defaultPhaseId,
 		onsaved,
 		oncancel
 	}: {
 		themeId: string;
 		editing: EditorState;
 		tags: Tag[];
+		/** Preselected phase for newly created events (editor workspace context). */
+		defaultPhaseId?: string;
 		onsaved: (asset: Asset) => void;
 		oncancel: () => void;
 	} = $props();
@@ -65,7 +68,11 @@
 			const asset = state.asset;
 			switch (asset.kind) {
 				case 'device':
-					return { kind: 'device', displayName: asset.data.displayName };
+					return {
+						kind: 'device',
+						displayName: asset.data.displayName,
+						isHintDevice: asset.data.isHintDevice
+					};
 				case 'bgm':
 				case 'sfx':
 				case 'video':
@@ -104,7 +111,7 @@
 		}
 		switch (state.kind) {
 			case 'device':
-				return { kind: 'device', displayName: '' };
+				return { kind: 'device', displayName: '', isHintDevice: false };
 			case 'bgm':
 			case 'sfx':
 			case 'video':
@@ -124,7 +131,7 @@
 			case 'event':
 				return {
 					kind: 'event',
-					phaseId: '',
+					phaseId: defaultPhaseId ?? '',
 					triggerKind: 'device',
 					triggerName: '',
 					manualTriggerable: false,
@@ -185,7 +192,7 @@
 	function buildData(): JsonValue {
 		switch (draft.kind) {
 			case 'device':
-				return { displayName: draft.displayName };
+				return { displayName: draft.displayName, isHintDevice: draft.isHintDevice };
 			case 'bgm':
 			case 'sfx':
 			case 'video':
@@ -307,7 +314,7 @@
 			<TagPicker {tags} bind:tagIds />
 		</Field.Field>
 		{#if draft.kind === 'device'}
-			<DeviceForm bind:displayName={draft.displayName} />
+			<DeviceForm bind:displayName={draft.displayName} bind:isHintDevice={draft.isHintDevice} />
 		{:else if draft.kind === 'bgm' || draft.kind === 'sfx'}
 			<FileAssetForm {themeId} bind:fileKey={draft.fileKey} accept="audio/*" media="audio" />
 		{:else if draft.kind === 'video'}

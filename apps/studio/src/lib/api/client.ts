@@ -47,7 +47,9 @@ export async function api<T = unknown>(path: string, opts: ApiOptions<T> = {}): 
 	const res = await fetch(url, {
 		method: opts.method ?? 'GET',
 		headers,
-		body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
+		body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+		// API responses are live state — bypass the HTTP cache entirely.
+		cache: 'no-store'
 	});
 
 	if (res.status === 401 && path !== '/auth/login') {

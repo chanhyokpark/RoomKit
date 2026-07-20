@@ -1,17 +1,19 @@
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import adapter from '@sveltejs/adapter-auto';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-	// @roomkit/shared is a CommonJS workspace package — force pre-bundling so
-	// browser imports work in dev and prod builds.
-	optimizeDeps: {
-		include: ['@roomkit/shared']
-	},
-	build: {
-		commonjsOptions: {
-			include: [/@roomkit\/shared/, /node_modules/]
+	resolve: {
+		alias: {
+			// Compile @roomkit/shared from source in dev AND build. Consuming the
+			// built dist went through vite's dep prebundle cache, which only
+			// invalidates on lockfile changes — a rebuilt dist kept serving stale
+			// schemas and silently broke parity with the server.
+			'@roomkit/shared': fileURLToPath(
+				new URL('../../packages/shared/src/index.ts', import.meta.url)
+			)
 		}
 	},
 	plugins: [

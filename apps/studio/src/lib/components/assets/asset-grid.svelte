@@ -8,7 +8,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { playback } from '$lib/stores/playback.svelte';
 	import AssetActionsMenu from './asset-actions-menu.svelte';
-	import { summarizeAsset } from './asset-summary';
+	import { assetDisplayName, summarizeAsset } from './asset-summary';
 	import { KIND_META } from './kinds';
 	import MediaPreview from './media-preview.svelte';
 
@@ -42,7 +42,7 @@
 					<meta.icon class="size-4 text-muted-foreground" />
 				</div>
 				<div class="min-w-0">
-					<Card.Title class="truncate">{asset.name}</Card.Title>
+					<Card.Title class="truncate">{assetDisplayName(asset)}</Card.Title>
 					<Card.Description class="truncate">
 						{asset.description || summarizeAsset(asset)}
 					</Card.Description>

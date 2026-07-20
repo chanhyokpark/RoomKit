@@ -146,6 +146,12 @@ importers:
       '@roomkit/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      socket.io-client:
+        specifier: ^4.8.3
+        version: 4.8.3
+      svelte-dnd-action:
+        specifier: ^0.9.74
+        version: 0.9.74(svelte@5.56.6(@typescript-eslint/types@8.64.0))
       zod:
         specifier: ^4.1.0
         version: 4.4.3
@@ -4326,6 +4332,11 @@ packages:
     peerDependencies:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: '>=5.0.0'
+
+  svelte-dnd-action@0.9.74:
+    resolution: {integrity: sha512-zn//d8plF73Y05joRdj0g9S7Z8KY5zoTyzjHtnaJMqQP//6U6smHAHi0ArZWi60bxpoOwo+im8gKhK/M7Eq1pQ==}
+    peerDependencies:
+      svelte: '>=3.23.0 || ^5.0.0-next.0'
 
   svelte-eslint-parser@1.8.0:
     resolution: {integrity: sha512-mikR1qwIVy3t5WthUoAXkMwxkXvabZP9FJgdx35Ei7EbGWmctva1Pih16Koeor/bdNNq8NXHlwKGS6NkYTawLg==}
@@ -9290,6 +9301,10 @@ snapshots:
       typescript: 6.0.3
     transitivePeerDependencies:
       - picomatch
+
+  svelte-dnd-action@0.9.74(svelte@5.56.6(@typescript-eslint/types@8.64.0)):
+    dependencies:
+      svelte: 5.56.6(@typescript-eslint/types@8.64.0)
 
   svelte-eslint-parser@1.8.0(svelte@5.56.6(@typescript-eslint/types@8.64.0)):
     dependencies:

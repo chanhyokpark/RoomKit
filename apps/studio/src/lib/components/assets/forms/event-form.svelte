@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { SystemTriggerSchema, type Asset, type TriggerKind } from '@roomkit/shared';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
@@ -128,5 +129,7 @@
 </Field.Field>
 
 <p class="text-xs text-muted-foreground">
-	시퀀스({sequenceLength}개 커맨드)는 에디터(M3)에서 편집합니다.
+	시퀀스({sequenceLength}개 커맨드)는
+	<a class="underline" href={resolve('/(app)/themes/[themeId]/editor', { themeId })}>에디터</a>에서
+	편집합니다.
 </p>

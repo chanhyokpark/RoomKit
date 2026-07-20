@@ -12,7 +12,27 @@ import Volume2Icon from '@lucide/svelte/icons/volume-2';
 import ZapIcon from '@lucide/svelte/icons/zap';
 import { AssetKindSchema, type AssetKind } from '@roomkit/shared';
 
-export const ASSET_KINDS: AssetKind[] = AssetKindSchema.options;
+export interface AssetKindGroup {
+	label: string;
+	kinds: AssetKind[];
+}
+
+/** Tab order in the asset manager: hardware/output → media → device content → game flow. */
+export const ASSET_KIND_GROUPS: AssetKindGroup[] = [
+	{ label: '장치', kinds: ['device', 'player'] },
+	{ label: '미디어', kinds: ['bgm', 'sfx', 'dialogue', 'video'] },
+	{ label: '콘텐츠', kinds: ['website', 'message', 'hint'] },
+	{ label: '진행', kinds: ['phase', 'event'] }
+];
+
+export const ASSET_KINDS: AssetKind[] = ASSET_KIND_GROUPS.flatMap((group) => group.kinds);
+
+// Every schema kind must appear in exactly one group.
+if (import.meta.env.DEV) {
+	const missing = AssetKindSchema.options.filter((kind) => !ASSET_KINDS.includes(kind));
+	if (missing.length > 0)
+		throw new Error(`ASSET_KIND_GROUPS is missing kinds: ${missing.join(', ')}`);
+}
 
 interface KindMeta {
 	label: string;

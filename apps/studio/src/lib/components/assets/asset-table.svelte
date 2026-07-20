@@ -9,7 +9,7 @@
 	import * as Table from '$lib/components/ui/table';
 	import { playback } from '$lib/stores/playback.svelte';
 	import AssetActionsMenu from './asset-actions-menu.svelte';
-	import { summarizeAsset } from './asset-summary';
+	import { assetDisplayName, summarizeAsset } from './asset-summary';
 
 	let {
 		assets,
@@ -71,7 +71,7 @@
 						</Table.Cell>
 					{/if}
 					<Table.Cell class="max-w-48 font-medium">
-						<div class="truncate">{asset.name}</div>
+						<div class="truncate">{assetDisplayName(asset)}</div>
 						{#if asset.description}
 							<div class="truncate text-xs font-normal text-muted-foreground">
 								{asset.description}

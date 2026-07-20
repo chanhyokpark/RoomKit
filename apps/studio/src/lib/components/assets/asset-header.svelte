@@ -5,7 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 	import * as Tabs from '$lib/components/ui/tabs';
-	import { ASSET_KINDS, KIND_META } from './kinds';
+	import { ASSET_KIND_GROUPS, KIND_META } from './kinds';
 
 	let {
 		activeKind = $bindable(),
@@ -33,12 +33,17 @@
 	>
 		<div class="overflow-x-auto">
 			<Tabs.List>
-				{#each ASSET_KINDS as kind (kind)}
-					{@const meta = KIND_META[kind]}
-					<Tabs.Trigger value={kind}>
-						<meta.icon />
-						{meta.label}
-					</Tabs.Trigger>
+				{#each ASSET_KIND_GROUPS as group, groupIndex (group.label)}
+					{#if groupIndex > 0}
+						<div class="mx-1 h-4 w-px shrink-0 bg-border" role="separator"></div>
+					{/if}
+					{#each group.kinds as kind (kind)}
+						{@const meta = KIND_META[kind]}
+						<Tabs.Trigger value={kind}>
+							<meta.icon />
+							{meta.label}
+						</Tabs.Trigger>
+					{/each}
 				{/each}
 			</Tabs.List>
 		</div>

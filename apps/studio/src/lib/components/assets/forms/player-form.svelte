@@ -4,6 +4,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { listAssets } from '$lib/api/assets';
+	import { assetDisplayName } from '../asset-summary';
 
 	let {
 		themeId,
@@ -28,7 +29,8 @@
 	});
 
 	function deviceName(id: string): string | undefined {
-		return devices.find((device) => device.id === id)?.name;
+		const device = devices.find((candidate) => candidate.id === id);
+		return device && assetDisplayName(device);
 	}
 </script>
 
@@ -47,7 +49,9 @@
 		<Select.Content>
 			<Select.Group>
 				{#each devices as device (device.id)}
-					<Select.Item value={device.id} label={device.name}>{device.name}</Select.Item>
+					<Select.Item value={device.id} label={assetDisplayName(device)}>
+						{assetDisplayName(device)}
+					</Select.Item>
 				{/each}
 			</Select.Group>
 		</Select.Content>
@@ -64,7 +68,9 @@
 		<Select.Content>
 			<Select.Group>
 				{#each devices as device (device.id)}
-					<Select.Item value={device.id} label={device.name}>{device.name}</Select.Item>
+					<Select.Item value={device.id} label={assetDisplayName(device)}>
+						{assetDisplayName(device)}
+					</Select.Item>
 				{/each}
 			</Select.Group>
 		</Select.Content>

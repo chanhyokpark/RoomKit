@@ -1,6 +1,8 @@
 <script lang="ts">
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import { toast } from 'svelte-sonner';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import type { Asset, AssetKind, Tag } from '@roomkit/shared';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
@@ -14,13 +16,18 @@
 	import AssetGrid from './asset-grid.svelte';
 	import AssetHeader from './asset-header.svelte';
 	import AssetTable from './asset-table.svelte';
-	import { KIND_META } from './kinds';
+	import { ASSET_KINDS, KIND_META } from './kinds';
 	import type { EditorState } from './types';
 
 	let { themeId }: { themeId: string } = $props();
 
-	let activeKind = $state<AssetKind>('device');
-	let tagId = $state('');
+	function kindFromUrl(): AssetKind {
+		const kind = page.url.searchParams.get('kind');
+		return ASSET_KINDS.includes(kind as AssetKind) ? (kind as AssetKind) : 'device';
+	}
+
+	let activeKind = $state<AssetKind>(kindFromUrl());
+	let tagId = $state(page.url.searchParams.get('tag') ?? '');
 	let assets = $state<Asset[]>([]);
 	let tags = $state<Tag[]>([]);
 	let loading = $state(true);
@@ -35,6 +42,17 @@
 		void refreshAssets(activeKind, tagId);
 		// Leaving the current list view stops any preview playback.
 		return () => playback.stop();
+	});
+
+	// Keep the kind tab and tag filter shareable via the URL.
+	$effect(() => {
+		const url = new URL(page.url);
+		if (activeKind === 'device') url.searchParams.delete('kind');
+		else url.searchParams.set('kind', activeKind);
+		if (tagId) url.searchParams.set('tag', tagId);
+		else url.searchParams.delete('tag');
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page query update
+		if (url.search !== page.url.search) replaceState(url, page.state);
 	});
 
 	void refreshTags();

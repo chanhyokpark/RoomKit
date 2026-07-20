@@ -9,16 +9,24 @@
 	let { children }: { children: Snippet } = $props();
 
 	const currentTheme = $derived(themesStore.find(page.params.themeId));
+	const sectionLabel = $derived(
+		page.url.pathname.endsWith('/editor')
+			? '에디터'
+			: page.url.pathname.endsWith('/operation')
+				? '운영'
+				: '애셋'
+	);
 </script>
 
 <Sidebar.Provider>
 	<AppSidebar />
-	<Sidebar.Inset>
+	<!-- Cap at the viewport so pages scroll in their own panes, not the body. -->
+	<Sidebar.Inset class="h-svh overflow-hidden">
 		<header class="flex h-14 shrink-0 items-center gap-2 border-b px-4">
 			<Sidebar.Trigger class="-ml-1" />
 			<Separator orientation="vertical" class="mr-2 data-[orientation=vertical]:h-4" />
 			<span class="text-sm font-medium">
-				{currentTheme ? `${currentTheme.name} · 애셋` : 'RoomKit Studio'}
+				{currentTheme ? `${currentTheme.name} · ${sectionLabel}` : 'RoomKit Studio'}
 			</span>
 		</header>
 		<div class="flex min-h-0 flex-1 flex-col">

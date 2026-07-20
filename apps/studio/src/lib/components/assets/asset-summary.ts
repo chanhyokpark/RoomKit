@@ -1,10 +1,20 @@
 import type { Asset } from '@roomkit/shared';
 
+/** Name shown in UIs: the display name when set (device/message), the name otherwise. */
+export function assetDisplayName(asset: Asset): string {
+	if (asset.kind === 'device' || asset.kind === 'message')
+		return asset.data.displayName.trim() || asset.name;
+	return asset.name;
+}
+
 /** One-line kind-specific summary shown in lists. */
 export function summarizeAsset(asset: Asset): string {
 	switch (asset.kind) {
 		case 'device':
-			return [asset.data.displayName, `코드 ${asset.code}`].filter(Boolean).join(' · ');
+			// Titles show the display name, so surface the internal name here.
+			return [asset.data.displayName.trim() && `이름 ${asset.name}`, `코드 ${asset.code}`]
+				.filter(Boolean)
+				.join(' · ');
 		case 'bgm':
 		case 'sfx':
 		case 'video':
@@ -18,7 +28,10 @@ export function summarizeAsset(asset: Asset): string {
 		case 'website':
 			return asset.data.url;
 		case 'message':
-			return [asset.data.displayName, `필드 ${asset.data.fields.length}개`]
+			return [
+				asset.data.displayName.trim() && `이름 ${asset.name}`,
+				`필드 ${asset.data.fields.length}개`
+			]
 				.filter(Boolean)
 				.join(' · ');
 		case 'phase':
