@@ -19,12 +19,14 @@ import {
   HintSubmitSchema,
   PlaybackProgressSchema,
   TriggerSchema,
+  type DeviceAssetManifest,
   type HintShow,
   type PlaybackProgress,
   type SessionState,
   type WireCommand,
 } from '@roomkit/shared';
 import type { Namespace, Socket } from 'socket.io';
+import { DeviceAssetsService } from '../assets/device-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { ConnectionRegistry, type AttachedDevice } from './connection-registry';
@@ -60,6 +62,7 @@ export class DeviceGateway
     private readonly prisma: PrismaService,
     private readonly runtime: SessionRuntimeService,
     private readonly registry: ConnectionRegistry,
+    private readonly deviceAssets: DeviceAssetsService,
   ) {}
 
   afterInit(): void {
@@ -281,6 +284,33 @@ export class DeviceGateway
     const parsed = PlaybackProgressSchema.safeParse(body);
     if (!parsed.success) return;
     this.runtime.handleProgress(attach.sessionId, attach.deviceId, parsed.data);
+  }
+
+  /** Returned value = socket.io ack payload (manifest, or null w/o a theme). */
+  @SubscribeMessage(DeviceEvents.assetManifest)
+  async onAssetManifest(
+    @ConnectedSocket() socket: Socket,
+  ): Promise<DeviceAssetManifest | null> {
+    const attach = socket.data.attach as AttachedDevice | undefined;
+    if (attach) {
+      const themeId =
+        this.runtime.getSessionState(attach.sessionId)?.themeId ??
+        (
+          await this.prisma.session.findUnique({
+            where: { id: attach.sessionId },
+            select: { themeId: true },
+          })
+        )?.themeId;
+      if (!themeId) return null;
+      return this.deviceAssets.buildManifest(themeId, attach.deviceId);
+    }
+    const lobby = socket.data.lobby as
+      | { themeId: string; deviceId: string }
+      | undefined;
+    if (lobby) {
+      return this.deviceAssets.buildManifest(lobby.themeId, lobby.deviceId);
+    }
+    return null;
   }
 
   @SubscribeMessage(DeviceEvents.hintSubmit)

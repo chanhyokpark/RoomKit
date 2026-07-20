@@ -32,8 +32,17 @@ export interface Resolution {
   deliveries: Delivery[];
   /** Set when the authoring command has waitUntilEnd: whose ack ends the wait. */
   awaitAckOf?: { deviceId: string; commandId: string };
-  /** Dialogue split across devices: progress relay from speaker to screen. */
-  relay?: { fromCommandId: string; toDeviceId: string; toCommandId: string };
+  /**
+   * Dialogue split across devices: progress relay from speaker to screen.
+   * On the speaker's ack the engine relays `lineIndex: lineCount` as an
+   * end-of-dialogue sentinel.
+   */
+  relay?: {
+    fromCommandId: string;
+    toDeviceId: string;
+    toCommandId: string;
+    lineCount: number;
+  };
 }
 
 type ParsedAsset<K extends AssetKind> = {
@@ -281,6 +290,7 @@ export class CommandResolver {
         fromCommandId: speakerWire.id,
         toDeviceId: screenDeviceId,
         toCommandId: screenWire.id,
+        lineCount: lines.length,
       },
     };
   }

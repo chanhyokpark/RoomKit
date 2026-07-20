@@ -89,7 +89,7 @@ export class SessionEngine {
   private readonly unacked = new Map<string, Map<string, WireCommand>>();
   private readonly progressRelays = new Map<
     string,
-    { toDeviceId: string; toCommandId: string }
+    { toDeviceId: string; toCommandId: string; lineCount: number }
   >();
 
   private persistChain: Promise<void> = Promise.resolve();
@@ -622,6 +622,7 @@ export class SessionEngine {
       this.progressRelays.set(resolution.relay.fromCommandId, {
         toDeviceId: resolution.relay.toDeviceId,
         toCommandId: resolution.relay.toCommandId,
+        lineCount: resolution.relay.lineCount,
       });
     }
     const online = new Map<string, boolean>();
@@ -779,7 +780,16 @@ export class SessionEngine {
     status: 'done' | 'failed',
   ): void {
     this.unacked.get(deviceId)?.delete(commandId);
-    this.progressRelays.delete(commandId);
+    // Speaker acked a split dialogue: tell the screen it ended with an
+    // out-of-range lineIndex sentinel so it can clear the subtitle.
+    const relay = this.progressRelays.get(commandId);
+    if (relay) {
+      this.progressRelays.delete(commandId);
+      this.deps.transport().sendProgress(this.id, relay.toDeviceId, {
+        commandId: relay.toCommandId,
+        lineIndex: relay.lineCount,
+      });
+    }
     const pending = this.pendingAcks.get(commandId);
     if (!pending) return; // duplicate or non-awaited ack — fine
     clearTimeout(pending.timeout);

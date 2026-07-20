@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
-import type { WireCommand } from '@roomkit/shared';
+import type { PlaybackProgress, WireCommand } from '@roomkit/shared';
 import { SessionRuntimeService } from '../src/runtime/session-runtime.service';
 import type { RuntimeTransport } from '../src/runtime/runtime-transport';
 import { createTestApp, login } from './helpers';
@@ -15,6 +15,7 @@ interface Sent {
 /** Records outbound traffic; per-device online state is controllable. */
 class FakeTransport implements RuntimeTransport {
   sent: Sent[] = [];
+  progress: { deviceId: string; progress: PlaybackProgress }[] = [];
   offline = new Set<string>();
 
   sendCommand(sessionId: string, deviceId: string, wire: WireCommand): boolean {
@@ -22,7 +23,13 @@ class FakeTransport implements RuntimeTransport {
     this.sent.push({ sessionId, deviceId, wire });
     return true;
   }
-  sendProgress(): void {}
+  sendProgress(
+    _sessionId: string,
+    deviceId: string,
+    progress: PlaybackProgress,
+  ): void {
+    this.progress.push({ deviceId, progress });
+  }
   sendHint(): boolean {
     return false;
   }
@@ -489,6 +496,35 @@ describe('Runtime (e2e)', () => {
       subtitleCss: '.s{}',
     });
     expect((byScreen!.wire as { lines: unknown[] }).lines).toHaveLength(2);
+
+    // speaker progress relays to the screen with the screen's command id
+    runtime.handleProgress(sessionId, speakerId, {
+      commandId: bySpeaker!.wire.id,
+      lineIndex: 1,
+    });
+    expect(transport.progress).toEqual([
+      {
+        deviceId: screenId,
+        progress: { commandId: byScreen!.wire.id, lineIndex: 1 },
+      },
+    ]);
+
+    // the speaker's ack ends the dialogue: the screen gets an out-of-range
+    // lineIndex sentinel (= lines.length) so it can clear its subtitle
+    runtime.handleAck(sessionId, speakerId, {
+      commandId: bySpeaker!.wire.id,
+      status: 'done',
+    });
+    expect(transport.progress[1]).toEqual({
+      deviceId: screenId,
+      progress: { commandId: byScreen!.wire.id, lineIndex: 2 },
+    });
+    // relay is gone — further acks/progress relay nothing
+    runtime.handleProgress(sessionId, speakerId, {
+      commandId: bySpeaker!.wire.id,
+      lineIndex: 1,
+    });
+    expect(transport.progress).toHaveLength(2);
   });
 
   it('fires timer:expired and recovers sessions across restarts', async () => {
