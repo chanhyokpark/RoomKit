@@ -15,8 +15,11 @@ import {
   DeviceAuthSchema,
   DeviceDataSchema,
   DeviceEvents,
+  HintNextSchema,
+  HintSubmitSchema,
   PlaybackProgressSchema,
   TriggerSchema,
+  type HintShow,
   type PlaybackProgress,
   type SessionState,
   type WireCommand,
@@ -34,9 +37,10 @@ const deviceRoom = (sessionId: string, deviceId: string) =>
  * Device namespace. Sockets authenticate in a namespace middleware (Nest
  * guards do NOT run for the connection event) with `auth: { deviceCode }`:
  *
- * - `tst_…` codes → SessionDeviceCode rows of non-ended test sessions.
+ * - operator-entered test codes → SessionDeviceCode rows of non-ended test
+ *   sessions (checked first).
  * - other codes → device assets; matched to their theme's active production
- *   session, or parked in the lobby until one starts.
+ *   session, or parked in the lobby until one exists.
  *
  * Fatal connect_error messages: `invalid_code`, `session_ended`.
  */
@@ -72,12 +76,14 @@ export class DeviceGateway
     if (!parsed.success) throw new Error('invalid_code');
     const code = parsed.data.deviceCode;
 
-    if (code.startsWith('tst_')) {
-      const testCode = await this.prisma.sessionDeviceCode.findUnique({
-        where: { code },
-        include: { session: { select: { state: true } } },
-      });
-      if (!testCode) throw new Error('invalid_code');
+    // Test codes are operator-entered (no reserved prefix); they are checked
+    // first and shadow an identical production device code while the test
+    // session lives. Rows are deleted on session end, freeing the code.
+    const testCode = await this.prisma.sessionDeviceCode.findUnique({
+      where: { code },
+      include: { session: { select: { state: true } } },
+    });
+    if (testCode) {
       if (testCode.session.state === 'ended') throw new Error('session_ended');
       const device = await this.prisma.asset.findUnique({
         where: { id: testCode.deviceId },
@@ -110,7 +116,10 @@ export class DeviceGateway
       throw new Error('invalid_code');
     }
     if (matches.length === 1) {
-      socket.data.attach = this.toAttached(matches[0].session.id, matches[0].device);
+      socket.data.attach = this.toAttached(
+        matches[0].session.id,
+        matches[0].device,
+      );
       return;
     }
     // Valid production code, no active session: park in the lobby.
@@ -137,7 +146,11 @@ export class DeviceGateway
   handleDisconnect(socket: Socket): void {
     const attach = socket.data.attach as AttachedDevice | undefined;
     if (attach) {
-      const wentOffline = this.registry.remove(attach.sessionId, attach.deviceId, socket);
+      const wentOffline = this.registry.remove(
+        attach.sessionId,
+        attach.deviceId,
+        socket,
+      );
       if (wentOffline) {
         this.runtime.deviceStatusChanged(
           attach.sessionId,
@@ -157,7 +170,11 @@ export class DeviceGateway
       sessionRoom(attach.sessionId),
       deviceRoom(attach.sessionId, attach.deviceId),
     ]);
-    const wentOnline = this.registry.add(attach.sessionId, attach.deviceId, socket);
+    const wentOnline = this.registry.add(
+      attach.sessionId,
+      attach.deviceId,
+      socket,
+    );
     const session = this.runtime.getSessionState(attach.sessionId);
     if (session) {
       socket.emit(DeviceEvents.welcome, {
@@ -197,16 +214,34 @@ export class DeviceGateway
 
   sendCommand(sessionId: string, deviceId: string, wire: WireCommand): boolean {
     if (!this.registry.isOnline(sessionId, deviceId)) return false;
-    this.server.to(deviceRoom(sessionId, deviceId)).emit(DeviceEvents.command, wire);
+    this.server
+      .to(deviceRoom(sessionId, deviceId))
+      .emit(DeviceEvents.command, wire);
     return true;
   }
 
-  sendProgress(sessionId: string, deviceId: string, progress: PlaybackProgress): void {
-    this.server.to(deviceRoom(sessionId, deviceId)).emit(DeviceEvents.progress, progress);
+  sendProgress(
+    sessionId: string,
+    deviceId: string,
+    progress: PlaybackProgress,
+  ): void {
+    this.server
+      .to(deviceRoom(sessionId, deviceId))
+      .emit(DeviceEvents.progress, progress);
+  }
+
+  sendHint(sessionId: string, deviceId: string, hint: HintShow): boolean {
+    if (!this.registry.isOnline(sessionId, deviceId)) return false;
+    this.server
+      .to(deviceRoom(sessionId, deviceId))
+      .emit(DeviceEvents.hintShow, hint);
+    return true;
   }
 
   broadcastSessionState(state: SessionState): void {
-    this.server.to(sessionRoom(state.sessionId)).emit(DeviceEvents.sessionState, state);
+    this.server
+      .to(sessionRoom(state.sessionId))
+      .emit(DeviceEvents.sessionState, state);
   }
 
   // ── inbound ──────────────────────────────────────────────────────────────
@@ -221,16 +256,26 @@ export class DeviceGateway
   }
 
   @SubscribeMessage(DeviceEvents.trigger)
-  onTrigger(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): void {
+  onTrigger(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: unknown,
+  ): void {
     const attach = socket.data.attach as AttachedDevice | undefined;
     if (!attach) return;
     const parsed = TriggerSchema.safeParse(body);
     if (!parsed.success) return;
-    this.runtime.handleDeviceTrigger(attach.sessionId, attach.deviceId, parsed.data);
+    this.runtime.handleDeviceTrigger(
+      attach.sessionId,
+      attach.deviceId,
+      parsed.data,
+    );
   }
 
   @SubscribeMessage(DeviceEvents.progress)
-  onProgress(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): void {
+  onProgress(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: unknown,
+  ): void {
     const attach = socket.data.attach as AttachedDevice | undefined;
     if (!attach) return;
     const parsed = PlaybackProgressSchema.safeParse(body);
@@ -239,11 +284,61 @@ export class DeviceGateway
   }
 
   @SubscribeMessage(DeviceEvents.hintSubmit)
-  onHintSubmit(@ConnectedSocket() socket: Socket): void {
+  async onHintSubmit(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
     const attach = socket.data.attach as AttachedDevice | undefined;
-    this.logger.log(
-      `hint:submit from device ${attach?.deviceId ?? socket.id} ignored (hint flow lands in M4)`,
-    );
+    if (!attach) return;
+    const parsed = HintSubmitSchema.safeParse(body);
+    if (!parsed.success) return;
+    try {
+      const result = await this.runtime.handleHintSubmit(
+        attach.sessionId,
+        attach.deviceId,
+        parsed.data,
+      );
+      this.emitHintResult(socket, attach, result);
+    } catch (err) {
+      this.logger.error(`hint:submit failed: ${String(err)}`);
+    }
+  }
+
+  @SubscribeMessage(DeviceEvents.hintNext)
+  async onHintNext(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: unknown,
+  ): Promise<void> {
+    const attach = socket.data.attach as AttachedDevice | undefined;
+    if (!attach) return;
+    const parsed = HintNextSchema.safeParse(body);
+    if (!parsed.success) return;
+    try {
+      const result = await this.runtime.handleHintNext(
+        attach.sessionId,
+        attach.deviceId,
+        parsed.data,
+      );
+      this.emitHintResult(socket, attach, result);
+    } catch (err) {
+      this.logger.error(`hint:next failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Success goes to the device room (mirrored sockets of the same device stay
+   * in sync); errors only to the requesting socket.
+   */
+  private emitHintResult(
+    socket: Socket,
+    attach: AttachedDevice,
+    result: HintShow | { reason: string },
+  ): void {
+    if ('reason' in result) {
+      socket.emit(DeviceEvents.hintError, result);
+    } else {
+      this.sendHint(attach.sessionId, attach.deviceId, result);
+    }
   }
 
   private toAttached(

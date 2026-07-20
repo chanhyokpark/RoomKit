@@ -11,13 +11,19 @@ import type { Session } from '@prisma/client';
 import type {
   Ack,
   AdjustTimerInput,
+  HintError,
+  HintNext,
+  HintShow,
+  HintSubmit,
   PlaybackProgress,
+  PushHintInput,
   SessionState,
   Trigger,
 } from '@roomkit/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { LogsService } from '../logs/logs.service';
 import { CommandResolver } from './command-resolver';
+import { HintService } from './hint.service';
 import { EngineStateError, SessionEngine } from './session-engine';
 import { NOOP_TRANSPORT, type RuntimeTransport } from './runtime-transport';
 
@@ -26,7 +32,9 @@ import { NOOP_TRANSPORT, type RuntimeTransport } from './runtime-transport';
  * mutations — SessionsService (REST) and the gateways both call into here.
  */
 @Injectable()
-export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDestroy {
+export class SessionRuntimeService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(SessionRuntimeService.name);
   private readonly engines = new Map<string, SessionEngine>();
   private transport: RuntimeTransport = NOOP_TRANSPORT;
@@ -35,6 +43,7 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
     private readonly prisma: PrismaService,
     private readonly logs: LogsService,
     private readonly resolver: CommandResolver,
+    private readonly hints: HintService,
   ) {}
 
   /** Called by the gateway module once its namespaces are up. */
@@ -64,11 +73,17 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
     this.engines.clear();
   }
 
-  /** Boot the engine for a freshly created session (create = start). */
+  /** Boot the engine for a freshly created session (idle until started). */
   attach(row: Session, timeLimitMs: number | null): void {
     const engine = this.buildEngine(row, timeLimitMs);
     this.engines.set(row.id, engine);
-    engine.start();
+    engine.attach();
+  }
+
+  async start(sessionId: string): Promise<void> {
+    const engine = this.getEngine(sessionId);
+    this.wrap(() => engine.start());
+    await engine.flush();
   }
 
   async pause(sessionId: string): Promise<void> {
@@ -90,7 +105,10 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
     this.engines.delete(sessionId);
   }
 
-  async adjustTimer(sessionId: string, adjustment: AdjustTimerInput): Promise<void> {
+  async adjustTimer(
+    sessionId: string,
+    adjustment: AdjustTimerInput,
+  ): Promise<void> {
     const engine = this.getEngine(sessionId);
     this.wrap(() => engine.adjustTimer(adjustment));
     await engine.flush();
@@ -103,16 +121,29 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
   }
 
   async manualTrigger(sessionId: string, eventId: string): Promise<void> {
-    await this.wrapAsync(() => this.getEngine(sessionId).manualTrigger(eventId));
+    await this.wrapAsync(() =>
+      this.getEngine(sessionId).manualTrigger(eventId),
+    );
   }
 
   async resetAllDevices(sessionId: string): Promise<void> {
     await this.wrapAsync(() => this.getEngine(sessionId).resetAllDevices());
   }
 
+  /** REST admin hint push. */
+  async pushHint(sessionId: string, input: PushHintInput): Promise<void> {
+    await this.wrapAsync(() =>
+      this.getEngine(sessionId).pushHint(input.hintId, input.step),
+    );
+  }
+
   // ── gateway entry points ─────────────────────────────────────────────────
 
-  handleDeviceTrigger(sessionId: string, deviceId: string, trigger: Trigger): void {
+  handleDeviceTrigger(
+    sessionId: string,
+    deviceId: string,
+    trigger: Trigger,
+  ): void {
     const engine = this.engines.get(sessionId);
     if (!engine) return;
     void engine.handleTrigger(trigger.event, `device ${deviceId}`);
@@ -122,8 +153,33 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
     this.engines.get(sessionId)?.handleAck(deviceId, ack.commandId, ack.status);
   }
 
-  handleProgress(sessionId: string, deviceId: string, progress: PlaybackProgress): void {
+  handleProgress(
+    sessionId: string,
+    deviceId: string,
+    progress: PlaybackProgress,
+  ): void {
     this.engines.get(sessionId)?.handleProgress(deviceId, progress);
+  }
+
+  handleHintSubmit(
+    sessionId: string,
+    deviceId: string,
+    input: HintSubmit,
+  ): Promise<HintShow | HintError> {
+    const engine = this.engines.get(sessionId);
+    // No engine → feedback, not silence: the hint device UI needs it.
+    if (!engine) return Promise.resolve({ reason: 'session_not_running' });
+    return engine.handleHintSubmit(deviceId, input.code);
+  }
+
+  handleHintNext(
+    sessionId: string,
+    deviceId: string,
+    input: HintNext,
+  ): Promise<HintShow | HintError> {
+    const engine = this.engines.get(sessionId);
+    if (!engine) return Promise.resolve({ reason: 'session_not_running' });
+    return engine.handleHintNext(deviceId, input);
   }
 
   onDeviceConnected(sessionId: string, deviceId: string): void {
@@ -136,7 +192,9 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
     deviceName: string,
     online: boolean,
   ): void {
-    this.engines.get(sessionId)?.deviceStatusChanged(deviceId, deviceName, online);
+    this.engines
+      .get(sessionId)
+      ?.deviceStatusChanged(deviceId, deviceName, online);
   }
 
   /** Live state for one session (null when not live). */
@@ -158,6 +216,7 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
       prisma: this.prisma,
       logs: this.logs,
       resolver: this.resolver,
+      hints: this.hints,
       transport: () => this.transport,
     });
   }
@@ -190,7 +249,7 @@ export class SessionRuntimeService implements OnApplicationBootstrap, OnModuleDe
 function toHttp(err: unknown): unknown {
   if (err instanceof EngineStateError) {
     // State-transition conflicts read better as 409; validation-ish ones as 400.
-    return /Cannot (pause|resume)/.test(err.message)
+    return /Cannot (start|pause|resume)/.test(err.message)
       ? new ConflictException(err.message)
       : new BadRequestException(err.message);
   }

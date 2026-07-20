@@ -7,6 +7,11 @@ import { RuntimeTransportAdapter } from './runtime-transport.adapter';
 
 @Module({
   imports: [RuntimeModule],
-  providers: [ConnectionRegistry, DeviceGateway, AdminGateway, RuntimeTransportAdapter],
+  providers: [
+    ConnectionRegistry,
+    DeviceGateway,
+    AdminGateway,
+    RuntimeTransportAdapter,
+  ],
 })
 export class GatewayModule {}

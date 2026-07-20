@@ -141,12 +141,18 @@ export class CommandResolver {
       case 'stopBgm':
       case 'stopSfx': {
         const player = await this.getPlayer(themeId, cmd.playerId);
-        const channel = cmd.type === 'stopBgm' ? ('bgm' as const) : ('sfx' as const);
+        const channel =
+          cmd.type === 'stopBgm' ? ('bgm' as const) : ('sfx' as const);
         return {
           deliveries: [
             {
               deviceId: player.data.speakerDeviceId,
-              wire: { id: randomUUID(), type: 'stop', channel, playerId: player.id },
+              wire: {
+                id: randomUUID(),
+                type: 'stop',
+                channel,
+                playerId: player.id,
+              },
             },
           ],
         };
@@ -233,7 +239,7 @@ export class CommandResolver {
     const player = await this.getPlayer(themeId, cmd.playerId);
     const dialogue = await this.getAsset(themeId, cmd.dialogueId, 'dialogue');
     const lines: WireDialogueLine[] = await Promise.all(
-      (dialogue.data as DialogueData).lines.map(async (line) => ({
+      dialogue.data.lines.map(async (line) => ({
         lineId: line.id,
         fileKey: line.fileKey,
         url: await this.mediaUrl(line.fileKey),
@@ -247,7 +253,7 @@ export class CommandResolver {
       assetId: dialogue.id,
       lines,
       subtitleCss: player.data.subtitleCss,
-      keepSubtitleAfterEnd: (dialogue.data as DialogueData).keepSubtitleAfterEnd,
+      keepSubtitleAfterEnd: dialogue.data.keepSubtitleAfterEnd,
     };
     const { speakerDeviceId, screenDeviceId } = player.data;
 
@@ -279,7 +285,7 @@ export class CommandResolver {
     };
   }
 
-  private async getPlayer(themeId: string, id: string) {
+  private async getPlayer(themeId: string, id: string | null) {
     return this.getAsset(themeId, id, 'player') as Promise<
       ParsedAsset<'player'> & { data: PlayerData }
     >;
@@ -287,13 +293,16 @@ export class CommandResolver {
 
   private async getAsset<K extends AssetKind>(
     themeId: string,
-    id: string,
+    id: string | null,
     kind: K,
   ): Promise<ParsedAsset<K>> {
+    // Null = the editor saved a work-in-progress command with the ref unset.
+    if (id === null) throw new ResolutionError(`${kind} reference not set`);
     const asset = await this.prisma.asset.findFirst({
       where: { id, themeId, kind },
     });
-    if (!asset) throw new ResolutionError(`${kind} asset ${id} not found in theme`);
+    if (!asset)
+      throw new ResolutionError(`${kind} asset ${id} not found in theme`);
     const parsed = assetDataSchemas[kind].safeParse(asset.data);
     if (!parsed.success) {
       throw new ResolutionError(`${kind} asset ${id} has invalid data`);
@@ -319,7 +328,9 @@ function buildMessagePayload(
     const value = values[field.key];
     if (value === undefined) {
       if (field.required) {
-        throw new ResolutionError(`Missing required message field "${field.key}"`);
+        throw new ResolutionError(
+          `Missing required message field "${field.key}"`,
+        );
       }
       continue;
     }

@@ -61,7 +61,9 @@ export function waitForEvent<T = unknown>(
     };
     const onError = (err: Error) => {
       cleanup();
-      reject(new Error(`connect_error while waiting for "${event}": ${err.message}`));
+      reject(
+        new Error(`connect_error while waiting for "${event}": ${err.message}`),
+      );
     };
     const cleanup = () => {
       clearTimeout(timeout);
@@ -73,7 +75,10 @@ export function waitForEvent<T = unknown>(
   });
 }
 
-export function waitForConnectError(socket: Socket, timeoutMs = 3000): Promise<string> {
+export function waitForConnectError(
+  socket: Socket,
+  timeoutMs = 3000,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(
       () => reject(new Error('Timed out waiting for connect_error')),
@@ -84,6 +89,13 @@ export function waitForConnectError(socket: Socket, timeoutMs = 3000): Promise<s
       resolve(err.message);
     });
   });
+}
+
+let codeSeq = 0;
+
+/** Unique operator-style test device code (codes are globally unique while live). */
+export function nextTestCode(): string {
+  return `e2e-${Date.now().toString(36)}-${process.pid.toString(36)}-${(++codeSeq).toString(36)}`;
 }
 
 export async function login(app: INestApplication): Promise<string> {

@@ -1,5 +1,6 @@
 import type {
   DeviceStatus,
+  HintShow,
   PlaybackProgress,
   SessionState,
   SessionLogEntry,
@@ -13,9 +14,19 @@ import type {
  */
 export interface RuntimeTransport {
   /** Emit a command to one device. Returns false when the device is offline. */
-  sendCommand(sessionId: string, deviceId: string, command: WireCommand): boolean;
+  sendCommand(
+    sessionId: string,
+    deviceId: string,
+    command: WireCommand,
+  ): boolean;
   /** Relay dialogue line progress to the screen device. */
-  sendProgress(sessionId: string, deviceId: string, progress: PlaybackProgress): void;
+  sendProgress(
+    sessionId: string,
+    deviceId: string,
+    progress: PlaybackProgress,
+  ): void;
+  /** Emit hint:show to one device. Returns false when the device is offline. */
+  sendHint(sessionId: string, deviceId: string, hint: HintShow): boolean;
   /** Broadcast to the session's devices and to /admin. */
   broadcastSessionState(state: SessionState): void;
   /** Broadcast to /admin. */
@@ -28,6 +39,7 @@ export interface RuntimeTransport {
 export const NOOP_TRANSPORT: RuntimeTransport = {
   sendCommand: () => false,
   sendProgress: () => {},
+  sendHint: () => false,
   broadcastSessionState: () => {},
   broadcastLog: () => {},
   broadcastDeviceStatus: () => {},

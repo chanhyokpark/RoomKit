@@ -1,6 +1,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import type {
   DeviceStatus,
+  HintShow,
   PlaybackProgress,
   SessionLogEntry,
   SessionState,
@@ -24,19 +25,32 @@ export class RuntimeTransportAdapter implements RuntimeTransport, OnModuleInit {
     this.runtime.registerTransport(this);
   }
 
-  sendCommand(sessionId: string, deviceId: string, command: WireCommand): boolean {
+  sendCommand(
+    sessionId: string,
+    deviceId: string,
+    command: WireCommand,
+  ): boolean {
     return this.deviceGateway.sendCommand(sessionId, deviceId, command);
   }
 
-  sendProgress(sessionId: string, deviceId: string, progress: PlaybackProgress): void {
+  sendProgress(
+    sessionId: string,
+    deviceId: string,
+    progress: PlaybackProgress,
+  ): void {
     this.deviceGateway.sendProgress(sessionId, deviceId, progress);
+  }
+
+  sendHint(sessionId: string, deviceId: string, hint: HintShow): boolean {
+    return this.deviceGateway.sendHint(sessionId, deviceId, hint);
   }
 
   broadcastSessionState(state: SessionState): void {
     this.deviceGateway.broadcastSessionState(state);
     this.adminGateway.broadcastSessionState(state);
-    // A freshly running production session pulls its lobby devices in.
-    if (state.mode === 'production' && state.state === 'running') {
+    // A live (created included — devices attach before the explicit start)
+    // production session pulls its lobby devices in.
+    if (state.mode === 'production' && state.state !== 'ended') {
       this.deviceGateway.sweepLobby(state.sessionId, state.themeId);
     }
   }

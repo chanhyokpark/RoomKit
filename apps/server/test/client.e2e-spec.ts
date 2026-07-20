@@ -8,7 +8,7 @@ import type {
   WirePlayDialogue,
 } from '@roomkit/shared';
 import request from 'supertest';
-import { createSocketTestApp, login } from './helpers';
+import { createSocketTestApp, login, nextTestCode } from './helpers';
 
 class MemoryStorage {
   private readonly map = new Map<string, string>();
@@ -17,9 +17,15 @@ class MemoryStorage {
   removeItem = (k: string) => void this.map.delete(k);
 }
 
-function waitFor<T>(register: (resolve: (v: T) => void) => void, timeoutMs = 3000) {
+function waitFor<T>(
+  register: (resolve: (v: T) => void) => void,
+  timeoutMs = 3000,
+) {
   return new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('waitFor timed out')), timeoutMs);
+    const timeout = setTimeout(
+      () => reject(new Error('waitFor timed out')),
+      timeoutMs,
+    );
     register((v) => {
       clearTimeout(timeout);
       resolve(v);
@@ -50,16 +56,25 @@ describe('@roomkit/client (e2e)', () => {
   const auth = (r: request.Test) => r.set('Authorization', `Bearer ${token}`);
   const server = () => app.getHttpServer();
 
-  function client(deviceCode: string, storage = new MemoryStorage()): RoomKitClient {
+  function client(
+    deviceCode: string,
+    storage = new MemoryStorage(),
+  ): RoomKitClient {
     const c = new RoomKitClient({ serverUrl: url, deviceCode, storage });
     clients.push(c);
     return c;
   }
 
   async function post(path: string, body?: object) {
-    const res = await auth(request(server()).post(path).send(body ?? {}));
+    const res = await auth(
+      request(server())
+        .post(path)
+        .send(body ?? {}),
+    );
     if (res.status >= 400) {
-      throw new Error(`POST ${path} -> ${res.status}: ${JSON.stringify(res.body)}`);
+      throw new Error(
+        `POST ${path} -> ${res.status}: ${JSON.stringify(res.body)}`,
+      );
     }
     return res.body;
   }
@@ -67,8 +82,9 @@ describe('@roomkit/client (e2e)', () => {
   const entry = (cmd: object) => ({ id: randomUUID(), ...cmd });
 
   async function fixture() {
-    const themeId = (await post('/api/themes', { name: 'client e2e', timeLimitMs: null }))
-      .id as string;
+    const themeId = (
+      await post('/api/themes', { name: 'client e2e', timeLimitMs: null })
+    ).id as string;
     const mk = async (input: object) =>
       (await post(`/api/themes/${themeId}/assets`, input)).id as string;
     const speakerId = await mk({
@@ -86,7 +102,11 @@ describe('@roomkit/client (e2e)', () => {
     const playerId = await mk({
       kind: 'player',
       name: 'split-player',
-      data: { speakerDeviceId: speakerId, screenDeviceId: screenId, subtitleCss: '.sub{}' },
+      data: {
+        speakerDeviceId: speakerId,
+        screenDeviceId: screenId,
+        subtitleCss: '.sub{}',
+      },
     });
     const dialogueId = await mk({
       kind: 'dialogue',
@@ -114,14 +134,35 @@ describe('@roomkit/client (e2e)', () => {
         manualTriggerable: false,
         allowReentry: true,
         sequence: [
-          entry({ type: 'playDialogue', dialogueId, playerId, waitUntilEnd: true }),
-          entry({ type: 'sendMessage', deviceId: screenId, messageId, values: {} }),
+          entry({
+            type: 'playDialogue',
+            dialogueId,
+            playerId,
+            waitUntilEnd: true,
+          }),
+          entry({
+            type: 'sendMessage',
+            deviceId: screenId,
+            messageId,
+            values: {},
+          }),
         ],
       },
     });
-    const session = await post('/api/sessions', { themeId, mode: 'test' });
+    const session = await post('/api/sessions', {
+      themeId,
+      mode: 'test',
+      deviceCodes: [
+        { deviceId: speakerId, code: nextTestCode() },
+        { deviceId: screenId, code: nextTestCode() },
+      ],
+    });
     sessionIds.push(session.id as string);
-    const codes = session.testDeviceCodes as { deviceId: string; code: string }[];
+    await post(`/api/sessions/${session.id}/start`);
+    const codes = session.testDeviceCodes as {
+      deviceId: string;
+      code: string;
+    }[];
     return {
       themeId,
       speakerId,
@@ -160,8 +201,8 @@ describe('@roomkit/client (e2e)', () => {
 
   it('fatal connect errors stop the client and clear the stored code', async () => {
     const storage = new MemoryStorage();
-    storage.setItem(testCodeKey(url), 'tst_notrealcode');
-    const rk = client('tst_notrealcode', storage);
+    storage.setItem(testCodeKey(url), 'not-a-real-code');
+    const rk = client('not-a-real-code', storage);
 
     const errorPromise = waitFor<string | undefined>((res) =>
       rk.on('status', (s, detail) => {
@@ -219,7 +260,9 @@ describe('@roomkit/client (e2e)', () => {
     let screenPlay: WirePlayDialogue | null = null;
     speaker.on('play', (cmd) => (speakerPlay = cmd as WirePlayDialogue));
     screen.on('play', (cmd) => (screenPlay = cmd as WirePlayDialogue));
-    const progressPromise = waitFor<PlaybackProgress>((res) => screen.on('progress', res));
+    const progressPromise = waitFor<PlaybackProgress>((res) =>
+      screen.on('progress', res),
+    );
 
     const ready = Promise.all([
       waitFor<Welcome>((res) => speaker.on('welcome', res)),
@@ -237,7 +280,10 @@ describe('@roomkit/client (e2e)', () => {
     });
     expect(speakerPlay!.role).toBe('speaker');
     expect(screenPlay!.role).toBe('screen');
-    expect(screenPlay!.lines.map((l) => l.subtitleHtml)).toEqual(['one', 'two']);
+    expect(screenPlay!.lines.map((l) => l.subtitleHtml)).toEqual([
+      'one',
+      'two',
+    ]);
 
     speaker.sendProgress(speakerPlay!.id, 1);
     const progress = await progressPromise;

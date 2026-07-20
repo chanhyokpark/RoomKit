@@ -4,6 +4,9 @@ import {
   assetDataSchemas,
   type Command,
   type EventData,
+  type HintError,
+  type HintNext,
+  type HintShow,
   type JsonValue,
   type PlaybackProgress,
   type SequenceEntry,
@@ -18,6 +21,7 @@ import type { LogsService } from '../logs/logs.service';
 import { CommandResolver, ResolutionError } from './command-resolver';
 import { CountdownTimer } from './countdown-timer';
 import { runEval } from './eval-sandbox';
+import type { HintService, ResolvedHint } from './hint.service';
 import type { RuntimeTransport } from './runtime-transport';
 
 export const ACK_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -43,6 +47,7 @@ export interface EngineDeps {
   prisma: PrismaService;
   logs: LogsService;
   resolver: CommandResolver;
+  hints: HintService;
   transport: () => RuntimeTransport;
 }
 
@@ -76,7 +81,10 @@ export class SessionEngine {
   private readonly runCounts = new Map<string, number>();
   private readonly pendingAcks = new Map<
     string,
-    { resolve: (status: 'done' | 'failed' | 'ended') => void; timeout: NodeJS.Timeout }
+    {
+      resolve: (status: 'done' | 'failed' | 'ended') => void;
+      timeout: NodeJS.Timeout;
+    }
   >();
   private readonly unacked = new Map<string, Map<string, WireCommand>>();
   private readonly progressRelays = new Map<
@@ -104,12 +112,26 @@ export class SessionEngine {
 
   // ── lifecycle ────────────────────────────────────────────────────────────
 
-  /** Fresh session: arm the timer, broadcast, fire the session:start hook. */
+  /**
+   * Fresh session: announce it and wait for an explicit start. Devices may
+   * already connect (the operator checks online status before starting).
+   */
+  attach(): void {
+    void this.log('info', 'session', 'Session created');
+    this.broadcastState();
+  }
+
+  /** Explicit start: arm the timer, fire the session:start hook. */
   start(): void {
+    if (this.state !== 'created') {
+      throw new EngineStateError(`Cannot start a ${this.state} session`);
+    }
+    this.state = 'running';
     if (this.timeLimitMs !== null) {
       this.timer.arm(this.timeLimitMs);
       this.persistTimer();
     }
+    this.queuePersist({ state: 'running', startedAt: new Date() });
     void this.log('info', 'session', 'Session started');
     this.broadcastState();
     this.fireSystemEvents('session:start');
@@ -137,7 +159,11 @@ export class SessionEngine {
         }
       }
     }
-    void this.log('warn', 'session', 'Runtime restarted; in-flight sequences were lost');
+    void this.log(
+      'warn',
+      'session',
+      'Runtime restarted; in-flight sequences were lost',
+    );
     this.broadcastState();
   }
 
@@ -199,9 +225,14 @@ export class SessionEngine {
 
   // ── timer ────────────────────────────────────────────────────────────────
 
-  adjustTimer(adjustment: { deltaMs: number } | { action: 'pause' | 'resume' }): void {
+  adjustTimer(
+    adjustment: { deltaMs: number } | { action: 'pause' | 'resume' },
+  ): void {
     if (this.timeLimitMs === null) {
       throw new EngineStateError('Theme has no timer');
+    }
+    if (this.state === 'created') {
+      throw new EngineStateError('Session not started');
     }
     if (this.timerExpired) {
       throw new EngineStateError('Timer already expired');
@@ -221,7 +252,11 @@ export class SessionEngine {
           this.timerRemainingStored + adjustment.deltaMs,
         );
       }
-      void this.log('info', 'timer', `Timer adjusted by ${adjustment.deltaMs}ms`);
+      void this.log(
+        'info',
+        'timer',
+        `Timer adjusted by ${adjustment.deltaMs}ms`,
+      );
     } else if (adjustment.action === 'pause') {
       this.timerUserPaused = true;
       if (this.timer.armed) {
@@ -262,6 +297,14 @@ export class SessionEngine {
   /** Device (or eval) trigger by name; fire-and-forget for all matching events. */
   async handleTrigger(name: string, source: string): Promise<void> {
     if (this.state === 'ended') return;
+    if (this.state === 'created') {
+      void this.log(
+        'info',
+        'trigger',
+        `Trigger "${name}" from ${source} ignored (session not started)`,
+      );
+      return;
+    }
     void this.log('info', 'trigger', `Trigger "${name}" from ${source}`);
     const events = await this.findEvents(
       (e) => e.data.triggerKind === 'device' && e.data.triggerName === name,
@@ -273,7 +316,11 @@ export class SessionEngine {
     for (const event of events) {
       const rejection = this.admit(event);
       if (rejection) {
-        void this.log('info', 'trigger', `Event "${event.name}" not run: ${rejection}`);
+        void this.log(
+          'info',
+          'trigger',
+          `Event "${event.name}" not run: ${rejection}`,
+        );
         continue;
       }
       void this.executeRun(event, 0);
@@ -288,12 +335,19 @@ export class SessionEngine {
     }
     const rejection = this.admit(event);
     if (rejection) throw new EngineStateError(rejection);
-    void this.log('info', 'trigger', `Event "${event.name}" triggered manually`);
+    void this.log(
+      'info',
+      'trigger',
+      `Event "${event.name}" triggered manually`,
+    );
     void this.executeRun(event, 0);
   }
 
   /** REST forced phase switch. */
   async forceSwitchPhase(phaseId: string): Promise<void> {
+    if (this.state === 'created') {
+      throw new EngineStateError('Session not started');
+    }
     await this.switchPhase(phaseId, 'admin');
   }
 
@@ -302,12 +356,116 @@ export class SessionEngine {
     void this.log('info', 'device', 'All devices reset');
   }
 
+  // ── hints ────────────────────────────────────────────────────────────────
+
+  /** Hint device entered a code; returns the payload the gateway should emit. */
+  async handleHintSubmit(
+    deviceId: string,
+    code: string,
+  ): Promise<HintShow | HintError> {
+    const gate = await this.hintGate(deviceId);
+    if (gate) return gate;
+    const hint = await this.deps.hints.findByCode(this.themeId, code);
+    if (!hint) {
+      void this.log('warn', 'hint', `Wrong hint code "${code}" entered`, {
+        code,
+      });
+      return { reason: 'unknown_code', code };
+    }
+    return this.showHint(hint, 0, 'code entry');
+  }
+
+  /** Stateless step advance: the device asks for the exact step it wants. */
+  async handleHintNext(
+    deviceId: string,
+    req: HintNext,
+  ): Promise<HintShow | HintError> {
+    const gate = await this.hintGate(deviceId);
+    if (gate) return gate;
+    const hint = await this.deps.hints.findById(this.themeId, req.hintId);
+    if (!hint) return { reason: 'unknown_hint', hintId: req.hintId };
+    if (req.step >= hint.data.steps.length) {
+      return { reason: 'invalid_step', hintId: req.hintId };
+    }
+    return this.showHint(hint, req.step, 'next step');
+  }
+
+  /** Admin push to every hint device. Allowed while paused (operator judgment). */
+  async pushHint(hintId: string, step: number): Promise<void> {
+    const hint = await this.deps.hints.findById(this.themeId, hintId);
+    if (!hint) throw new EngineStateError('Hint not found in theme');
+    if (step >= hint.data.steps.length) {
+      throw new EngineStateError(
+        `Hint has ${hint.data.steps.length} step(s); step ${step} is out of range`,
+      );
+    }
+    const deviceIds = await this.deps.hints.hintDeviceIds(this.themeId);
+    if (deviceIds.length === 0) {
+      throw new EngineStateError('Theme has no hint device');
+    }
+    const show = await this.deps.hints.buildShow(hint, step);
+    let delivered = 0;
+    for (const deviceId of deviceIds) {
+      if (this.deps.transport().sendHint(this.id, deviceId, show)) delivered++;
+    }
+    if (delivered === 0) {
+      // Mirrors offline-command semantics: warn and continue, not an error.
+      void this.log(
+        'warn',
+        'hint',
+        `Hint "${hint.code}" pushed by admin but no hint device is online`,
+        { hintId, step },
+      );
+    } else {
+      void this.log(
+        'info',
+        'hint',
+        `Hint "${hint.code}" step ${step + 1}/${show.stepCount} pushed by admin`,
+        { hintId, step },
+      );
+    }
+  }
+
+  private async hintGate(deviceId: string): Promise<HintError | null> {
+    if (this.state !== 'running') return { reason: 'session_not_running' };
+    if (!(await this.deps.hints.isHintDevice(this.themeId, deviceId))) {
+      void this.log(
+        'warn',
+        'hint',
+        'Hint request from a non-hint device ignored',
+        {
+          deviceId,
+        },
+      );
+      return { reason: 'not_hint_device' };
+    }
+    return null;
+  }
+
+  private async showHint(
+    hint: ResolvedHint,
+    step: number,
+    source: string,
+  ): Promise<HintShow> {
+    const show = await this.deps.hints.buildShow(hint, step);
+    void this.log(
+      'info',
+      'hint',
+      `Hint "${hint.code}" step ${step + 1}/${show.stepCount} shown (${source})`,
+      { hintId: hint.id, code: hint.code, step },
+    );
+    return show;
+  }
+
   /**
    * System hook events (session:start, timer:expired, phase:enter/leave).
    * `phaseScope` overrides the phase guard for phase hooks: an enter/leave
    * hook belongs to the phase being entered/left (or is common).
    */
-  private fireSystemEvents(name: string, phaseScope?: string | null): Promise<void[]> {
+  private fireSystemEvents(
+    name: string,
+    phaseScope?: string | null,
+  ): Promise<void[]> {
     const scope = phaseScope === undefined ? this.phaseId : phaseScope;
     const promise = (async () => {
       const events = await this.findEvents(
@@ -320,7 +478,11 @@ export class SessionEngine {
         events.map((event) => {
           const rejection = this.admit(event, { bypassPhaseGuard: true });
           if (rejection) {
-            void this.log('info', 'event', `Hook "${event.name}" not run: ${rejection}`);
+            void this.log(
+              'info',
+              'event',
+              `Hook "${event.name}" not run: ${rejection}`,
+            );
             return Promise.resolve();
           }
           return this.executeRun(event, 0);
@@ -337,6 +499,7 @@ export class SessionEngine {
     opts: { bypassPhaseGuard?: boolean } = {},
   ): string | null {
     if (this.state === 'ended') return 'session ended';
+    if (this.state === 'created') return 'session not started';
     if (
       !opts.bypassPhaseGuard &&
       event.data.phaseId !== null &&
@@ -362,11 +525,20 @@ export class SessionEngine {
       });
     } catch (err) {
       if (err instanceof RunAbortedError) {
-        void this.log('warn', 'event', `Event "${event.name}" aborted (session ended)`);
+        void this.log(
+          'warn',
+          'event',
+          `Event "${event.name}" aborted (session ended)`,
+        );
       } else {
-        void this.log('error', 'event', `Event "${event.name}" failed: ${msg(err)}`, {
-          eventId: event.id,
-        });
+        void this.log(
+          'error',
+          'event',
+          `Event "${event.name}" failed: ${msg(err)}`,
+          {
+            eventId: event.id,
+          },
+        );
       }
     } finally {
       const count = (this.runCounts.get(event.id) ?? 1) - 1;
@@ -386,7 +558,10 @@ export class SessionEngine {
   }
 
   /** Returns true when the sequence must stop (eval returned false / failed). */
-  private async runCommand(entry: SequenceEntry, depth: number): Promise<boolean> {
+  private async runCommand(
+    entry: SequenceEntry,
+    depth: number,
+  ): Promise<boolean> {
     switch (entry.type) {
       case 'wait':
         await this.pausableSleep(entry.durationMs);
@@ -394,9 +569,25 @@ export class SessionEngine {
       case 'eval':
         return this.runEvalCommand(entry.code);
       case 'switchPhase':
+        if (entry.phaseId === null) {
+          void this.log(
+            'error',
+            'command',
+            'switchPhase skipped: phase reference not set',
+          );
+          return false;
+        }
         await this.switchPhase(entry.phaseId, 'sequence');
         return false;
       case 'callEvent':
+        if (entry.eventId === null) {
+          void this.log(
+            'error',
+            'command',
+            'callEvent skipped: event reference not set',
+          );
+          return false;
+        }
         await this.callEvent(entry.eventId, depth);
         return false;
       case 'adjustTimer':
@@ -418,7 +609,11 @@ export class SessionEngine {
       resolution = await this.deps.resolver.resolve(this.themeId, cmd);
     } catch (err) {
       if (err instanceof ResolutionError) {
-        void this.log('error', 'command', `${cmd.type} skipped: ${err.message}`);
+        void this.log(
+          'error',
+          'command',
+          `${cmd.type} skipped: ${err.message}`,
+        );
         return;
       }
       throw err;
@@ -431,7 +626,10 @@ export class SessionEngine {
     }
     const online = new Map<string, boolean>();
     for (const delivery of resolution.deliveries) {
-      online.set(delivery.wire.id, this.sendWire(delivery.deviceId, delivery.wire, cmd.type));
+      online.set(
+        delivery.wire.id,
+        this.sendWire(delivery.deviceId, delivery.wire, cmd.type),
+      );
     }
     if (resolution.awaitAckOf) {
       const { commandId, deviceId } = resolution.awaitAckOf;
@@ -439,14 +637,26 @@ export class SessionEngine {
       const status = await this.waitForAck(commandId);
       this.checkAborted();
       if (status === 'timeout') {
-        void this.log('warn', 'command', `${cmd.type} ack timed out (device ${deviceId})`);
+        void this.log(
+          'warn',
+          'command',
+          `${cmd.type} ack timed out (device ${deviceId})`,
+        );
       } else if (status === 'failed') {
-        void this.log('warn', 'command', `${cmd.type} reported failed by device ${deviceId}`);
+        void this.log(
+          'warn',
+          'command',
+          `${cmd.type} reported failed by device ${deviceId}`,
+        );
       }
     }
   }
 
-  private sendWire(deviceId: string, wire: WireCommand, label: string): boolean {
+  private sendWire(
+    deviceId: string,
+    wire: WireCommand,
+    label: string,
+  ): boolean {
     const online = this.deps.transport().sendCommand(this.id, deviceId, wire);
     if (online) {
       let perDevice = this.unacked.get(deviceId);
@@ -467,7 +677,9 @@ export class SessionEngine {
     return online;
   }
 
-  private waitForAck(commandId: string): Promise<'done' | 'failed' | 'ended' | 'timeout'> {
+  private waitForAck(
+    commandId: string,
+  ): Promise<'done' | 'failed' | 'ended' | 'timeout'> {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.pendingAcks.delete(commandId);
@@ -479,14 +691,20 @@ export class SessionEngine {
 
   private async callEvent(eventId: string, depth: number): Promise<void> {
     if (depth + 1 > CALL_EVENT_DEPTH_LIMIT) {
-      throw new Error(`callEvent depth limit (${CALL_EVENT_DEPTH_LIMIT}) exceeded`);
+      throw new Error(
+        `callEvent depth limit (${CALL_EVENT_DEPTH_LIMIT}) exceeded`,
+      );
     }
     const event = await this.getEvent(eventId);
     // Explicit invocation: the phase guard is bypassed (subroutine semantics),
     // the re-entry guard still applies.
     const rejection = this.admit(event, { bypassPhaseGuard: true });
     if (rejection) {
-      void this.log('info', 'event', `callEvent "${event.name}" not run: ${rejection}`);
+      void this.log(
+        'info',
+        'event',
+        `callEvent "${event.name}" not run: ${rejection}`,
+      );
       return;
     }
     await this.executeRun(event, depth + 1);
@@ -509,10 +727,15 @@ export class SessionEngine {
     }
     this.phaseId = phaseId;
     this.queuePersist({ phaseId });
-    void this.log('info', 'phase', `Phase switched to "${phase.name}" (${source})`, {
-      from: oldPhaseId,
-      to: phaseId,
-    });
+    void this.log(
+      'info',
+      'phase',
+      `Phase switched to "${phase.name}" (${source})`,
+      {
+        from: oldPhaseId,
+        to: phaseId,
+      },
+    );
     this.broadcastState();
     // …enter hooks must not block the switching sequence.
     this.fireSystemEvents('phase:enter', phaseId).catch(() => {});
@@ -540,7 +763,7 @@ export class SessionEngine {
       void this.log('error', 'eval', `eval failed: ${msg(err)}`);
       return true;
     }
-    this.queuePersist({ vars: this.vars as Prisma.InputJsonValue });
+    this.queuePersist({ vars: this.vars });
     if (result === false) {
       void this.log('info', 'eval', 'eval returned false; sequence stopped');
       return true;
@@ -550,7 +773,11 @@ export class SessionEngine {
 
   // ── inbound from gateway ─────────────────────────────────────────────────
 
-  handleAck(deviceId: string, commandId: string, status: 'done' | 'failed'): void {
+  handleAck(
+    deviceId: string,
+    commandId: string,
+    status: 'done' | 'failed',
+  ): void {
     this.unacked.get(deviceId)?.delete(commandId);
     this.progressRelays.delete(commandId);
     const pending = this.pendingAcks.get(commandId);
@@ -578,10 +805,19 @@ export class SessionEngine {
     }
   }
 
-  deviceStatusChanged(deviceId: string, deviceName: string, online: boolean): void {
-    void this.log('info', 'device', `Device "${deviceName}" ${online ? 'online' : 'offline'}`, {
-      deviceId,
-    });
+  deviceStatusChanged(
+    deviceId: string,
+    deviceName: string,
+    online: boolean,
+  ): void {
+    void this.log(
+      'info',
+      'device',
+      `Device "${deviceName}" ${online ? 'online' : 'offline'}`,
+      {
+        deviceId,
+      },
+    );
     this.deps.transport().broadcastDeviceStatus({
       sessionId: this.id,
       deviceId,
@@ -707,27 +943,29 @@ export class SessionEngine {
     while (remaining > 0) {
       await this.awaitGate();
       const start = Date.now();
-      const outcome = await new Promise<'timeout' | 'pause' | 'end'>((resolve) => {
-        const timeout = setTimeout(() => {
-          cleanup();
-          resolve('timeout');
-        }, remaining);
-        const onPause = () => {
-          cleanup();
-          resolve('pause');
-        };
-        const onEnd = () => {
-          cleanup();
-          resolve('end');
-        };
-        const cleanup = () => {
-          clearTimeout(timeout);
-          this.emitter.off('pause', onPause);
-          this.emitter.off('end', onEnd);
-        };
-        this.emitter.once('pause', onPause);
-        this.emitter.once('end', onEnd);
-      });
+      const outcome = await new Promise<'timeout' | 'pause' | 'end'>(
+        (resolve) => {
+          const timeout = setTimeout(() => {
+            cleanup();
+            resolve('timeout');
+          }, remaining);
+          const onPause = () => {
+            cleanup();
+            resolve('pause');
+          };
+          const onEnd = () => {
+            cleanup();
+            resolve('end');
+          };
+          const cleanup = () => {
+            clearTimeout(timeout);
+            this.emitter.off('pause', onPause);
+            this.emitter.off('end', onEnd);
+          };
+          this.emitter.once('pause', onPause);
+          this.emitter.once('end', onEnd);
+        },
+      );
       if (outcome === 'timeout') return;
       if (outcome === 'end') throw new RunAbortedError();
       remaining -= Date.now() - start;
@@ -744,7 +982,11 @@ export class SessionEngine {
     for (const row of rows) {
       const parsed = assetDataSchemas.event.safeParse(row.data);
       if (!parsed.success) {
-        void this.log('error', 'event', `Event "${row.name}" has invalid data; skipped`);
+        void this.log(
+          'error',
+          'event',
+          `Event "${row.name}" has invalid data; skipped`,
+        );
         continue;
       }
       const event = { id: row.id, name: row.name, data: parsed.data };

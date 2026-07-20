@@ -7,6 +7,7 @@ import {
   connectDevice,
   createSocketTestApp,
   login,
+  nextTestCode,
   waitForConnectError,
   waitForEvent,
 } from './helpers';
@@ -45,14 +46,22 @@ describe('Device gateway (e2e)', () => {
   }
 
   async function post(path: string, body?: object) {
-    const res = await auth(request(server()).post(path).send(body ?? {}));
+    const res = await auth(
+      request(server())
+        .post(path)
+        .send(body ?? {}),
+    );
     if (res.status >= 400) {
-      throw new Error(`POST ${path} -> ${res.status}: ${JSON.stringify(res.body)}`);
+      throw new Error(
+        `POST ${path} -> ${res.status}: ${JSON.stringify(res.body)}`,
+      );
     }
     return res.body;
   }
 
-  async function createTheme(timeLimitMs: number | null = null): Promise<string> {
+  async function createTheme(
+    timeLimitMs: number | null = null,
+  ): Promise<string> {
     return (await post('/api/themes', { name: 'gateway e2e', timeLimitMs })).id;
   }
 
@@ -81,7 +90,11 @@ describe('Device gateway (e2e)', () => {
     const playerId = await createAsset(themeId, {
       kind: 'player',
       name: 'main-player',
-      data: { speakerDeviceId: deviceId, screenDeviceId: deviceId, subtitleCss: '' },
+      data: {
+        speakerDeviceId: deviceId,
+        screenDeviceId: deviceId,
+        subtitleCss: '',
+      },
     });
     const bgmId = await createAsset(themeId, {
       kind: 'bgm',
@@ -115,9 +128,18 @@ describe('Device gateway (e2e)', () => {
     return { themeId, deviceId, playerId, bgmId };
   }
 
-  async function createTestSession(themeId: string) {
-    const session = await post('/api/sessions', { themeId, mode: 'test' });
+  /** Creates a started test session with operator-entered codes for `deviceIds`. */
+  async function createTestSession(themeId: string, deviceIds: string[]) {
+    const session = await post('/api/sessions', {
+      themeId,
+      mode: 'test',
+      deviceCodes: deviceIds.map((deviceId) => ({
+        deviceId,
+        code: nextTestCode(),
+      })),
+    });
     sessionIds.push(session.id as string);
+    await post(`/api/sessions/${session.id}/start`);
     return session as {
       id: string;
       testDeviceCodes: { deviceId: string; code: string }[];
@@ -126,13 +148,17 @@ describe('Device gateway (e2e)', () => {
 
   it('attaches with a test code, receives welcome and redelivered commands', async () => {
     const { themeId, deviceId } = await fixture();
-    const session = await createTestSession(themeId);
-    const code = session.testDeviceCodes.find((c) => c.deviceId === deviceId)!.code;
+    const session = await createTestSession(themeId, [deviceId]);
+    const code = session.testDeviceCodes.find(
+      (c) => c.deviceId === deviceId,
+    )!.code;
 
     // session:start already ran while the device was offline → bgm logged failed
     await new Promise((r) => setTimeout(r, 200));
     const preLogs = await getLogs(session.id);
-    expect(preLogs.some((l) => l.message.includes('device offline'))).toBe(true);
+    expect(preLogs.some((l) => l.message.includes('device offline'))).toBe(
+      true,
+    );
 
     const socket = device(code);
     const welcome = await waitForEvent<Welcome>(socket, 'welcome');
@@ -155,7 +181,13 @@ describe('Device gateway (e2e)', () => {
       name: 'talk',
       data: {
         keepSubtitleAfterEnd: true,
-        lines: [{ id: randomUUID(), fileKey: 'themes/test/line1.mp3', subtitleHtml: 'hi' }],
+        lines: [
+          {
+            id: randomUUID(),
+            fileKey: 'themes/test/line1.mp3',
+            subtitleHtml: 'hi',
+          },
+        ],
       },
     });
     const messageId = await createAsset(themeId, {
@@ -176,13 +208,25 @@ describe('Device gateway (e2e)', () => {
         manualTriggerable: false,
         allowReentry: false,
         sequence: [
-          entry({ type: 'playDialogue', dialogueId, playerId, waitUntilEnd: true }),
-          entry({ type: 'sendMessage', deviceId, messageId, values: { ok: true } }),
+          entry({
+            type: 'playDialogue',
+            dialogueId,
+            playerId,
+            waitUntilEnd: true,
+          }),
+          entry({
+            type: 'sendMessage',
+            deviceId,
+            messageId,
+            values: { ok: true },
+          }),
         ],
       },
     });
-    const session = await createTestSession(themeId);
-    const code = session.testDeviceCodes.find((c) => c.deviceId === deviceId)!.code;
+    const session = await createTestSession(themeId, [deviceId]);
+    const code = session.testDeviceCodes.find(
+      (c) => c.deviceId === deviceId,
+    )!.code;
 
     const socket = device(code);
     await waitForEvent(socket, 'welcome');
@@ -193,7 +237,9 @@ describe('Device gateway (e2e)', () => {
     // on-demand bgm proves live delivery with a playable presigned url
     socket.emit('trigger', { event: 'more-bgm' });
     await waitForEvent(socket, 'command');
-    const bgm = received.find((c) => c.type === 'play')! as WireCommand & { url: string };
+    const bgm = received.find((c) => c.type === 'play')! as WireCommand & {
+      url: string;
+    };
     expect(bgm).toMatchObject({ type: 'play', channel: 'bgm', loop: false });
     expect(bgm.url).toContain('ambient.mp3');
     socket.emit('ack', { commandId: bgm.id, status: 'done' });
@@ -224,8 +270,10 @@ describe('Device gateway (e2e)', () => {
 
   it('redelivers unacked commands with the same id on reconnect', async () => {
     const { themeId, deviceId } = await fixture();
-    const session = await createTestSession(themeId);
-    const code = session.testDeviceCodes.find((c) => c.deviceId === deviceId)!.code;
+    const session = await createTestSession(themeId, [deviceId]);
+    const code = session.testDeviceCodes.find(
+      (c) => c.deviceId === deviceId,
+    )!.code;
 
     const first = device(code);
     await waitForEvent(first, 'welcome');
@@ -242,45 +290,63 @@ describe('Device gateway (e2e)', () => {
 
   it('rejects bad codes and codes of ended sessions as fatal', async () => {
     const { themeId, deviceId } = await fixture();
-    expect(await waitForConnectError(device('tst_nonexistent1'))).toBe('invalid_code');
-    expect(await waitForConnectError(device('no-such-production-code-x'))).toBe(
+    expect(await waitForConnectError(device('no-such-code-anywhere-x'))).toBe(
       'invalid_code',
     );
 
-    const session = await createTestSession(themeId);
-    const code = session.testDeviceCodes.find((c) => c.deviceId === deviceId)!.code;
+    const session = await createTestSession(themeId, [deviceId]);
+    const code = session.testDeviceCodes.find(
+      (c) => c.deviceId === deviceId,
+    )!.code;
     await post(`/api/sessions/${session.id}/end`);
-    expect(await waitForConnectError(device(code))).toBe('session_ended');
+    // ending frees (deletes) the code, so it reads as invalid — still fatal
+    expect(await waitForConnectError(device(code))).toBe('invalid_code');
   });
 
   it('parks production devices in the lobby and sweeps them into a new session', async () => {
     const { themeId, deviceId } = await fixture();
     const prodCode = (
-      await auth(request(server()).get(`/api/themes/${themeId}/assets/${deviceId}`))
+      await auth(
+        request(server()).get(`/api/themes/${themeId}/assets/${deviceId}`),
+      )
     ).body.code as string;
 
     // no active production session yet → lobby (connected, no welcome)
     const socket = device(prodCode);
     await waitForEvent(socket, 'connect');
-    const early = waitForEvent<Welcome>(socket, 'welcome', 500).catch(() => null);
+    const early = waitForEvent<Welcome>(socket, 'welcome', 500).catch(
+      () => null,
+    );
     expect(await early).toBeNull();
 
-    // the welcome/command arrive DURING the POST — listen before acting
+    // the welcome arrives DURING the POST — creation sweeps the lobby so the
+    // operator sees the device online before starting
     const welcomePromise = waitForEvent<Welcome>(socket, 'welcome');
-    const commandPromise = waitForEvent<WireCommand>(socket, 'command');
-    const session = await post('/api/sessions', { themeId, mode: 'production' });
+    const session = await post('/api/sessions', {
+      themeId,
+      mode: 'production',
+    });
     sessionIds.push(session.id as string);
     const welcome = await welcomePromise;
-    expect(welcome.session).toMatchObject({ sessionId: session.id, mode: 'production' });
-    // swept in before session:start fired → the bgm command arrives live
+    expect(welcome.session).toMatchObject({
+      sessionId: session.id,
+      mode: 'production',
+      state: 'created',
+    });
+
+    // the explicit start fires session:start → the bgm command arrives live
+    const commandPromise = waitForEvent<WireCommand>(socket, 'command');
+    await post(`/api/sessions/${session.id}/start`);
     const cmd = await commandPromise;
     expect(cmd.type).toBe('play');
   });
 
   it('broadcasts session:state on pause/resume with timer snapshots', async () => {
     const { themeId, deviceId } = await fixture();
-    const session = await createTestSession(themeId);
-    const code = session.testDeviceCodes.find((c) => c.deviceId === deviceId)!.code;
+    const session = await createTestSession(themeId, [deviceId]);
+    const code = session.testDeviceCodes.find(
+      (c) => c.deviceId === deviceId,
+    )!.code;
     const socket = device(code);
     await waitForEvent(socket, 'welcome');
 

@@ -1,5 +1,5 @@
-import { randomInt } from 'node:crypto';
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -16,18 +16,6 @@ import {
 } from '@roomkit/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
-
-// No 0/1/l/o — codes get read aloud and typed on devices.
-const TEST_CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
-const TEST_CODE_LENGTH = 10;
-
-export function generateTestCode(): string {
-  let code = 'tst_';
-  for (let i = 0; i < TEST_CODE_LENGTH; i++) {
-    code += TEST_CODE_ALPHABET[randomInt(TEST_CODE_ALPHABET.length)];
-  }
-  return code;
-}
 
 @Injectable()
 export class SessionsService {
@@ -59,9 +47,9 @@ export class SessionsService {
   }
 
   /**
-   * Create = start: the session row is inserted (with per-device test codes
-   * for test mode), then the runtime engine boots — arming the timer and
-   * firing the session:start hook.
+   * Creates an idle session (state 'created'); POST /sessions/:id/start begins
+   * the game. Test-mode device codes are operator-entered (validated against
+   * the theme's devices), not generated.
    */
   async create(input: CreateSessionInput): Promise<SessionResponse> {
     const theme = await this.prisma.theme.findUnique({
@@ -71,7 +59,11 @@ export class SessionsService {
 
     if (input.mode === 'production') {
       const active = await this.prisma.session.findFirst({
-        where: { themeId: theme.id, mode: 'production', state: { not: 'ended' } },
+        where: {
+          themeId: theme.id,
+          mode: 'production',
+          state: { not: 'ended' },
+        },
         select: { id: true },
       });
       if (active) {
@@ -81,6 +73,11 @@ export class SessionsService {
       }
     }
 
+    const deviceCodes = input.mode === 'test' ? (input.deviceCodes ?? []) : [];
+    if (deviceCodes.length > 0) {
+      await this.validateDeviceCodes(theme.id, deviceCodes);
+    }
+
     const phaseId = await this.getInitialPhaseId(theme.id);
     let row: Session;
     try {
@@ -88,27 +85,31 @@ export class SessionsService {
         const session = await tx.session.create({
           data: { themeId: theme.id, mode: input.mode, phaseId },
         });
-        if (input.mode === 'test') {
-          const devices = await tx.asset.findMany({
-            where: { themeId: theme.id, kind: 'device' },
-            select: { id: true },
-          });
+        if (deviceCodes.length > 0) {
           await tx.sessionDeviceCode.createMany({
-            data: devices.map((d) => ({
+            data: deviceCodes.map((entry) => ({
               sessionId: session.id,
-              deviceId: d.id,
-              code: generateTestCode(),
+              deviceId: entry.deviceId,
+              code: entry.code,
             })),
           });
         }
         return session;
       });
     } catch (err) {
-      // Race on the partial unique index (one active production per theme).
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === 'P2002'
       ) {
+        // Either the partial unique index (one active production per theme)
+        // or a device-code collision with another live session.
+        const target =
+          (err.meta?.target as string[] | string | undefined) ?? '';
+        if (String(target).includes('code')) {
+          throw new ConflictException(
+            'A device code is already in use by another session',
+          );
+        }
         throw new ConflictException(
           'Theme already has an active production session',
         );
@@ -120,7 +121,67 @@ export class SessionsService {
     return this.get(row.id);
   }
 
-  private async getTestDeviceCodes(sessionId: string): Promise<TestDeviceCode[]> {
+  /** Ends the session and frees its test device codes. */
+  async end(id: string): Promise<SessionResponse> {
+    await this.get(id);
+    await this.runtime.end(id);
+    await this.prisma.sessionDeviceCode.deleteMany({
+      where: { sessionId: id },
+    });
+    return this.get(id);
+  }
+
+  /**
+   * Permanently removes a session and its logs/device codes. Live sessions
+   * must be ended first; a 'created' session still has an idle engine, which
+   * end() tears down (and is a no-op for already-ended sessions).
+   */
+  async delete(id: string): Promise<void> {
+    const row = await this.prisma.session.findUnique({
+      where: { id },
+      select: { state: true },
+    });
+    if (!row) throw new NotFoundException('Session not found');
+    if (row.state === 'running' || row.state === 'paused') {
+      throw new ConflictException('End the session before deleting it');
+    }
+    await this.runtime.end(id);
+    await this.prisma.session.delete({ where: { id } });
+  }
+
+  private async validateDeviceCodes(
+    themeId: string,
+    deviceCodes: { deviceId: string; code: string }[],
+  ): Promise<void> {
+    const codes = deviceCodes.map((entry) => entry.code);
+    if (new Set(codes).size !== codes.length) {
+      throw new BadRequestException('Device codes must be unique');
+    }
+    const deviceIds = deviceCodes.map((entry) => entry.deviceId);
+    if (new Set(deviceIds).size !== deviceIds.length) {
+      throw new BadRequestException('Each device may have only one code');
+    }
+    const devices = await this.prisma.asset.findMany({
+      where: { id: { in: deviceIds }, themeId, kind: 'device' },
+      select: { id: true },
+    });
+    if (devices.length !== deviceIds.length) {
+      throw new BadRequestException('deviceCodes reference unknown devices');
+    }
+    const taken = await this.prisma.sessionDeviceCode.findFirst({
+      where: { code: { in: codes } },
+      select: { code: true },
+    });
+    if (taken) {
+      throw new ConflictException(
+        `Device code "${taken.code}" is already in use by another session`,
+      );
+    }
+  }
+
+  private async getTestDeviceCodes(
+    sessionId: string,
+  ): Promise<TestDeviceCode[]> {
     const codes = await this.prisma.sessionDeviceCode.findMany({
       where: { sessionId },
     });

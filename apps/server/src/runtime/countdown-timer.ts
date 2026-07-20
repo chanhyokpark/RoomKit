@@ -18,7 +18,9 @@ export class CountdownTimer {
   }
 
   get remainingMs(): number | null {
-    return this.deadline === null ? null : Math.max(0, this.deadline - Date.now());
+    return this.deadline === null
+      ? null
+      : Math.max(0, this.deadline - Date.now());
   }
 
   arm(remainingMs: number): void {

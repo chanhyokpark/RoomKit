@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { JsonValue, ListLogsQuery, LogKind, LogLevel } from '@roomkit/shared';
+import type {
+  JsonValue,
+  ListLogsQuery,
+  LogKind,
+  LogLevel,
+} from '@roomkit/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface AppendLogInput {

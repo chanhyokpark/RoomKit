@@ -23,6 +23,9 @@ class FakeTransport implements RuntimeTransport {
     return true;
   }
   sendProgress(): void {}
+  sendHint(): boolean {
+    return false;
+  }
   broadcastSessionState(): void {}
   broadcastLog(): void {}
   broadcastDeviceStatus(): void {}
@@ -73,15 +76,26 @@ describe('Runtime (e2e)', () => {
   const server = () => app.getHttpServer();
 
   async function post(path: string, body?: object) {
-    const res = await auth(request(server()).post(path).send(body ?? {}));
+    const res = await auth(
+      request(server())
+        .post(path)
+        .send(body ?? {}),
+    );
     if (res.status >= 400) {
-      throw new Error(`POST ${path} -> ${res.status}: ${JSON.stringify(res.body)}`);
+      throw new Error(
+        `POST ${path} -> ${res.status}: ${JSON.stringify(res.body)}`,
+      );
     }
     return res.body;
   }
 
-  async function createTheme(timeLimitMs: number | null = null): Promise<string> {
-    const body = await post('/api/themes', { name: 'runtime e2e', timeLimitMs });
+  async function createTheme(
+    timeLimitMs: number | null = null,
+  ): Promise<string> {
+    const body = await post('/api/themes', {
+      name: 'runtime e2e',
+      timeLimitMs,
+    });
     return body.id as string;
   }
 
@@ -129,8 +143,13 @@ describe('Runtime (e2e)', () => {
   const entry = (cmd: object) => ({ id: randomUUID(), ...cmd });
 
   async function createSession(themeId: string): Promise<string> {
-    const body = await post('/api/sessions', { themeId, mode: 'test' });
+    const body = await post('/api/sessions', {
+      themeId,
+      mode: 'test',
+      deviceCodes: [],
+    });
     sessionIds.push(body.id as string);
+    await post(`/api/sessions/${body.id}/start`);
     return body.id as string;
   }
 
@@ -151,7 +170,10 @@ describe('Runtime (e2e)', () => {
     });
     const eventId = await createEvent(themeId, 'guarded', {
       sequence: [
-        entry({ type: 'eval', code: 'ctx.vars.count = 41 + 1; ctx.log("from eval");' }),
+        entry({
+          type: 'eval',
+          code: 'ctx.vars.count = 41 + 1; ctx.log("from eval");',
+        }),
         entry({ type: 'eval', code: 'ctx.vars.count === 42 ? false : true' }),
         entry({ type: 'sendMessage', deviceId, messageId, values: {} }),
       ],
@@ -160,12 +182,18 @@ describe('Runtime (e2e)', () => {
     await post(`/api/sessions/${sessionId}/trigger`, { eventId });
 
     await waitFor(async () =>
-      (await getLogs(sessionId)).some((l) => l.message.includes('sequence stopped')),
+      (await getLogs(sessionId)).some((l) =>
+        l.message.includes('sequence stopped'),
+      ),
     );
-    const session = await auth(request(server()).get(`/api/sessions/${sessionId}`)).expect(200);
+    const session = await auth(
+      request(server()).get(`/api/sessions/${sessionId}`),
+    ).expect(200);
     expect(session.body.vars).toEqual({ count: 42 });
     const logs = await getLogs(sessionId);
-    expect(logs.some((l) => l.kind === 'eval' && l.message === 'from eval')).toBe(true);
+    expect(
+      logs.some((l) => l.kind === 'eval' && l.message === 'from eval'),
+    ).toBe(true);
     // guard stopped the sequence before the message command
     expect(transport.ofType('message')).toHaveLength(0);
   });
@@ -181,7 +209,9 @@ describe('Runtime (e2e)', () => {
     await createEvent(themeId, 'listener', {
       triggerKind: 'device',
       triggerName: 'btn',
-      sequence: [entry({ type: 'sendMessage', deviceId, messageId, values: {} })],
+      sequence: [
+        entry({ type: 'sendMessage', deviceId, messageId, values: {} }),
+      ],
     });
     const chainerId = await createEvent(themeId, 'chainer', {
       sequence: [entry({ type: 'eval', code: 'ctx.trigger("btn")' })],
@@ -194,22 +224,37 @@ describe('Runtime (e2e)', () => {
 
   it('switchPhase awaits leave hooks, then fires enter hooks', async () => {
     const themeId = await createTheme();
-    const p1 = await createAsset(themeId, { kind: 'phase', name: 'P1', data: { order: 1 } });
-    const p2 = await createAsset(themeId, { kind: 'phase', name: 'P2', data: { order: 2 } });
+    const p1 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    const p2 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P2',
+      data: { order: 2 },
+    });
     await createEvent(themeId, 'on-leave-p1', {
       phaseId: p1,
       triggerKind: 'system',
       triggerName: 'phase:leave',
-      sequence: [entry({ type: 'eval', code: 'ctx.log("leaving P1 in " + ctx.phase)' })],
+      sequence: [
+        entry({ type: 'eval', code: 'ctx.log("leaving P1 in " + ctx.phase)' }),
+      ],
     });
     await createEvent(themeId, 'on-enter-p2', {
       phaseId: p2,
       triggerKind: 'system',
       triggerName: 'phase:enter',
-      sequence: [entry({ type: 'eval', code: 'ctx.log("entered P2 in " + ctx.phase)' })],
+      sequence: [
+        entry({ type: 'eval', code: 'ctx.log("entered P2 in " + ctx.phase)' }),
+      ],
     });
     const sessionId = await createSession(themeId);
-    expect((await auth(request(server()).get(`/api/sessions/${sessionId}`))).body.phaseId).toBe(p1);
+    expect(
+      (await auth(request(server()).get(`/api/sessions/${sessionId}`))).body
+        .phaseId,
+    ).toBe(p1);
 
     await post(`/api/sessions/${sessionId}/phase`, { phaseId: p2 });
     await waitFor(async () =>
@@ -225,7 +270,9 @@ describe('Runtime (e2e)', () => {
     expect(leaveIdx).toBeLessThan(switchIdx);
     expect(switchIdx).toBeLessThan(enterIdx);
 
-    const session = await auth(request(server()).get(`/api/sessions/${sessionId}`)).expect(200);
+    const session = await auth(
+      request(server()).get(`/api/sessions/${sessionId}`),
+    ).expect(200);
     expect(session.body.phaseId).toBe(p2);
   });
 
@@ -237,20 +284,32 @@ describe('Runtime (e2e)', () => {
       name: 'msg',
       data: { displayName: 'msg', fields: [] },
     });
-    const p1 = await createAsset(themeId, { kind: 'phase', name: 'P1', data: { order: 1 } });
-    const p2 = await createAsset(themeId, { kind: 'phase', name: 'P2', data: { order: 2 } });
+    const p1 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    const p2 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P2',
+      data: { order: 2 },
+    });
     void p1;
     await createEvent(themeId, 'p2-only', {
       phaseId: p2,
       triggerKind: 'device',
       triggerName: 'btn',
-      sequence: [entry({ type: 'sendMessage', deviceId, messageId, values: {} })],
+      sequence: [
+        entry({ type: 'sendMessage', deviceId, messageId, values: {} }),
+      ],
     });
     const sessionId = await createSession(themeId); // starts in P1
     runtime.handleDeviceTrigger(sessionId, deviceId, { event: 'btn' });
 
     await waitFor(async () =>
-      (await getLogs(sessionId)).some((l) => l.message.includes('out of phase')),
+      (await getLogs(sessionId)).some((l) =>
+        l.message.includes('out of phase'),
+      ),
     );
     expect(transport.ofType('message')).toHaveLength(0);
   });
@@ -264,13 +323,18 @@ describe('Runtime (e2e)', () => {
       data: { displayName: 'msg', fields: [] },
     });
     const calleeId = await createEvent(themeId, 'callee', {
-      sequence: [entry({ type: 'sendMessage', deviceId, messageId, values: {} })],
+      sequence: [
+        entry({ type: 'sendMessage', deviceId, messageId, values: {} }),
+      ],
     });
     const callerId = await createEvent(themeId, 'caller', {
       sequence: [entry({ type: 'callEvent', eventId: calleeId })],
     });
     // self-recursion; allowReentry so only the depth limit stops it
-    const bombId = await createEvent(themeId, 'bomb', { allowReentry: true, sequence: [] });
+    const bombId = await createEvent(themeId, 'bomb', {
+      allowReentry: true,
+      sequence: [],
+    });
     await auth(
       request(server())
         .patch(`/api/themes/${themeId}/assets/${bombId}`)
@@ -305,7 +369,11 @@ describe('Runtime (e2e)', () => {
     const playerId = await createAsset(themeId, {
       kind: 'player',
       name: 'main',
-      data: { speakerDeviceId: speakerId, screenDeviceId: speakerId, subtitleCss: '' },
+      data: {
+        speakerDeviceId: speakerId,
+        screenDeviceId: speakerId,
+        subtitleCss: '',
+      },
     });
     const videoId = await createAsset(themeId, {
       kind: 'video',
@@ -320,7 +388,12 @@ describe('Runtime (e2e)', () => {
     const eventId = await createEvent(themeId, 'video-then-message', {
       sequence: [
         entry({ type: 'playVideo', videoId, playerId, waitUntilEnd: true }),
-        entry({ type: 'sendMessage', deviceId: otherId, messageId, values: {} }),
+        entry({
+          type: 'sendMessage',
+          deviceId: otherId,
+          messageId,
+          values: {},
+        }),
       ],
     });
     const sessionId = await createSession(themeId);
@@ -335,10 +408,16 @@ describe('Runtime (e2e)', () => {
     await new Promise((r) => setTimeout(r, 150));
     expect(transport.ofType('message')).toHaveLength(0);
 
-    runtime.handleAck(sessionId, speakerId, { commandId: play.wire.id, status: 'done' });
+    runtime.handleAck(sessionId, speakerId, {
+      commandId: play.wire.id,
+      status: 'done',
+    });
     await waitFor(() => transport.ofType('message').length === 1);
     // duplicate ack is harmless
-    runtime.handleAck(sessionId, speakerId, { commandId: play.wire.id, status: 'done' });
+    runtime.handleAck(sessionId, speakerId, {
+      commandId: play.wire.id,
+      status: 'done',
+    });
 
     // offline device: logged, sequence continues immediately
     transport.offline.add(speakerId);
@@ -355,7 +434,11 @@ describe('Runtime (e2e)', () => {
     const playerId = await createAsset(themeId, {
       kind: 'player',
       name: 'split',
-      data: { speakerDeviceId: speakerId, screenDeviceId: screenId, subtitleCss: '.s{}' },
+      data: {
+        speakerDeviceId: speakerId,
+        screenDeviceId: screenId,
+        subtitleCss: '.s{}',
+      },
     });
     const dialogueId = await createAsset(themeId, {
       kind: 'dialogue',
@@ -363,21 +446,43 @@ describe('Runtime (e2e)', () => {
       data: {
         keepSubtitleAfterEnd: false,
         lines: [
-          { id: randomUUID(), fileKey: 'themes/test/l1.mp3', subtitleHtml: '<b>1</b>' },
-          { id: randomUUID(), fileKey: 'themes/test/l2.mp3', subtitleHtml: '<b>2</b>' },
+          {
+            id: randomUUID(),
+            fileKey: 'themes/test/l1.mp3',
+            subtitleHtml: '<b>1</b>',
+          },
+          {
+            id: randomUUID(),
+            fileKey: 'themes/test/l2.mp3',
+            subtitleHtml: '<b>2</b>',
+          },
         ],
       },
     });
     const eventId = await createEvent(themeId, 'talk', {
-      sequence: [entry({ type: 'playDialogue', dialogueId, playerId, waitUntilEnd: false })],
+      sequence: [
+        entry({
+          type: 'playDialogue',
+          dialogueId,
+          playerId,
+          waitUntilEnd: false,
+        }),
+      ],
     });
     const sessionId = await createSession(themeId);
     await post(`/api/sessions/${sessionId}/trigger`, { eventId });
 
     await waitFor(() => transport.ofType('play').length === 2);
-    const bySpeaker = transport.ofType('play').find((s) => s.deviceId === speakerId);
-    const byScreen = transport.ofType('play').find((s) => s.deviceId === screenId);
-    expect(bySpeaker?.wire).toMatchObject({ channel: 'dialogue', role: 'speaker' });
+    const bySpeaker = transport
+      .ofType('play')
+      .find((s) => s.deviceId === speakerId);
+    const byScreen = transport
+      .ofType('play')
+      .find((s) => s.deviceId === screenId);
+    expect(bySpeaker?.wire).toMatchObject({
+      channel: 'dialogue',
+      role: 'speaker',
+    });
     expect(byScreen?.wire).toMatchObject({
       channel: 'dialogue',
       role: 'screen',
@@ -397,12 +502,16 @@ describe('Runtime (e2e)', () => {
     await createEvent(themeId, 'on-expire', {
       triggerKind: 'system',
       triggerName: 'timer:expired',
-      sequence: [entry({ type: 'sendMessage', deviceId, messageId, values: {} })],
+      sequence: [
+        entry({ type: 'sendMessage', deviceId, messageId, values: {} }),
+      ],
     });
     const sessionId = await createSession(themeId);
 
     await waitFor(() => transport.ofType('message').length === 1, 3000);
-    const session = await auth(request(server()).get(`/api/sessions/${sessionId}`)).expect(200);
+    const session = await auth(
+      request(server()).get(`/api/sessions/${sessionId}`),
+    ).expect(200);
     expect(session.body.timerRemainingMs).toBe(0);
     expect(session.body.state).toBe('running');
 
@@ -416,7 +525,9 @@ describe('Runtime (e2e)', () => {
     });
     await post(`/api/sessions/${session2}/trigger`, { eventId: evalEventId });
     await waitFor(async () =>
-      (await getLogs(session2)).some((l) => l.message.includes('"setter" finished')),
+      (await getLogs(session2)).some((l) =>
+        l.message.includes('"setter" finished'),
+      ),
     );
 
     await app.close();
@@ -432,14 +543,18 @@ describe('Runtime (e2e)', () => {
     expect(recovered.body.state).toBe('running');
     expect(recovered.body.vars).toEqual({ answer: 42 });
     await waitFor(async () =>
-      (await getLogs(session2)).some((l) => l.message.includes('Runtime restarted')),
+      (await getLogs(session2)).some((l) =>
+        l.message.includes('Runtime restarted'),
+      ),
     );
 
     // the recovered engine still runs sequences
     await post(`/api/sessions/${session2}/trigger`, { eventId: evalEventId });
-    await waitFor(async () =>
-      (await getLogs(session2)).filter((l) => l.message.includes('"setter" finished'))
-        .length >= 2,
+    await waitFor(
+      async () =>
+        (await getLogs(session2)).filter((l) =>
+          l.message.includes('"setter" finished'),
+        ).length >= 2,
     );
   });
 });

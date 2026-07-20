@@ -75,6 +75,7 @@ enum SessionMode {
 }
 
 enum SessionState {
+  created
   running
   paused
   ended
@@ -91,11 +92,12 @@ model Session {
   themeId String
   theme   Theme        @relation(fields: [themeId], references: [id], onDelete: Cascade)
   mode    SessionMode
-  state   SessionState @default(running)
+  state   SessionState @default(created)
   // Asset id (kind = phase). No FK: asset deletion must not cascade into live sessions.
   phaseId String?
   vars    Json         @default("{}")
 
+  // Creation time until the session starts; updated to the actual start time.
   startedAt DateTime  @default(now())
   endedAt   DateTime?
   // Exactly one of these is set while a timer exists: timerEndsAt while
@@ -120,8 +122,8 @@ model SessionDeviceCode {
   session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   // Asset id (kind = device); no FK for the same reason as Session.phaseId.
   deviceId  String
-  // "tst_"-prefixed so it can never collide with a production Asset.code;
-  // globally unique so the /device handshake can look up by code alone.
+  // Operator-entered; globally unique so the /device handshake can look up by
+  // code alone. Rows are deleted when the session ends, freeing the codes.
   code      String  @unique
 
   @@unique([sessionId, deviceId])
