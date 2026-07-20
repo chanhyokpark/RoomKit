@@ -51,7 +51,20 @@ export interface RoomKitClientOptions {
   persistTestCode?: boolean;
   /** Storage override (defaults to localStorage; a no-op store in Node). */
   storage?: CodeStorage;
+  /**
+   * Keep retrying after fatal connect errors (invalid_code / session_ended)
+   * instead of stopping with status 'error'. This lets a device boot before
+   * its session or code exists (pre-boot) and rejoin after a session ends
+   * with a re-issued code. Stored test codes are still forgotten on every
+   * fatal error, so retries fall back to the configured deviceCode.
+   * Default false.
+   */
+  retryOnFatalError?: boolean;
+  /** Delay between fatal-error retries. Default 5000ms. */
+  fatalRetryDelayMs?: number;
 }
+
+const FATAL_RETRY_DELAY_MS = 5000;
 
 export interface RoomKitClientEvents extends Record<string, unknown[]> {
   welcome: [Welcome];
@@ -85,6 +98,7 @@ export class RoomKitClient {
   private readonly storageKey: string;
   private socket: Socket | null = null;
   private usedCode: string | null = null;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Delivery ids already dispatched (redeliveries are skipped). */
   private readonly seen = new Set<string>();
@@ -110,6 +124,7 @@ export class RoomKitClient {
 
   connect(): void {
     if (this.socket) return;
+    this.clearRetry();
     const stored =
       this.options.persistTestCode === false
         ? null
@@ -132,7 +147,17 @@ export class RoomKitClient {
         this.forgetTestCode();
         socket.disconnect();
         this.socket = null;
-        this.setStatus('error', err.message);
+        if (this.options.retryOnFatalError) {
+          // The code may simply not exist *yet* — poll with a fresh socket
+          // (and the configured code, now that any stored one is forgotten).
+          this.setStatus('connecting', err.message);
+          this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            this.connect();
+          }, this.options.fatalRetryDelayMs ?? FATAL_RETRY_DELAY_MS);
+        } else {
+          this.setStatus('error', err.message);
+        }
       } else {
         this.setStatus('connecting', err.message);
       }
@@ -183,6 +208,7 @@ export class RoomKitClient {
   }
 
   disconnect(): void {
+    this.clearRetry();
     this.socket?.disconnect();
     this.socket = null;
     this.setStatus('idle');
@@ -321,6 +347,13 @@ export class RoomKitClient {
     if (this.seenOrder.length > SEEN_COMMANDS_LIMIT) {
       const oldest = this.seenOrder.shift();
       if (oldest !== undefined) this.seen.delete(oldest);
+    }
+  }
+
+  private clearRetry(): void {
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
     }
   }
 

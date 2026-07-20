@@ -23,7 +23,14 @@ class ConnectionStore {
 
 	start(serverUrl: string, deviceCode: string, deviceName?: string): RoomKitClient {
 		this.stop();
-		const client = new RoomKitClient({ serverUrl, deviceCode, deviceName });
+		// retryOnFatalError: room devices boot before the session (or their
+		// test code) exists — keep polling instead of dying on invalid_code.
+		const client = new RoomKitClient({
+			serverUrl,
+			deviceCode,
+			deviceName,
+			retryOnFatalError: true
+		});
 		this.client = client;
 		client.on('status', (status, detail) => {
 			this.status = status;

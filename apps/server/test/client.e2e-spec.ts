@@ -306,6 +306,52 @@ describe('@roomkit/client (e2e)', () => {
     expect(progress.commandId).toBe(screenPlay!.id); // rewritten by the relay
   });
 
+  it('retryOnFatalError polls until the code exists (device pre-boot)', async () => {
+    const code = nextTestCode();
+    const storage = new MemoryStorage();
+    const rk = new RoomKitClient({
+      serverUrl: url,
+      deviceCode: code,
+      storage,
+      retryOnFatalError: true,
+      fatalRetryDelayMs: 150
+    });
+    clients.push(rk);
+    const statuses: string[] = [];
+    rk.on('status', (s) => statuses.push(s));
+    const welcomePromise = waitFor<Welcome>((res) => rk.on('welcome', res), 5000);
+    rk.connect();
+
+    // Let at least one invalid_code cycle pass: still polling, never 'error'.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(rk.status).toBe('connecting');
+    expect(statuses).not.toContain('error');
+
+    // The operator now creates the test session using that code.
+    const themeId = (
+      await post('/api/themes', { name: 'preboot e2e', timeLimitMs: null })
+    ).id as string;
+    const deviceId = (
+      await post(`/api/themes/${themeId}/assets`, {
+        kind: 'device',
+        name: 'preboot',
+        code: `pre-${randomUUID().slice(0, 8)}`,
+        data: { displayName: '프리부트' }
+      })
+    ).id as string;
+    const session = await post('/api/sessions', {
+      themeId,
+      mode: 'test',
+      deviceCodes: [{ deviceId, code }]
+    });
+    sessionIds.push(session.id as string);
+
+    const welcome = await welcomePromise;
+    expect(welcome.session.mode).toBe('test');
+    expect(welcome.device.id).toBe(deviceId);
+    expect(rk.status).toBe('connected');
+  });
+
   it('submits hint codes and requests steps via the hint API', async () => {
     const { screenCode, hintId } = await fixture();
     const rk = client(screenCode);

@@ -216,6 +216,7 @@ const manifest = await rk.fetchAssetManifest();
 ### Tauri client (apps/player)
 
 - Built on `@roomkit/client`. A **launcher** window opens on every start: server URL + a device list (label, device code, kiosk toggle), persisted to `config.json`. Each device opens as its own stage window (`device-<id>`), so several devices can run on one machine for testing
+- Stage windows connect with `retryOnFatalError`: an `invalid_code` / `session_ended` doesn't stop the client — it keeps polling (5s), so devices can be powered on **before** the session or their test code exists and attach on their own once the operator creates it
 - On connect, fetches `assets:manifest` and downloads the files to a local cache (fileKey-based refresh — upload keys are immutable, so presence = fresh). Cache miss streams the wire command's presigned URL and backfills in the background
 - Fullscreen kiosk lock per device (window-level: fullscreen, always-on-top, hidden cursor, close prevention, browser-shortcut suppression; escape chord Ctrl+Shift+Alt+F12). OS chords (Win key, Alt+Tab) cannot be blocked from an app — use Windows Assigned Access for a hard lock
 - Implements audio (dialogue/BGM/SFX mixed simultaneously), video, and subtitle overlay (applies the player's `subtitleCss`, renders subtitle HTML) directly
