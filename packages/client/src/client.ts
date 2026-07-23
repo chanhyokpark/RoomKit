@@ -19,6 +19,7 @@ import {
   type SessionState,
   type Welcome,
   type WireCommand,
+  type WireHintCode,
   type WireMessage,
   type WireNavigate,
   type WirePlayCommand,
@@ -46,7 +47,9 @@ export interface RoomKitClientOptions {
   deviceName?: string;
   /**
    * Store a test code after a successful test attach and prefer it on the
-   * next connect (auto-rejoin). Default true.
+   * next connect (auto-rejoin). Default true. The store is keyed per server
+   * origin — disable this (or scope `storage`) when several devices share
+   * one origin's localStorage, e.g. multiple player windows on one machine.
    */
   persistTestCode?: boolean;
   /** Storage override (defaults to localStorage; a no-op store in Node). */
@@ -72,10 +75,20 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    * Playback is up to the consumer: call `done()` when playback finishes
    * (that sends the ack the server may be waiting on). Calling it twice is
    * a no-op. Looping BGM should call `done()` on playback start.
+   *
+   * Placeholder (fileless) commands carry `url: null` and a `durationMs`:
+   * show a placeholder, simulate for that long, then call `done()` as usual
+   * (looping placeholder BGM still acks on start).
    */
   play: [WirePlayCommand, DoneFn];
   stop: [WireStop];
-  navigate: [string, WireNavigate];
+  /**
+   * Call `done()` once the website has actually changed (e.g. the iframe
+   * finished loading) — the server sequence waits on this ack before running
+   * the next command. A consumer that navigates the whole window away must
+   * call `done()` before changing location (the socket unloads with the page).
+   */
+  navigate: [string, WireNavigate, DoneFn];
   message: [Record<string, JsonValue>, WireMessage];
   reset: [WireReset];
   /** Dialogue line sync relayed from the speaker (screen role only). */
@@ -88,6 +101,8 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    */
   hint: [HintShow];
   hintError: [HintError];
+  /** Hint entry-code overlay: show (code set) or hide (code null). */
+  hintCode: [WireHintCode];
 }
 
 const SEEN_COMMANDS_LIMIT = 200;
@@ -316,10 +331,21 @@ export class RoomKitClient {
         this.ack(cmd.id, 'done');
         this.emitter.emit('stop', cmd as WireStop);
         break;
-      case 'navigate':
-        this.ack(cmd.id, 'done');
-        this.emitter.emit('navigate', (cmd as WireNavigate).url, cmd as WireNavigate);
+      case 'navigate': {
+        let acked = false;
+        const done: DoneFn = (status = 'done') => {
+          if (acked) return;
+          acked = true;
+          this.ack(cmd.id, status);
+        };
+        this.emitter.emit(
+          'navigate',
+          (cmd as WireNavigate).url,
+          cmd as WireNavigate,
+          done,
+        );
         break;
+      }
       case 'message':
         this.ack(cmd.id, 'done');
         this.emitter.emit('message', (cmd as WireMessage).payload, cmd as WireMessage);
@@ -327,6 +353,10 @@ export class RoomKitClient {
       case 'reset':
         this.ack(cmd.id, 'done');
         this.emitter.emit('reset', cmd as WireReset);
+        break;
+      case 'hintCode':
+        this.ack(cmd.id, 'done');
+        this.emitter.emit('hintCode', cmd as WireHintCode);
         break;
     }
   }

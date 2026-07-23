@@ -10,10 +10,14 @@ import {
   AdminAuthSchema,
   AdminEvents,
   type DeviceStatus,
+  type PlayerStatus,
   type SessionLogEntry,
+  type SessionNotification,
+  type SessionRuns,
   type SessionState,
 } from '@roomkit/shared';
 import type { Namespace, Socket } from 'socket.io';
+import { PlayerRegistry } from '../players/player-registry';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { ConnectionRegistry } from './connection-registry';
@@ -36,6 +40,7 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
     private readonly jwtService: JwtService,
     private readonly runtime: SessionRuntimeService,
     private readonly registry: ConnectionRegistry,
+    private readonly players: PlayerRegistry,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -59,6 +64,12 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
     const states = this.runtime.listSessionStates();
     for (const state of states) {
       socket.emit(AdminEvents.sessionState, state);
+    }
+    for (const runs of this.runtime.listSessionRuns()) {
+      socket.emit(AdminEvents.sessionRuns, runs);
+    }
+    for (const player of this.players.onlinePlayers()) {
+      socket.emit(AdminEvents.playerStatus, player);
     }
     const online = this.registry.onlineDevices();
     if (online.length > 0) {
@@ -88,5 +99,17 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
 
   broadcastDeviceStatus(status: DeviceStatus): void {
     this.server.to(ADMINS_ROOM).emit(AdminEvents.deviceStatus, status);
+  }
+
+  broadcastPlayerStatus(status: PlayerStatus): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.playerStatus, status);
+  }
+
+  broadcastSessionRuns(runs: SessionRuns): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.sessionRuns, runs);
+  }
+
+  broadcastNotification(notification: SessionNotification): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.notification, notification);
   }
 }

@@ -3,7 +3,7 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import { toast } from 'svelte-sonner';
-	import { ApiError } from '$lib/api/client';
+	import { toastApiError } from '$lib/api/client';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -41,7 +41,7 @@
 			data.select(session.id);
 			toast.success('프로덕션 세션을 만들었습니다. 대시보드에서 시작하세요.');
 		} catch (err) {
-			toast.error(err instanceof ApiError ? err.message : '세션 생성에 실패했습니다.');
+			toastApiError(err, '세션 생성에 실패했습니다.');
 		} finally {
 			creatingProduction = false;
 		}
@@ -55,7 +55,7 @@
 			await data.forgetSession(sessionId);
 			toast.success('세션을 삭제했습니다.');
 		} catch (err) {
-			toast.error(err instanceof ApiError ? err.message : '세션 삭제에 실패했습니다.');
+			toastApiError(err, '세션 삭제에 실패했습니다.');
 		} finally {
 			deleting = false;
 		}
@@ -117,7 +117,7 @@
 					<Button
 						variant="ghost"
 						size="icon"
-						class="absolute top-1.5 right-1.5 size-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+						class="absolute top-1.5 right-1.5 size-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
 						aria-label="세션 삭제"
 						onclick={() => (deleteTarget = session)}
 					>

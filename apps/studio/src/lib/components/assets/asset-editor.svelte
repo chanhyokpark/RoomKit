@@ -3,6 +3,7 @@
 	import {
 		CODED_ASSET_KINDS,
 		CreateAssetInputSchema,
+		PLACEHOLDER_DURATION_DEFAULTS,
 		type Asset,
 		type JsonValue,
 		type Tag,
@@ -71,12 +72,24 @@
 					return {
 						kind: 'device',
 						displayName: asset.data.displayName,
-						isHintDevice: asset.data.isHintDevice
+						isHintDevice: asset.data.isHintDevice,
+						hintCodeCss: asset.data.hintCodeCss
 					};
 				case 'bgm':
+					return {
+						kind: 'bgm',
+						fileKey: asset.data.fileKey,
+						durationMs: asset.data.durationMs,
+						fadeInMs: asset.data.fadeInMs,
+						fadeOutMs: asset.data.fadeOutMs
+					};
 				case 'sfx':
 				case 'video':
-					return { kind: asset.kind, fileKey: asset.data.fileKey };
+					return {
+						kind: asset.kind,
+						fileKey: asset.data.fileKey,
+						durationMs: asset.data.durationMs
+					};
 				case 'dialogue':
 					return {
 						kind: 'dialogue',
@@ -88,7 +101,9 @@
 				case 'player':
 					return { kind: 'player', ...asset.data };
 				case 'website':
-					return { kind: 'website', url: asset.data.url };
+					return asset.data.mode === 'hosted'
+						? { kind: 'website', mode: 'hosted', url: '', sitePrefix: asset.data.sitePrefix }
+						: { kind: 'website', mode: 'external', url: asset.data.url, sitePrefix: null };
 				case 'message':
 					return {
 						kind: 'message',
@@ -111,11 +126,22 @@
 		}
 		switch (state.kind) {
 			case 'device':
-				return { kind: 'device', displayName: '', isHintDevice: false };
+				return { kind: 'device', displayName: '', isHintDevice: false, hintCodeCss: '' };
 			case 'bgm':
+				return {
+					kind: 'bgm',
+					fileKey: null,
+					durationMs: PLACEHOLDER_DURATION_DEFAULTS.bgm,
+					fadeInMs: 0,
+					fadeOutMs: 0
+				};
 			case 'sfx':
 			case 'video':
-				return { kind: state.kind, fileKey: null };
+				return {
+					kind: state.kind,
+					fileKey: null,
+					durationMs: PLACEHOLDER_DURATION_DEFAULTS[state.kind]
+				};
 			case 'dialogue':
 				return { kind: 'dialogue', keepSubtitleAfterEnd: false, lines: [] };
 			case 'hint':
@@ -123,7 +149,7 @@
 			case 'player':
 				return { kind: 'player', speakerDeviceId: '', screenDeviceId: '', subtitleCss: '' };
 			case 'website':
-				return { kind: 'website', url: '' };
+				return { kind: 'website', mode: 'external', url: '', sitePrefix: null };
 			case 'message':
 				return { kind: 'message', displayName: '', fields: [] };
 			case 'phase':
@@ -141,24 +167,41 @@
 		}
 	}
 
+	function isValidDuration(durationMs: number): boolean {
+		return Number.isInteger(durationMs) && durationMs > 0;
+	}
+
 	function validate(): string | null {
 		if (!name.trim()) return '이름을 입력해 주세요.';
 		switch (draft.kind) {
 			case 'device':
 				return code.trim() ? null : '장치 코드를 입력해 주세요.';
 			case 'bgm':
+				if (!draft.fileKey && !isValidDuration(draft.durationMs))
+					return '재생 시간(ms)은 양의 정수여야 합니다.';
+				return [draft.fadeInMs, draft.fadeOutMs].every(
+					(ms) => Number.isInteger(ms) && ms >= 0
+				)
+					? null
+					: '페이드(ms)는 0 이상의 정수여야 합니다.';
 			case 'sfx':
 			case 'video':
-				return draft.fileKey ? null : '파일을 업로드해 주세요.';
-			case 'dialogue':
-				return draft.lines.every((line) => line.fileKey)
+				// No file = placeholder asset; only the simulated duration must be valid.
+				return draft.fileKey || isValidDuration(draft.durationMs)
 					? null
-					: '모든 라인에 음성 파일을 업로드해 주세요.';
+					: '재생 시간(ms)은 양의 정수여야 합니다.';
+			case 'dialogue':
+				return draft.lines.every((line) => line.fileKey || isValidDuration(line.durationMs))
+					? null
+					: '파일 없는 라인의 재생 시간(ms)은 양의 정수여야 합니다.';
 			case 'player':
 				return draft.speakerDeviceId && draft.screenDeviceId
 					? null
 					: '스피커 장치와 스크린 장치를 선택해 주세요.';
 			case 'website':
+				if (draft.mode === 'hosted') {
+					return draft.sitePrefix ? null : 'ZIP 파일을 업로드해 주세요.';
+				}
 				try {
 					new URL(draft.url);
 					return null;
@@ -192,17 +235,28 @@
 	function buildData(): JsonValue {
 		switch (draft.kind) {
 			case 'device':
-				return { displayName: draft.displayName, isHintDevice: draft.isHintDevice };
+				return {
+					displayName: draft.displayName,
+					isHintDevice: draft.isHintDevice,
+					hintCodeCss: draft.hintCodeCss
+				};
 			case 'bgm':
+				return {
+					fileKey: draft.fileKey,
+					durationMs: draft.durationMs,
+					fadeInMs: draft.fadeInMs,
+					fadeOutMs: draft.fadeOutMs
+				};
 			case 'sfx':
 			case 'video':
-				return { fileKey: draft.fileKey ?? '' };
+				return { fileKey: draft.fileKey, durationMs: draft.durationMs };
 			case 'dialogue':
 				return {
 					keepSubtitleAfterEnd: draft.keepSubtitleAfterEnd,
 					lines: draft.lines.map((line) => ({
 						id: line.id,
-						fileKey: line.fileKey ?? '',
+						fileKey: line.fileKey,
+						durationMs: line.durationMs,
 						subtitleHtml: line.subtitleHtml
 					}))
 				};
@@ -215,7 +269,9 @@
 					subtitleCss: draft.subtitleCss
 				};
 			case 'website':
-				return { url: draft.url };
+				return draft.mode === 'hosted'
+					? { mode: 'hosted', sitePrefix: draft.sitePrefix ?? '' }
+					: { mode: 'external', url: draft.url };
 			case 'message':
 				return {
 					displayName: draft.displayName,
@@ -314,11 +370,37 @@
 			<TagPicker {tags} bind:tagIds />
 		</Field.Field>
 		{#if draft.kind === 'device'}
-			<DeviceForm bind:displayName={draft.displayName} bind:isHintDevice={draft.isHintDevice} />
-		{:else if draft.kind === 'bgm' || draft.kind === 'sfx'}
-			<FileAssetForm {themeId} bind:fileKey={draft.fileKey} accept="audio/*" media="audio" />
+			<DeviceForm
+				bind:displayName={draft.displayName}
+				bind:isHintDevice={draft.isHintDevice}
+				bind:hintCodeCss={draft.hintCodeCss}
+			/>
+		{:else if draft.kind === 'bgm'}
+			<FileAssetForm
+				{themeId}
+				bind:fileKey={draft.fileKey}
+				bind:durationMs={draft.durationMs}
+				bind:fadeInMs={draft.fadeInMs}
+				bind:fadeOutMs={draft.fadeOutMs}
+				accept="audio/*"
+				media="audio"
+			/>
+		{:else if draft.kind === 'sfx'}
+			<FileAssetForm
+				{themeId}
+				bind:fileKey={draft.fileKey}
+				bind:durationMs={draft.durationMs}
+				accept="audio/*"
+				media="audio"
+			/>
 		{:else if draft.kind === 'video'}
-			<FileAssetForm {themeId} bind:fileKey={draft.fileKey} accept="video/*" media="video" />
+			<FileAssetForm
+				{themeId}
+				bind:fileKey={draft.fileKey}
+				bind:durationMs={draft.durationMs}
+				accept="video/*"
+				media="video"
+			/>
 		{:else if draft.kind === 'dialogue'}
 			<DialogueForm
 				{themeId}
@@ -335,7 +417,13 @@
 				bind:subtitleCss={draft.subtitleCss}
 			/>
 		{:else if draft.kind === 'website'}
-			<WebsiteForm bind:url={draft.url} />
+			<WebsiteForm
+				{themeId}
+				assetId={editing.mode === 'edit' ? editing.asset.id : null}
+				bind:mode={draft.mode}
+				bind:url={draft.url}
+				bind:sitePrefix={draft.sitePrefix}
+			/>
 		{:else if draft.kind === 'message'}
 			<MessageForm bind:displayName={draft.displayName} bind:fields={draft.fields} />
 		{:else if draft.kind === 'phase'}

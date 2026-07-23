@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { config } from '../stores/config.svelte';
+	import { player } from '../stores/player.svelte';
 	import { openDeviceWindow } from '../windows';
 
 	// Settings persist to disk but the launcher still opens on every start —
@@ -9,6 +11,27 @@
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => void config.save(), 300);
 	}
+
+	/** Server URL / player name edits also re-register on the server. */
+	function persistAndReconnect() {
+		persist();
+		player.reconnectSoon();
+	}
+
+	// The launcher registers itself so studio can target this player for
+	// auto-started test sessions.
+	onMount(() => {
+		player.connect();
+		return () => player.disconnect();
+	});
+
+	const statusLabel = $derived(
+		player.status === 'connected'
+			? '서버에 연결됨'
+			: player.status === 'connecting'
+				? '연결 중…'
+				: '오프라인'
+	);
 
 	function openAll() {
 		for (const device of config.devices) {
@@ -32,9 +55,40 @@
 			type="url"
 			placeholder="http://localhost:3000"
 			bind:value={config.serverUrl}
-			oninput={persist}
+			oninput={persistAndReconnect}
 		/>
 	</label>
+
+	<label class="flex flex-col gap-1.5">
+		<span class="flex items-center justify-between text-sm font-medium text-neutral-300">
+			플레이어 이름
+			<span class="flex items-center gap-1.5 text-xs font-normal text-neutral-400">
+				<span
+					class="h-2 w-2 rounded-full {player.status === 'connected'
+						? 'bg-emerald-400'
+						: player.status === 'connecting'
+							? 'bg-amber-400'
+							: 'bg-neutral-600'}"
+				></span>
+				{statusLabel}
+			</span>
+		</span>
+		<input
+			class="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-neutral-400"
+			bind:value={config.playerName}
+			oninput={persistAndReconnect}
+		/>
+		<span class="text-xs text-neutral-500">
+			스튜디오에서 이 이름으로 플레이어를 선택해 테스트 세션을 시작하면 디바이스 창이 자동으로
+			열립니다.
+		</span>
+	</label>
+
+	{#if player.lastTestStart}
+		<p class="rounded-md border border-emerald-900 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-300">
+			테스트 세션이 시작되어 디바이스 창 {player.lastTestStart.devices.length}개를 열었습니다.
+		</p>
+	{/if}
 
 	<section class="flex flex-col gap-3">
 		<div class="flex items-center justify-between">

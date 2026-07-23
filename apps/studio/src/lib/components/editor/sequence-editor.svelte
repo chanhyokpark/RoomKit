@@ -21,6 +21,7 @@
 	import CommandRow from './command-row.svelte';
 	import { COMMAND_META } from './commands/registry';
 	import { useEditorData, type EventAsset } from './editor-data.svelte';
+	import { triggerNameLabel } from '$lib/system-triggers';
 
 	let { event, oneditmeta }: { event: EventAsset; oneditmeta: () => void } = $props();
 
@@ -42,7 +43,7 @@
 	};
 	const triggerSummary = $derived(
 		event.data.triggerName
-			? `${TRIGGER_LABELS[event.data.triggerKind]} · ${event.data.triggerName}`
+			? `${TRIGGER_LABELS[event.data.triggerKind]} · ${triggerNameLabel(event.data.triggerName)}`
 			: TRIGGER_LABELS[event.data.triggerKind]
 	);
 

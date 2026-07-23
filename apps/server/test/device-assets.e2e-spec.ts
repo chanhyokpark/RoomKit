@@ -244,7 +244,10 @@ describe('Device asset manifest (e2e)', () => {
   it('serves lobby-parked production devices (pre-start downloads)', async () => {
     // Fresh theme, production device code, no session at all.
     const themeId = (
-      await post('/api/themes', { name: 'manifest lobby e2e', timeLimitMs: null })
+      await post('/api/themes', {
+        name: 'manifest lobby e2e',
+        timeLimitMs: null,
+      })
     ).id as string;
     const code = `lobby-${Math.random().toString(36).slice(2, 10)}`;
     const deviceId = await createAsset(themeId, {

@@ -103,25 +103,33 @@
 						<Table.Cell colspan={hasCode ? 6 : 5} class="py-2">
 							<ul class="flex flex-col gap-1">
 								{#each asset.data.lines as line, index (line.id)}
+									{@const lineKey = line.fileKey}
 									<li class="flex items-center gap-2">
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											onclick={() => void playback.toggle(line.fileKey)}
-										>
-											{#if playback.playingKey === line.fileKey}
-												<SquareIcon />
-												<span class="sr-only">정지</span>
-											{:else}
-												<PlayIcon />
-												<span class="sr-only">라인 {index + 1} 재생</span>
-											{/if}
-										</Button>
+										{#if lineKey !== null}
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												onclick={() => void playback.toggle(lineKey)}
+											>
+												{#if playback.playingKey === lineKey}
+													<SquareIcon />
+													<span class="sr-only">정지</span>
+												{:else}
+													<PlayIcon />
+													<span class="sr-only">라인 {index + 1} 재생</span>
+												{/if}
+											</Button>
+										{:else}
+											<span class="size-7 shrink-0"></span>
+										{/if}
 										<span class="w-6 shrink-0 text-xs text-muted-foreground tabular-nums">
 											{index + 1}
 										</span>
 										<span class="truncate text-sm text-muted-foreground">
-											{stripHtml(line.subtitleHtml) || line.fileKey.split('/').at(-1)}
+											{stripHtml(line.subtitleHtml) ||
+												(lineKey === null
+													? `플레이스홀더 (${line.durationMs / 1000}s)`
+													: lineKey.split('/').at(-1))}
 										</span>
 									</li>
 								{/each}

@@ -7,6 +7,7 @@
 	import { deleteAsset } from '$lib/api/assets';
 	import { useEditorData, type EventAsset } from './editor-data.svelte';
 	import EventCard from './event-card.svelte';
+	import { toastApiError } from '$lib/api/client';
 
 	let {
 		phaseId,
@@ -49,8 +50,8 @@
 			deleteTarget = null;
 			toast.success('이벤트를 삭제했습니다.');
 			await editorData.refresh();
-		} catch {
-			toast.error('이벤트 삭제에 실패했습니다.');
+		} catch (error) {
+			toastApiError(error, '이벤트 삭제에 실패했습니다.');
 		} finally {
 			deleting = false;
 		}

@@ -1,7 +1,17 @@
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
+
+// Last-resort safety net: availability during a live game beats fail-fast.
+const processLogger = new Logger('process');
+process.on('unhandledRejection', (reason) => {
+  processLogger.error(`Unhandled rejection: ${String(reason)}`);
+});
+process.on('uncaughtException', (err) => {
+  processLogger.error(`Uncaught exception: ${err.stack ?? String(err)}`);
+});
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);

@@ -17,6 +17,7 @@ import type {
   HintSubmit,
   PlaybackProgress,
   PushHintInput,
+  SessionRuns,
   SessionState,
   Trigger,
 } from '@roomkit/shared';
@@ -101,6 +102,8 @@ export class SessionRuntimeService
   async end(sessionId: string): Promise<void> {
     const engine = this.engines.get(sessionId);
     if (!engine) return; // already ended (or never live) — idempotent
+    // engine.end() invokes onEnded, which removes the registry entry; the
+    // extra delete only covers the no-op path of an already-ended engine.
     await engine.end();
     this.engines.delete(sessionId);
   }
@@ -117,6 +120,12 @@ export class SessionRuntimeService
   async switchPhase(sessionId: string, phaseId: string): Promise<void> {
     const engine = this.getEngine(sessionId);
     await this.wrapAsync(() => engine.forceSwitchPhase(phaseId));
+    await engine.flush();
+  }
+
+  async restartPhase(sessionId: string): Promise<void> {
+    const engine = this.getEngine(sessionId);
+    await this.wrapAsync(() => engine.restartCurrentPhase());
     await engine.flush();
   }
 
@@ -207,6 +216,11 @@ export class SessionRuntimeService
     return [...this.engines.values()].map((e) => e.sessionState());
   }
 
+  /** All live sessions' running events — the /admin connect dump. */
+  listSessionRuns(): SessionRuns[] {
+    return [...this.engines.values()].map((e) => e.sessionRuns());
+  }
+
   isLive(sessionId: string): boolean {
     return this.engines.has(sessionId);
   }
@@ -218,6 +232,21 @@ export class SessionRuntimeService
       resolver: this.resolver,
       hints: this.hints,
       transport: () => this.transport,
+      onEnded: async (sessionId) => {
+        this.engines.delete(sessionId);
+        try {
+          await this.prisma.sessionDeviceCode.deleteMany({
+            where: { sessionId },
+          });
+        } catch (err) {
+          // SessionsService.end() retries this on the REST path; don't let a
+          // cleanup failure turn a finished end() into an error.
+          this.logger.error(
+            `Failed to free device codes for session ${sessionId}`,
+            err instanceof Error ? err.stack : String(err),
+          );
+        }
+      },
     });
   }
 

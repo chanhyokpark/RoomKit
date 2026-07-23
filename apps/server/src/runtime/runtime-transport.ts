@@ -2,6 +2,8 @@ import type {
   DeviceStatus,
   HintShow,
   PlaybackProgress,
+  SessionNotification,
+  SessionRuns,
   SessionState,
   SessionLogEntry,
   WireCommand,
@@ -33,6 +35,10 @@ export interface RuntimeTransport {
   broadcastLog(entry: SessionLogEntry): void;
   /** Broadcast to /admin. */
   broadcastDeviceStatus(status: DeviceStatus): void;
+  /** Broadcast to /admin. */
+  broadcastSessionRuns(runs: SessionRuns): void;
+  /** Broadcast to /admin. */
+  broadcastNotification(notification: SessionNotification): void;
 }
 
 /** Used until the gateway registers the real transport (and in unit tests). */
@@ -43,4 +49,6 @@ export const NOOP_TRANSPORT: RuntimeTransport = {
   broadcastSessionState: () => {},
   broadcastLog: () => {},
   broadcastDeviceStatus: () => {},
+  broadcastSessionRuns: () => {},
+  broadcastNotification: () => {},
 };

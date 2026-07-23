@@ -1,12 +1,14 @@
 import type { DoneFn } from '@roomkit/client';
-import type { PlaybackProgress, WirePlayDialogue } from '@roomkit/shared';
+import type { PlaybackProgress, WireDialogueLine, WirePlayDialogue } from '@roomkit/shared';
 import { stage } from '../stores/stage.svelte';
 import { resolveSrc } from './resolve';
+import { simulate } from './simulate';
 
 interface ActiveDialogue {
 	cmd: WirePlayDialogue;
 	done: DoneFn;
 	audio: HTMLAudioElement | null;
+	cancelSimulation: (() => void) | null;
 	aborted: boolean;
 }
 
@@ -20,6 +22,10 @@ interface ActiveDialogue {
  * - screen: ack immediately (the server waits on the speaker), render the
  *   relayed line's subtitle; `lineIndex >= lines.length` is the end sentinel.
  * - 'both' renders its own subtitles locally and ignores the relay.
+ *
+ * Placeholder lines (url null) simulate for durationMs; subtitles and the
+ * progress relay behave exactly as with real files. A chip is shown while a
+ * dialogue containing placeholder lines runs on the speaker.
  */
 export class DialogueChannel {
 	private readonly active = new Map<string, ActiveDialogue>();
@@ -28,7 +34,13 @@ export class DialogueChannel {
 
 	play(cmd: WirePlayDialogue, done: DoneFn): void {
 		this.stop(cmd.playerId);
-		const entry: ActiveDialogue = { cmd, done, audio: null, aborted: false };
+		const entry: ActiveDialogue = {
+			cmd,
+			done,
+			audio: null,
+			cancelSimulation: null,
+			aborted: false
+		};
 		this.active.set(cmd.playerId, entry);
 		if (cmd.role === 'screen') {
 			done();
@@ -39,6 +51,9 @@ export class DialogueChannel {
 			kind: 'dialogue',
 			skip: () => this.endSpeaker(entry, 'done')
 		});
+		if (cmd.lines.some((line) => line.url === null)) {
+			stage.addPlaceholder({ id: cmd.id, channel: 'dialogue', name: cmd.assetName });
+		}
 		void this.runSpeaker(entry);
 	}
 
@@ -75,8 +90,7 @@ export class DialogueChannel {
 			if (entry.aborted) return;
 			this.reportProgress(cmd.id, i);
 			if (cmd.role === 'both') this.showLine(cmd, i);
-			const line = cmd.lines[i];
-			const ok = await this.playLine(entry, resolveSrc(line.fileKey, line.url));
+			const ok = await this.playLine(entry, cmd.lines[i]);
 			if (!ok) failures++;
 		}
 		if (entry.aborted) return;
@@ -84,9 +98,21 @@ export class DialogueChannel {
 		this.endSpeaker(entry, allFailed ? 'failed' : 'done');
 	}
 
-	private playLine(entry: ActiveDialogue, src: string): Promise<boolean> {
+	private playLine(entry: ActiveDialogue, line: WireDialogueLine): Promise<boolean> {
+		if (line.url === null || line.fileKey === null) {
+			// A teardown mid-line cancels the timer; the promise then never settles,
+			// which is fine — runSpeaker is abandoned exactly like the audio path
+			// whose 'ended' event never fires after teardown.
+			return new Promise((resolve) => {
+				entry.cancelSimulation = simulate(line.durationMs ?? 0, () => {
+					entry.cancelSimulation = null;
+					resolve(true);
+				});
+			});
+		}
+		const { fileKey, url } = line;
 		return new Promise((resolve) => {
-			const audio = new Audio(src);
+			const audio = new Audio(resolveSrc(fileKey, url));
 			entry.audio = audio;
 			audio.addEventListener('ended', () => resolve(true));
 			audio.addEventListener('error', () => resolve(false));
@@ -117,12 +143,15 @@ export class DialogueChannel {
 
 	private teardown(entry: ActiveDialogue): void {
 		entry.aborted = true;
+		entry.cancelSimulation?.();
+		entry.cancelSimulation = null;
 		if (entry.audio) {
 			entry.audio.pause();
 			entry.audio.removeAttribute('src');
 			entry.audio = null;
 		}
 		stage.removeSkippable(entry.cmd.id);
+		stage.removePlaceholder(entry.cmd.id);
 		if (this.active.get(entry.cmd.playerId) === entry) {
 			this.active.delete(entry.cmd.playerId);
 		}

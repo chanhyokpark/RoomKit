@@ -1,7 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
-import type { PlaybackProgress, WireCommand } from '@roomkit/shared';
+import type {
+  PlaybackProgress,
+  SessionNotification,
+  SessionRuns,
+  WireCommand,
+} from '@roomkit/shared';
 import { SessionRuntimeService } from '../src/runtime/session-runtime.service';
 import type { RuntimeTransport } from '../src/runtime/runtime-transport';
 import { createTestApp, login } from './helpers';
@@ -16,6 +21,8 @@ interface Sent {
 class FakeTransport implements RuntimeTransport {
   sent: Sent[] = [];
   progress: { deviceId: string; progress: PlaybackProgress }[] = [];
+  runs: SessionRuns[] = [];
+  notifications: SessionNotification[] = [];
   offline = new Set<string>();
 
   sendCommand(sessionId: string, deviceId: string, wire: WireCommand): boolean {
@@ -36,6 +43,12 @@ class FakeTransport implements RuntimeTransport {
   broadcastSessionState(): void {}
   broadcastLog(): void {}
   broadcastDeviceStatus(): void {}
+  broadcastSessionRuns(runs: SessionRuns): void {
+    this.runs.push(runs);
+  }
+  broadcastNotification(notification: SessionNotification): void {
+    this.notifications.push(notification);
+  }
 
   ofType(type: WireCommand['type']): Sent[] {
     return this.sent.filter((s) => s.wire.type === type);
@@ -205,6 +218,35 @@ describe('Runtime (e2e)', () => {
     expect(transport.ofType('message')).toHaveLength(0);
   });
 
+  it('notify broadcasts to admins and logs; empty message is skipped', async () => {
+    const themeId = await createTheme();
+    const eventId = await createEvent(themeId, 'notifier', {
+      sequence: [
+        entry({ type: 'notify', message: '  ' }),
+        entry({ type: 'notify', message: 'check the door lock' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(() => transport.notifications.length > 0);
+    expect(transport.notifications).toEqual([
+      { sessionId, message: 'check the door lock' },
+    ]);
+    // Log writes are async — poll until both entries land.
+    await waitFor(async () => {
+      const logs = await getLogs(sessionId);
+      return (
+        logs.some((l) =>
+          l.message.includes('notify skipped: message not set'),
+        ) &&
+        logs.some((l) =>
+          l.message.includes('Operator notification: check the door lock'),
+        )
+      );
+    });
+  });
+
   it('ctx.trigger fires a device-trigger event', async () => {
     const themeId = await createTheme();
     const deviceId = await createDevice(themeId, 'dev');
@@ -281,6 +323,136 @@ describe('Runtime (e2e)', () => {
       request(server()).get(`/api/sessions/${sessionId}`),
     ).expect(200);
     expect(session.body.phaseId).toBe(p2);
+  });
+
+  it('fires phase:enter for the initial phase on session start', async () => {
+    const themeId = await createTheme();
+    const p1 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    await createEvent(themeId, 'on-enter-p1', {
+      phaseId: p1,
+      triggerKind: 'system',
+      triggerName: 'phase:enter',
+      sequence: [
+        entry({ type: 'eval', code: 'ctx.log("entered " + ctx.phase)' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) => l.message === 'entered P1'),
+    );
+  });
+
+  it('restarting the current phase re-fires its leave and enter hooks', async () => {
+    const themeId = await createTheme();
+    const p1 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    await createEvent(themeId, 'on-enter-p1', {
+      phaseId: p1,
+      triggerKind: 'system',
+      triggerName: 'phase:enter',
+      sequence: [entry({ type: 'eval', code: 'ctx.log("enter hook")' })],
+    });
+    await createEvent(themeId, 'on-leave-p1', {
+      phaseId: p1,
+      triggerKind: 'system',
+      triggerName: 'phase:leave',
+      sequence: [entry({ type: 'eval', code: 'ctx.log("leave hook")' })],
+    });
+    const sessionId = await createSession(themeId);
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) => l.message === 'enter hook'),
+    );
+
+    await post(`/api/sessions/${sessionId}/phase/restart`);
+    await waitFor(async () => {
+      const logs = await getLogs(sessionId);
+      return (
+        logs.some((l) => l.message === 'leave hook') &&
+        logs.filter((l) => l.message === 'enter hook').length === 2
+      );
+    });
+    const logs = await getLogs(sessionId);
+    const leaveIdx = logs.findIndex((l) => l.message === 'leave hook');
+    const restartIdx = logs.findIndex((l) => l.message.includes('restarted'));
+    expect(leaveIdx).toBeGreaterThanOrEqual(0);
+    expect(leaveIdx).toBeLessThan(restartIdx);
+    // The session never left the phase.
+    const session = await auth(
+      request(server()).get(`/api/sessions/${sessionId}`),
+    ).expect(200);
+    expect(session.body.phaseId).toBe(p1);
+  });
+
+  it('endTheme resets all devices, records the verdict, and ends the session', async () => {
+    const themeId = await createTheme();
+    await createDevice(themeId, 'dev-a');
+    await createDevice(themeId, 'dev-b');
+    const eventId = await createEvent(themeId, 'game-over', {
+      sequence: [
+        entry({ type: 'endTheme', verdict: 'fail' }),
+        // Must never run: the sequence stops at endTheme.
+        entry({ type: 'eval', code: 'ctx.log("after endTheme")' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    expect(
+      (await auth(request(server()).get(`/api/sessions/${sessionId}`))).body
+        .verdict,
+    ).toBeNull();
+
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+    await waitFor(() => transport.ofType('reset').length === 2);
+    await waitFor(async () => {
+      const { body } = await auth(
+        request(server()).get(`/api/sessions/${sessionId}`),
+      );
+      return body.verdict === 'fail' && body.state === 'ended';
+    });
+    const logs = await getLogs(sessionId);
+    expect(logs.some((l) => l.message.includes('verdict "fail"'))).toBe(true);
+    expect(logs.some((l) => l.message === 'Session ended')).toBe(true);
+    expect(logs.some((l) => l.message.includes('after endTheme'))).toBe(false);
+  });
+
+  it('broadcasts running events while a sequence executes', async () => {
+    const themeId = await createTheme();
+    const eventId = await createEvent(themeId, 'slow-event', {
+      sequence: [
+        entry({ type: 'wait', durationMs: 100 }),
+        entry({ type: 'eval', code: 'true' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    // Mid-run snapshot: the event shows up with its current entry.
+    await waitFor(() =>
+      transport.runs.some(
+        (r) =>
+          r.sessionId === sessionId &&
+          r.runs.some(
+            (run) =>
+              run.eventName === 'slow-event' &&
+              run.commandType === 'wait' &&
+              run.entryCount === 2,
+          ),
+      ),
+    );
+    // Final snapshot: the run disappears when the sequence finishes.
+    await waitFor(() => {
+      const last = transport.runs
+        .filter((r) => r.sessionId === sessionId)
+        .at(-1);
+      return last !== undefined && last.runs.length === 0;
+    });
   });
 
   it('enforces the phase guard for device triggers', async () => {
@@ -369,6 +541,246 @@ describe('Runtime (e2e)', () => {
     );
   });
 
+  it('callEvent default is fire-and-forget; waitUntilFinish blocks', async () => {
+    const themeId = await createTheme();
+    const calleeId = await createEvent(themeId, 'slow-callee', {
+      allowReentry: true,
+      sequence: [
+        entry({ type: 'wait', durationMs: 200 }),
+        entry({ type: 'notify', message: 'callee done' }),
+      ],
+    });
+    const forkId = await createEvent(themeId, 'fork', {
+      sequence: [
+        entry({ type: 'callEvent', eventId: calleeId }), // default: no wait
+        entry({ type: 'notify', message: 'after fork' }),
+      ],
+    });
+    const joinId = await createEvent(themeId, 'join', {
+      sequence: [
+        entry({ type: 'callEvent', eventId: calleeId, waitUntilFinish: true }),
+        entry({ type: 'notify', message: 'after join' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId: forkId });
+    await waitFor(() => transport.notifications.length === 2);
+    expect(transport.notifications.map((n) => n.message)).toEqual([
+      'after fork',
+      'callee done',
+    ]);
+
+    transport.notifications = [];
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId: joinId });
+    await waitFor(() => transport.notifications.length === 2);
+    expect(transport.notifications.map((n) => n.message)).toEqual([
+      'callee done',
+      'after join',
+    ]);
+  });
+
+  it('stop commands with allPlayers fan out per channel with playerId null', async () => {
+    const themeId = await createTheme();
+    const speakerA = await createDevice(themeId, 'speakerA');
+    const screenA = await createDevice(themeId, 'screenA');
+    const bothB = await createDevice(themeId, 'bothB');
+    await createAsset(themeId, {
+      kind: 'player',
+      name: 'A',
+      data: {
+        speakerDeviceId: speakerA,
+        screenDeviceId: screenA,
+        subtitleCss: '',
+      },
+    });
+    await createAsset(themeId, {
+      kind: 'player',
+      name: 'B',
+      data: { speakerDeviceId: bothB, screenDeviceId: bothB, subtitleCss: '' },
+    });
+    const eventId = await createEvent(themeId, 'stop-everything', {
+      sequence: [
+        entry({ type: 'stopBgm', playerId: null, allPlayers: true }),
+        entry({ type: 'stopVideo', playerId: null, allPlayers: true }),
+        entry({ type: 'stopDialogue', playerId: null, allPlayers: true }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    // bgm: 2 speakers, video: 2 screens, dialogue: 3 distinct devices
+    await waitFor(() => transport.ofType('stop').length === 7);
+    const stops = transport.ofType('stop').map((s) => ({
+      channel: (s.wire as { channel: string }).channel,
+      deviceId: s.deviceId,
+      playerId: (s.wire as { playerId: string | null }).playerId,
+    }));
+    expect(stops.every((s) => s.playerId === null)).toBe(true);
+    const byChannel = (channel: string) =>
+      stops
+        .filter((s) => s.channel === channel)
+        .map((s) => s.deviceId)
+        .sort();
+    expect(byChannel('bgm')).toEqual([speakerA, bothB].sort());
+    expect(byChannel('video')).toEqual([screenA, bothB].sort());
+    expect(byChannel('dialogue')).toEqual([speakerA, screenA, bothB].sort());
+  });
+
+  it('playBgm carries the asset fades; stopBgm carries none', async () => {
+    const themeId = await createTheme();
+    const speakerId = await createDevice(themeId, 'speaker');
+    const playerId = await createAsset(themeId, {
+      kind: 'player',
+      name: 'main',
+      data: {
+        speakerDeviceId: speakerId,
+        screenDeviceId: speakerId,
+        subtitleCss: '',
+      },
+    });
+    const bgmId = await createAsset(themeId, {
+      kind: 'bgm',
+      name: 'track',
+      data: {
+        fileKey: 'themes/test/track.mp3',
+        fadeInMs: 1000,
+        fadeOutMs: 2500,
+      },
+    });
+    const eventId = await createEvent(themeId, 'bgm-cycle', {
+      sequence: [
+        entry({ type: 'playBgm', bgmId, playerId, loop: true }),
+        entry({ type: 'stopBgm', playerId, allPlayers: false }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(() => transport.ofType('stop').length === 1);
+    const play = transport.ofType('play')[0];
+    expect(play.wire).toMatchObject({
+      channel: 'bgm',
+      fadeInMs: 1000,
+      fadeOutMs: 2500,
+    });
+    const stop = transport.ofType('stop')[0];
+    expect(stop.wire).toMatchObject({ channel: 'bgm', playerId });
+    expect('fadeOutMs' in stop.wire).toBe(false);
+  });
+
+  it('eval ctx engine actions: notify, switchPhase by name, adjustTimer', async () => {
+    const themeId = await createTheme(600_000);
+    await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    const p2 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P2',
+      data: { order: 2 },
+    });
+    const eventId = await createEvent(themeId, 'actions', {
+      sequence: [
+        entry({
+          type: 'eval',
+          code: `ctx.notify("from eval"); ctx.switchPhase("P2"); ctx.switchPhase("nope"); ctx.adjustTimer(60000); ctx.adjustTimer('pause');`,
+        }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(() => transport.notifications.length === 1);
+    expect(transport.notifications[0].message).toBe('from eval');
+    await waitFor(async () => {
+      const s = await auth(request(server()).get(`/api/sessions/${sessionId}`));
+      return s.body.phaseId === p2;
+    });
+    await waitFor(async () => {
+      const logs = await getLogs(sessionId);
+      return (
+        logs.some((l) =>
+          l.message.includes('ctx.switchPhase skipped: phase "nope" not found'),
+        ) &&
+        logs.some((l) => l.message.includes('Timer adjusted by 60000ms')) &&
+        logs.some((l) => l.message.includes('Timer paused'))
+      );
+    });
+  });
+
+  it('eval ctx.endTheme ends the session and skips later queued actions', async () => {
+    const themeId = await createTheme();
+    const eventId = await createEvent(themeId, 'ender', {
+      sequence: [
+        entry({
+          type: 'eval',
+          // "before end" is queued before endTheme so it runs (even though the
+          // script also returns false); "never" is queued after and is skipped.
+          code: `ctx.notify("before end"); ctx.endTheme("fail"); ctx.notify("never"); false;`,
+        }),
+        entry({ type: 'notify', message: 'after entry' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(async () => {
+      const s = await auth(request(server()).get(`/api/sessions/${sessionId}`));
+      return s.body.state === 'ended';
+    });
+    const s = await auth(
+      request(server()).get(`/api/sessions/${sessionId}`),
+    ).expect(200);
+    expect(s.body.verdict).toBe('fail');
+    expect(transport.notifications.map((n) => n.message)).toEqual([
+      'before end',
+    ]);
+  });
+
+  it('showHintCode delivers the code with device CSS; hideHintCode all fans out', async () => {
+    const themeId = await createTheme();
+    const screenId = await createAsset(themeId, {
+      kind: 'device',
+      name: 'screen',
+      code: `screen-${randomUUID().slice(0, 8)}`,
+      data: {
+        displayName: 'screen',
+        hintCodeCss: '.rk-hint-code { color: red; }',
+      },
+    });
+    const otherId = await createDevice(themeId, 'other');
+    const hintId = await createAsset(themeId, {
+      kind: 'hint',
+      name: 'clue',
+      code: '4242',
+      data: { steps: [{ textHtml: 'step', imageKey: null }] },
+    });
+    const eventId = await createEvent(themeId, 'hint-code', {
+      sequence: [
+        entry({ type: 'showHintCode', hintId, deviceId: screenId }),
+        entry({ type: 'hideHintCode', deviceId: null, allDevices: true }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(() => transport.ofType('hintCode').length === 3);
+    const [show, ...hides] = transport.ofType('hintCode');
+    expect(show.deviceId).toBe(screenId);
+    expect(show.wire).toMatchObject({
+      code: '4242',
+      css: '.rk-hint-code { color: red; }',
+    });
+    expect(hides.map((h) => h.deviceId).sort()).toEqual(
+      [screenId, otherId].sort(),
+    );
+    expect(
+      hides.every((h) => (h.wire as { code: string | null }).code === null),
+    ).toBe(true);
+  });
+
   it('waitUntilEnd blocks until the ack and offline devices do not block', async () => {
     const themeId = await createTheme();
     const speakerId = await createDevice(themeId, 'speaker');
@@ -428,6 +840,57 @@ describe('Runtime (e2e)', () => {
 
     // offline device: logged, sequence continues immediately
     transport.offline.add(speakerId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+    await waitFor(() => transport.ofType('message').length === 2);
+    const logs = await getLogs(sessionId);
+    expect(logs.some((l) => l.message.includes('device offline'))).toBe(true);
+  });
+
+  it('navigate waits for the website-changed ack', async () => {
+    const themeId = await createTheme();
+    const deviceId = await createDevice(themeId, 'screen');
+    const otherId = await createDevice(themeId, 'other');
+    const websiteId = await createAsset(themeId, {
+      kind: 'website',
+      name: 'site',
+      data: { mode: 'external', url: 'https://example.com/' },
+    });
+    const messageId = await createAsset(themeId, {
+      kind: 'message',
+      name: 'after-nav',
+      data: { displayName: 'after-nav', fields: [] },
+    });
+    const eventId = await createEvent(themeId, 'navigate-then-message', {
+      allowReentry: true,
+      sequence: [
+        entry({ type: 'navigate', deviceId, websiteId }),
+        entry({
+          type: 'sendMessage',
+          deviceId: otherId,
+          messageId,
+          values: {},
+        }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+    await waitFor(() => transport.ofType('navigate').length === 1);
+    const nav = transport.ofType('navigate')[0];
+    expect(nav.wire).toMatchObject({ websiteId, url: 'https://example.com/' });
+
+    // no ack yet -> the website is not confirmed changed, message must wait
+    await new Promise((r) => setTimeout(r, 150));
+    expect(transport.ofType('message')).toHaveLength(0);
+
+    runtime.handleAck(sessionId, deviceId, {
+      commandId: nav.wire.id,
+      status: 'done',
+    });
+    await waitFor(() => transport.ofType('message').length === 1);
+
+    // offline device: logged, sequence continues immediately
+    transport.offline.add(deviceId);
     await post(`/api/sessions/${sessionId}/trigger`, { eventId });
     await waitFor(() => transport.ofType('message').length === 2);
     const logs = await getLogs(sessionId);

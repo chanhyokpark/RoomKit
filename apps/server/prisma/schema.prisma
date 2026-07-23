@@ -87,6 +87,11 @@ enum LogLevel {
   error
 }
 
+enum Verdict {
+  success
+  fail
+}
+
 model Session {
   id      String       @id @default(uuid())
   themeId String
@@ -96,6 +101,8 @@ model Session {
   // Asset id (kind = phase). No FK: asset deletion must not cascade into live sessions.
   phaseId String?
   vars    Json         @default("{}")
+  // Game outcome recorded by the endTheme command; null until it runs.
+  verdict Verdict?
 
   // Creation time until the session starts; updated to the actual start time.
   startedAt DateTime  @default(now())

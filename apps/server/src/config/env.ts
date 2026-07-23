@@ -7,6 +7,13 @@ const EnvSchema = z.object({
   ADMIN_ID: z.string().min(1),
   ADMIN_PASSWORD_HASH: z.string().min(1),
   S3_ENDPOINT: z.url(),
+  /**
+   * S3 endpoint as reachable by browsers/devices, used only for presigned
+   * URLs. Needed when the server runs in Docker and reaches MinIO via the
+   * compose network (`http://minio:9000`) while clients reach it via the
+   * published host port (`http://localhost:9000`). Defaults to S3_ENDPOINT.
+   */
+  S3_PUBLIC_ENDPOINT: z.url().optional(),
   S3_REGION: z.string().min(1),
   S3_BUCKET: z.string().min(1),
   S3_ACCESS_KEY_ID: z.string().min(1),
@@ -15,6 +22,11 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /**
+   * Externally reachable server origin, used to mint absolute URLs for
+   * hosted-website navigation. Defaults to http://localhost:{PORT}.
+   */
+  PUBLIC_SERVER_URL: z.url().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

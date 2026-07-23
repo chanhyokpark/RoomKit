@@ -2,7 +2,8 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import SquareIcon from '@lucide/svelte/icons/square';
-	import { toast } from 'svelte-sonner';
+	import TrophyIcon from '@lucide/svelte/icons/trophy';
+	import XCircleIcon from '@lucide/svelte/icons/x-circle';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -14,9 +15,11 @@
 	import HintPushCard from './hint-push-card.svelte';
 	import LogPanel from './log-panel.svelte';
 	import PhaseCard from './phase-card.svelte';
+	import RunningEventsCard from './running-events-card.svelte';
 	import StartSessionDialog from './start-session-dialog.svelte';
 	import TestCodesCard from './test-codes-card.svelte';
 	import TimerCard from './timer-card.svelte';
+	import { toastApiError } from '$lib/api/client';
 
 	let { session }: { session: SessionView } = $props();
 
@@ -46,7 +49,7 @@
 			await action();
 			await data.refreshSessions();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : '요청이 실패했습니다.');
+			toastApiError(err, '요청이 실패했습니다.');
 		} finally {
 			busy = false;
 		}
@@ -54,7 +57,7 @@
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<div class="flex items-center gap-2">
+	<div class="flex flex-wrap items-center gap-2">
 		<Badge variant={session.mode === 'production' ? 'default' : 'secondary'}>
 			{session.mode === 'production' ? '프로덕션' : '테스트'}
 		</Badge>
@@ -107,9 +110,27 @@
 		</div>
 	</div>
 
+	{#if session.verdict !== null}
+		<div
+			class="flex items-center gap-2 rounded-lg border p-3 {session.verdict === 'success'
+				? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+				: 'border-destructive/50 bg-destructive/10 text-destructive'}"
+		>
+			{#if session.verdict === 'success'}
+				<TrophyIcon class="size-4 shrink-0" />
+			{:else}
+				<XCircleIcon class="size-4 shrink-0" />
+			{/if}
+			<p class="text-sm font-medium">
+				테마 종료 — 판정: {session.verdict === 'success' ? '성공' : '실패'}
+			</p>
+		</div>
+	{/if}
+
 	<div class="grid gap-4 md:grid-cols-2">
 		<TimerCard {session} disabled={gameDisabled} />
 		<PhaseCard {session} disabled={gameDisabled} />
+		<RunningEventsCard {session} />
 		<EventTriggerCard {session} disabled={gameDisabled} />
 		<DeviceStatusCard {session} disabled={busy || ended} />
 		<HintPushCard {session} disabled={gameDisabled} />

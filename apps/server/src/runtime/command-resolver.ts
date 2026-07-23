@@ -1,16 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   assetDataSchemas,
+  PlayerDataSchema,
   type AssetKind,
   type Command,
-  type DialogueData,
   type JsonValue,
   type MessageData,
+  type PlayChannel,
   type PlayerData,
   type WireCommand,
   type WireDialogueLine,
 } from '@roomkit/shared';
+import type { Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
@@ -53,10 +56,17 @@ type ParsedAsset<K extends AssetKind> = {
 
 @Injectable()
 export class CommandResolver {
+  private readonly publicServerUrl: string;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
-  ) {}
+    config: ConfigService<Env, true>,
+  ) {
+    this.publicServerUrl =
+      config.get('PUBLIC_SERVER_URL', { infer: true }) ??
+      `http://localhost:${config.get('PORT', { infer: true })}`;
+  }
 
   /**
    * Resolves one authoring command into wire deliveries. Only device-directed
@@ -98,9 +108,10 @@ export class CommandResolver {
                 channel: 'bgm',
                 playerId: player.id,
                 assetId: bgm.id,
-                fileKey: bgm.data.fileKey,
-                url: await this.mediaUrl(bgm.data.fileKey),
+                ...(await this.mediaFields(bgm.name, bgm.data)),
                 loop: cmd.loop,
+                fadeInMs: bgm.data.fadeInMs,
+                fadeOutMs: bgm.data.fadeOutMs,
               },
             },
           ],
@@ -119,8 +130,7 @@ export class CommandResolver {
                 channel: 'sfx',
                 playerId: player.id,
                 assetId: sfx.id,
-                fileKey: sfx.data.fileKey,
-                url: await this.mediaUrl(sfx.data.fileKey),
+                ...(await this.mediaFields(sfx.name, sfx.data)),
               },
             },
           ],
@@ -135,8 +145,7 @@ export class CommandResolver {
           channel: 'video' as const,
           playerId: player.id,
           assetId: video.id,
-          fileKey: video.data.fileKey,
-          url: await this.mediaUrl(video.data.fileKey),
+          ...(await this.mediaFields(video.name, video.data)),
         };
         return {
           deliveries: [{ deviceId: player.data.screenDeviceId, wire }],
@@ -149,9 +158,10 @@ export class CommandResolver {
         return this.resolvePlayDialogue(themeId, cmd);
       case 'stopBgm':
       case 'stopSfx': {
-        const player = await this.getPlayer(themeId, cmd.playerId);
         const channel =
           cmd.type === 'stopBgm' ? ('bgm' as const) : ('sfx' as const);
+        if (cmd.allPlayers) return this.resolveStopAll(themeId, channel);
+        const player = await this.getPlayer(themeId, cmd.playerId);
         return {
           deliveries: [
             {
@@ -167,6 +177,7 @@ export class CommandResolver {
         };
       }
       case 'stopVideo': {
+        if (cmd.allPlayers) return this.resolveStopAll(themeId, 'video');
         const player = await this.getPlayer(themeId, cmd.playerId);
         return {
           deliveries: [
@@ -183,6 +194,7 @@ export class CommandResolver {
         };
       }
       case 'stopDialogue': {
+        if (cmd.allPlayers) return this.resolveStopAll(themeId, 'dialogue');
         const player = await this.getPlayer(themeId, cmd.playerId);
         const targets = [
           ...new Set([player.data.speakerDeviceId, player.data.screenDeviceId]),
@@ -199,21 +211,73 @@ export class CommandResolver {
           })),
         };
       }
-      case 'navigate': {
+      case 'showHintCode': {
+        if (cmd.hintId === null)
+          throw new ResolutionError('hint reference not set');
+        const hint = await this.prisma.asset.findFirst({
+          where: { id: cmd.hintId, themeId, kind: 'hint' },
+          select: { id: true, code: true },
+        });
+        if (!hint)
+          throw new ResolutionError(
+            `hint asset ${cmd.hintId} not found in theme`,
+          );
+        if (hint.code === null)
+          throw new ResolutionError(`hint asset ${cmd.hintId} has no code`);
         const device = await this.getAsset(themeId, cmd.deviceId, 'device');
-        const website = await this.getAsset(themeId, cmd.websiteId, 'website');
         return {
           deliveries: [
             {
               deviceId: device.id,
               wire: {
                 id: randomUUID(),
-                type: 'navigate',
-                websiteId: website.id,
-                url: website.data.url,
+                type: 'hintCode',
+                code: hint.code,
+                css: device.data.hintCodeCss,
               },
             },
           ],
+        };
+      }
+      case 'hideHintCode': {
+        const targets = cmd.allDevices
+          ? (
+              await this.prisma.asset.findMany({
+                where: { themeId, kind: 'device' },
+                select: { id: true },
+              })
+            ).map((d) => d.id)
+          : [(await this.getAsset(themeId, cmd.deviceId, 'device')).id];
+        return {
+          deliveries: targets.map((deviceId) => ({
+            deviceId,
+            wire: {
+              id: randomUUID(),
+              type: 'hintCode' as const,
+              code: null,
+              css: '',
+            },
+          })),
+        };
+      }
+      case 'navigate': {
+        const device = await this.getAsset(themeId, cmd.deviceId, 'device');
+        const website = await this.getAsset(themeId, cmd.websiteId, 'website');
+        const url =
+          website.data.mode === 'hosted'
+            ? `${this.publicServerUrl}/api/sites/${website.id}/`
+            : website.data.url;
+        const wire = {
+          id: randomUUID(),
+          type: 'navigate' as const,
+          websiteId: website.id,
+          url,
+        };
+        return {
+          deliveries: [{ deviceId: device.id, wire }],
+          // Devices ack once the website has actually changed (player: iframe
+          // loaded), so later commands can assume the site is ready.
+          awaitAckOf: { deviceId: device.id, commandId: wire.id },
         };
       }
       case 'sendMessage': {
@@ -250,8 +314,13 @@ export class CommandResolver {
     const lines: WireDialogueLine[] = await Promise.all(
       dialogue.data.lines.map(async (line) => ({
         lineId: line.id,
-        fileKey: line.fileKey,
-        url: await this.mediaUrl(line.fileKey),
+        ...(line.fileKey === null
+          ? { fileKey: null, url: null, durationMs: line.durationMs }
+          : {
+              fileKey: line.fileKey,
+              url: await this.mediaUrl(line.fileKey),
+              durationMs: null,
+            }),
         subtitleHtml: line.subtitleHtml,
       })),
     );
@@ -260,6 +329,7 @@ export class CommandResolver {
       channel: 'dialogue' as const,
       playerId: player.id,
       assetId: dialogue.id,
+      assetName: dialogue.name,
       lines,
       subtitleCss: player.data.subtitleCss,
       keepSubtitleAfterEnd: dialogue.data.keepSubtitleAfterEnd,
@@ -295,6 +365,44 @@ export class CommandResolver {
     };
   }
 
+  /**
+   * The "all players" stop: one `playerId: null` wire (= stop everything on
+   * the channel) per device that could be playing it. Players with invalid
+   * data are skipped; no players means no deliveries — a harmless no-op.
+   */
+  private async resolveStopAll(
+    themeId: string,
+    channel: PlayChannel,
+  ): Promise<Resolution> {
+    const players = await this.prisma.asset.findMany({
+      where: { themeId, kind: 'player' },
+      select: { data: true },
+    });
+    const targets = new Set<string>();
+    for (const player of players) {
+      const parsed = PlayerDataSchema.safeParse(player.data);
+      if (!parsed.success) continue;
+      const { speakerDeviceId, screenDeviceId } = parsed.data;
+      if (channel === 'bgm' || channel === 'sfx') targets.add(speakerDeviceId);
+      else if (channel === 'video') targets.add(screenDeviceId);
+      else {
+        targets.add(speakerDeviceId);
+        targets.add(screenDeviceId);
+      }
+    }
+    return {
+      deliveries: [...targets].map((deviceId) => ({
+        deviceId,
+        wire: {
+          id: randomUUID(),
+          type: 'stop' as const,
+          channel,
+          playerId: null,
+        },
+      })),
+    };
+  }
+
   private async getPlayer(themeId: string, id: string | null) {
     return this.getAsset(themeId, id, 'player') as Promise<
       ParsedAsset<'player'> & { data: PlayerData }
@@ -326,6 +434,35 @@ export class CommandResolver {
 
   private mediaUrl(fileKey: string): Promise<string> {
     return this.storage.presignGet(fileKey, MEDIA_URL_EXPIRES_IN);
+  }
+
+  /**
+   * Wire media fields for a bgm/sfx/video asset. Placeholder assets
+   * (fileKey null) get no URL and carry durationMs for client-side simulation.
+   */
+  private async mediaFields(
+    assetName: string,
+    data: { fileKey: string | null; durationMs: number },
+  ): Promise<{
+    assetName: string;
+    fileKey: string | null;
+    url: string | null;
+    durationMs: number | null;
+  }> {
+    if (data.fileKey === null) {
+      return {
+        assetName,
+        fileKey: null,
+        url: null,
+        durationMs: data.durationMs,
+      };
+    }
+    return {
+      assetName,
+      fileKey: data.fileKey,
+      url: await this.mediaUrl(data.fileKey),
+      durationMs: null,
+    };
   }
 }
 

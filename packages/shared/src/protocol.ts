@@ -8,6 +8,7 @@ import { JsonValueSchema } from './json.js';
 
 export const DEVICE_NAMESPACE = '/device';
 export const ADMIN_NAMESPACE = '/admin';
+export const PLAYER_NAMESPACE = '/player';
 
 /** Events on the /device namespace. */
 export const DeviceEvents = {
@@ -47,7 +48,41 @@ export const AdminEvents = {
   sessionState: 'session:state',
   log: 'log',
   deviceStatus: 'device:status',
+  /** Live snapshot of a session's running event sequences. */
+  sessionRuns: 'session:runs',
+  /** A player launcher connected or disconnected. */
+  playerStatus: 'player:status',
+  /** Operator notification pushed by the `notify` sequence command. */
+  notification: 'notification',
 } as const;
+
+/** Events on the /player namespace (player launcher, not device windows). */
+export const PlayerEvents = {
+  /**
+   * S→C: a test session was created targeting this player — open a stage
+   * window per device with the generated codes (`PlayerTestStart`).
+   */
+  testStart: 'test:start',
+} as const;
+
+/**
+ * /player connection auth. `playerId` is generated and persisted by the
+ * player app; `playerName` is the operator-facing label shown in studio.
+ * Unauthenticated like /device — players hold no secret.
+ */
+export const PlayerAuthSchema = z.object({
+  playerId: z.uuid(),
+  playerName: z.string().min(1),
+});
+export type PlayerAuth = z.infer<typeof PlayerAuthSchema>;
+
+/** /admin `player:status` payload. */
+export const PlayerStatusSchema = z.object({
+  playerId: z.uuid(),
+  playerName: z.string(),
+  online: z.boolean(),
+});
+export type PlayerStatus = z.infer<typeof PlayerStatusSchema>;
 
 /** /device connection auth payload. `deviceName` is an optional log label. */
 export const DeviceAuthSchema = z.object({
@@ -130,12 +165,18 @@ export type SessionStateValue = z.infer<typeof SessionStateValueSchema>;
 export const TimerStateSchema = z.enum(['running', 'paused', 'expired']);
 export type TimerState = z.infer<typeof TimerStateSchema>;
 
+/** Game outcome recorded by the endTheme command; null until it runs. */
+export const VerdictSchema = z.enum(['success', 'fail']);
+export type Verdict = z.infer<typeof VerdictSchema>;
+
 export const SessionStateSchema = z.object({
   sessionId: z.uuid(),
   themeId: z.uuid(),
   mode: SessionModeSchema,
   phaseId: z.uuid().nullable(),
   state: SessionStateValueSchema,
+  /** Defaulted so payloads from servers predating the field still parse. */
+  verdict: VerdictSchema.nullable().default(null),
   /** Null when the theme has no timer. */
   timerState: TimerStateSchema.nullable(),
   /**
@@ -185,9 +226,38 @@ export const DeviceAssetManifestSchema = z.object({
 });
 export type DeviceAssetManifest = z.infer<typeof DeviceAssetManifestSchema>;
 
+/** One in-flight event run inside a session engine. */
+export const RunningEventSchema = z.object({
+  runId: z.uuid(),
+  eventId: z.uuid(),
+  eventName: z.string(),
+  /** Epoch ms when the run started. */
+  startedAt: z.number().int().nonnegative(),
+  /** 0-based index of the sequence entry currently executing. */
+  entryIndex: z.number().int().nonnegative(),
+  entryCount: z.number().int().nonnegative(),
+  /** Command type of the current entry; null for an empty sequence. */
+  commandType: z.string().nullable(),
+});
+export type RunningEvent = z.infer<typeof RunningEventSchema>;
+
+/** /admin `session:runs` payload — full snapshot, replaces the previous one. */
+export const SessionRunsSchema = z.object({
+  sessionId: z.uuid(),
+  runs: z.array(RunningEventSchema),
+});
+export type SessionRuns = z.infer<typeof SessionRunsSchema>;
+
 /** /admin connection auth payload (admin JWT). */
 export const AdminAuthSchema = z.object({ token: z.string().min(1) });
 export type AdminAuth = z.infer<typeof AdminAuthSchema>;
+
+/** /admin `notification` payload — shown as a toast on the operation screen. */
+export const SessionNotificationSchema = z.object({
+  sessionId: z.uuid(),
+  message: z.string().min(1),
+});
+export type SessionNotification = z.infer<typeof SessionNotificationSchema>;
 
 /** /admin `device:status` payload. */
 export const DeviceStatusSchema = z.object({

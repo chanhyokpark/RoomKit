@@ -3,9 +3,11 @@
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import { PLACEHOLDER_DURATION_DEFAULTS } from '@roomkit/shared';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
+	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import FileUpload from '../file-upload.svelte';
@@ -23,7 +25,12 @@
 	} = $props();
 
 	function addLine() {
-		lines.push({ id: crypto.randomUUID(), fileKey: null, subtitleHtml: '' });
+		lines.push({
+			id: crypto.randomUUID(),
+			fileKey: null,
+			durationMs: PLACEHOLDER_DURATION_DEFAULTS.dialogueLine,
+			subtitleHtml: ''
+		});
 	}
 
 	function removeLine(index: number) {
@@ -82,6 +89,20 @@
 				<FileUpload {themeId} bind:fileKey={line.fileKey} accept="audio/*" />
 				{#if line.fileKey}
 					<MediaPreview fileKey={line.fileKey} media="audio" />
+				{:else}
+					<div class="flex items-center gap-2">
+						<Input
+							type="number"
+							min="1"
+							step="1"
+							class="w-32"
+							bind:value={line.durationMs}
+							aria-label="라인 {index + 1} 재생 시간 (ms)"
+						/>
+						<span class="text-xs text-muted-foreground">
+							ms · 파일 없는 플레이스홀더 라인의 재생 시간
+						</span>
+					</div>
 				{/if}
 				<Textarea bind:value={line.subtitleHtml} rows={2} placeholder="자막 (HTML 허용)" />
 			</Card.Content>

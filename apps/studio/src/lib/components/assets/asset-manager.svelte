@@ -12,12 +12,15 @@
 	import { listTags } from '$lib/api/tags';
 	import TagManagerDialog from '$lib/components/tags/tag-manager-dialog.svelte';
 	import { playback } from '$lib/stores/playback.svelte';
+	import { BulkUploadKindSchema } from '@roomkit/shared';
 	import AssetEditorHost from './asset-editor-host.svelte';
 	import AssetGrid from './asset-grid.svelte';
 	import AssetHeader from './asset-header.svelte';
 	import AssetTable from './asset-table.svelte';
+	import BulkUploadDialog from './bulk-upload-dialog.svelte';
 	import { ASSET_KINDS, KIND_META } from './kinds';
 	import type { EditorState } from './types';
+	import { toastApiError } from '$lib/api/client';
 
 	let { themeId }: { themeId: string } = $props();
 
@@ -35,6 +38,12 @@
 	let deleteTarget = $state<Asset | null>(null);
 	let deleting = $state(false);
 	let tagManagerOpen = $state(false);
+	let bulkUploadOpen = $state(false);
+
+	const bulkUploadKind = $derived.by(() => {
+		const parsed = BulkUploadKindSchema.safeParse(activeKind);
+		return parsed.success ? parsed.data : null;
+	});
 
 	let requestId = 0;
 
@@ -101,8 +110,8 @@
 			toast.success('애셋을 삭제했습니다.');
 			deleteTarget = null;
 			await refreshAssets();
-		} catch {
-			toast.error('애셋 삭제에 실패했습니다.');
+		} catch (error) {
+			toastApiError(error, '애셋 삭제에 실패했습니다.');
 		} finally {
 			deleting = false;
 		}
@@ -123,6 +132,7 @@
 			{tags}
 			oncreate={handleCreate}
 			onmanagetags={() => (tagManagerOpen = true)}
+			onbulkupload={() => (bulkUploadOpen = true)}
 		/>
 		{#if loading}
 			<div class="flex flex-col gap-3">
@@ -166,6 +176,15 @@
 </div>
 
 <TagManagerDialog bind:open={tagManagerOpen} {themeId} {tags} onchanged={handleTagsChanged} />
+
+{#if bulkUploadKind}
+	<BulkUploadDialog
+		bind:open={bulkUploadOpen}
+		{themeId}
+		kind={bulkUploadKind}
+		onimported={() => void refreshAssets()}
+	/>
+{/if}
 
 <AlertDialog.Root
 	open={deleteTarget !== null}

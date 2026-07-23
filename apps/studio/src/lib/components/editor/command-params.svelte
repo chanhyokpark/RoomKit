@@ -83,8 +83,33 @@
 			/>
 			반복 재생
 		</label>
+		<p class="w-full text-xs text-muted-foreground">
+			페이드 인/아웃은 BGM 애셋 설정을 따릅니다.
+		</p>
 	{:else if entry.type === 'stopDialogue' || entry.type === 'stopSfx' || entry.type === 'stopVideo' || entry.type === 'stopBgm'}
-		<AssetSelect kind="player" label="플레이어" bind:id={entry.playerId} {onchanged} />
+		<AssetSelect
+			kind="player"
+			label="플레이어"
+			bind:id={entry.playerId}
+			disabled={entry.allPlayers}
+			{onchanged}
+		/>
+		<label class="flex h-8 items-center gap-2 text-xs">
+			<Switch
+				checked={entry.allPlayers}
+				onCheckedChange={(checked) => {
+					if (
+						entry.type === 'stopDialogue' ||
+						entry.type === 'stopSfx' ||
+						entry.type === 'stopVideo' ||
+						entry.type === 'stopBgm'
+					)
+						entry.allPlayers = checked;
+					onchanged();
+				}}
+			/>
+			모든 플레이어
+		</label>
 	{:else if entry.type === 'wait'}
 		<div class="flex items-center gap-2">
 			<Input
@@ -121,6 +146,16 @@
 			bind:id={entry.eventId}
 			{onchanged}
 		/>
+		<label class="flex h-8 items-center gap-2 text-xs">
+			<Switch
+				checked={entry.waitUntilFinish}
+				onCheckedChange={(checked) => {
+					if (entry.type === 'callEvent') entry.waitUntilFinish = checked;
+					onchanged();
+				}}
+			/>
+			끝날 때까지 대기
+		</label>
 	{:else if entry.type === 'adjustTimer'}
 		{@const variant = (
 			'deltaMs' in entry.adjustment ? 'delta' : entry.adjustment.action
@@ -168,6 +203,45 @@
 				</span>
 			</div>
 		{/if}
+	{:else if entry.type === 'endTheme'}
+		<div class="flex min-w-36 flex-col gap-1">
+			<span class="text-xs text-muted-foreground">판정</span>
+			<Select.Root
+				type="single"
+				value={entry.verdict}
+				onValueChange={(value) => {
+					if (entry.type === 'endTheme') entry.verdict = value as 'success' | 'fail';
+					onchanged();
+				}}
+			>
+				<Select.Trigger size="sm" class="w-full" aria-label="판정">
+					{entry.verdict === 'success' ? '성공' : '실패'}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Group>
+						<Select.Item value="success" label="성공">성공</Select.Item>
+						<Select.Item value="fail" label="실패">실패</Select.Item>
+					</Select.Group>
+				</Select.Content>
+			</Select.Root>
+		</div>
+		<p class="w-full text-xs text-muted-foreground">
+			모든 장치를 리셋하고 판정을 운영 화면에 표시한 뒤 세션을 종료합니다.
+		</p>
+	{:else if entry.type === 'notify'}
+		<div class="flex w-full flex-col gap-1">
+			<Input
+				class="h-8"
+				placeholder="운영자에게 표시할 메시지"
+				value={entry.message}
+				aria-label="알림 메시지"
+				oninput={(inputEvent) => {
+					if (entry.type === 'notify') entry.message = inputEvent.currentTarget.value;
+					onchanged();
+				}}
+			/>
+			<p class="text-xs text-muted-foreground">운영 화면에 알림으로 표시됩니다.</p>
+		</div>
 	{:else if entry.type === 'eval'}
 		<div class="flex w-full flex-col gap-1">
 			<Textarea
@@ -181,9 +255,36 @@
 				}}
 			/>
 			<p class="text-xs text-muted-foreground">
-				ctx.vars(세션 변수) · ctx.phase(현재 페이즈) · ctx.trigger(이름) · ctx.log(메시지) 사용
-				가능. false를 반환하면 시퀀스가 중단됩니다.
+				ctx.vars(세션 변수) · ctx.phase(현재 페이즈) · ctx.trigger(이름) · ctx.log(메시지) ·
+				ctx.switchPhase(페이즈 이름) · ctx.notify(메시지) · ctx.adjustTimer(ms | 'pause' |
+				'resume') · ctx.endTheme('success' | 'fail') 사용 가능. false를 반환하면 시퀀스가
+				중단되며, switchPhase 등의 동작은 스크립트 종료 후 호출 순서대로 실행됩니다.
 			</p>
 		</div>
+	{:else if entry.type === 'showHintCode'}
+		<AssetSelect kind="hint" label="힌트" bind:id={entry.hintId} {onchanged} />
+		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
+		<p class="w-full text-xs text-muted-foreground">
+			장치 화면 우상단에 힌트 입력 코드를 표시합니다. 스타일은 장치 애셋의 힌트 코드 CSS를
+			따릅니다.
+		</p>
+	{:else if entry.type === 'hideHintCode'}
+		<AssetSelect
+			kind="device"
+			label="장치"
+			bind:id={entry.deviceId}
+			disabled={entry.allDevices}
+			{onchanged}
+		/>
+		<label class="flex h-8 items-center gap-2 text-xs">
+			<Switch
+				checked={entry.allDevices}
+				onCheckedChange={(checked) => {
+					if (entry.type === 'hideHintCode') entry.allDevices = checked;
+					onchanged();
+				}}
+			/>
+			모든 장치
+		</label>
 	{/if}
 </div>

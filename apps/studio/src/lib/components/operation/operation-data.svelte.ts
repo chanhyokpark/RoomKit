@@ -9,13 +9,19 @@ import {
 	ADMIN_NAMESPACE,
 	AdminEvents,
 	DeviceStatusSchema,
+	PlayerStatusSchema,
 	SessionLogEntrySchema,
+	SessionNotificationSchema,
+	SessionRunsSchema,
 	SessionStateSchema,
 	type Asset,
+	type PlayerStatus,
+	type RunningEvent,
 	type Session,
 	type SessionLogEntry,
 	type SessionState,
-	type SessionStateValue
+	type SessionStateValue,
+	type Verdict
 } from '@roomkit/shared';
 import { listAssets } from '$lib/api/assets';
 import { listLogs } from '$lib/api/logs';
@@ -38,6 +44,7 @@ export interface SessionView {
 	mode: 'test' | 'production';
 	state: SessionStateValue;
 	phaseId: string | null;
+	verdict: Verdict | null;
 	startedAt: Date;
 	live: LiveSnapshot | null;
 }
@@ -60,6 +67,10 @@ export class OperationData {
 	readonly live = new SvelteMap<string, LiveSnapshot>();
 	/** `${sessionId}:${deviceId}` → online */
 	readonly deviceStatus = new SvelteMap<string, boolean>();
+	/** sessionId → in-flight event runs (server sends full snapshots). */
+	readonly runs = new SvelteMap<string, RunningEvent[]>();
+	/** playerId → connected player launcher (global, not per theme). */
+	readonly playersById = new SvelteMap<string, PlayerStatus>();
 
 	selectedSessionId = $state<string | null>(null);
 	logs = $state<SessionLogEntry[]>([]);
@@ -93,6 +104,7 @@ export class OperationData {
 				mode: snapshot.state.mode,
 				state: snapshot.state.state,
 				phaseId: snapshot.state.phaseId,
+				verdict: snapshot.state.verdict,
 				// Rebuilt wholesale by $derived and never mutated.
 				// eslint-disable-next-line svelte/prefer-svelte-reactivity
 				startedAt: new Date(snapshot.at),
@@ -110,6 +122,10 @@ export class OperationData {
 
 	hasLiveProduction = $derived(
 		this.sessions.some((s) => s.mode === 'production' && s.state !== 'ended')
+	);
+
+	players = $derived(
+		[...this.playersById.values()].toSorted((a, b) => a.playerName.localeCompare(b.playerName))
 	);
 
 	constructor(themeId: string) {
@@ -151,6 +167,7 @@ export class OperationData {
 	/** Drops local traces of a deleted session, then refreshes the REST list. */
 	async forgetSession(sessionId: string): Promise<void> {
 		this.live.delete(sessionId);
+		this.runs.delete(sessionId);
 		for (const key of this.deviceStatus.keys()) {
 			if (key.startsWith(`${sessionId}:`)) this.deviceStatus.delete(key);
 		}
@@ -198,6 +215,11 @@ export class OperationData {
 			// after connect — stale flags must not survive a reconnect.
 			this.live.clear();
 			this.deviceStatus.clear();
+			this.runs.clear();
+			this.playersById.clear();
+			// The dump only covers live sessions; sessions created or ended while
+			// disconnected only show up in a fresh REST list.
+			void this.refreshSessions();
 			if (this.selectedSessionId) {
 				const lastId = this.logs.at(-1)?.id;
 				void this.loadLogs(this.selectedSessionId, lastId);
@@ -218,11 +240,40 @@ export class OperationData {
 			if (!parsed.success) return;
 			this.live.set(parsed.data.sessionId, { state: parsed.data, at: Date.now() });
 		});
+		this.#socket.on(AdminEvents.sessionRuns, (payload: unknown) => {
+			const parsed = SessionRunsSchema.safeParse(payload);
+			if (!parsed.success) return;
+			this.runs.set(parsed.data.sessionId, parsed.data.runs);
+		});
 		this.#socket.on(AdminEvents.deviceStatus, (payload: unknown) => {
 			const parsed = DeviceStatusSchema.safeParse(payload);
 			if (!parsed.success) return;
-			const { sessionId, deviceId, online } = parsed.data;
+			const { sessionId, deviceId, deviceName, online } = parsed.data;
 			this.deviceStatus.set(`${sessionId}:${deviceId}`, online);
+			// The server only emits offline on a real drop; an ended session
+			// disconnects every device on purpose, so that flood stays silent.
+			if (
+				!online &&
+				this.#sessionInTheme(sessionId) &&
+				this.live.get(sessionId)?.state.state !== 'ended'
+			) {
+				toast.warning(`장치 "${deviceName}" 연결이 끊어졌습니다.`);
+			}
+		});
+		this.#socket.on(AdminEvents.notification, (payload: unknown) => {
+			const parsed = SessionNotificationSchema.safeParse(payload);
+			if (!parsed.success) return;
+			if (!this.#sessionInTheme(parsed.data.sessionId)) return;
+			toast.info(parsed.data.message);
+		});
+		this.#socket.on(AdminEvents.playerStatus, (payload: unknown) => {
+			const parsed = PlayerStatusSchema.safeParse(payload);
+			if (!parsed.success) return;
+			if (parsed.data.online) {
+				this.playersById.set(parsed.data.playerId, parsed.data);
+			} else {
+				this.playersById.delete(parsed.data.playerId);
+			}
 		});
 		this.#socket.on(AdminEvents.log, (payload: unknown) => {
 			const parsed = SessionLogEntrySchema.safeParse(payload);
@@ -234,8 +285,19 @@ export class OperationData {
 
 	// ── helpers ──────────────────────────────────────────────────────────────
 
+	/** Socket events are global; only this theme's sessions may toast. */
+	#sessionInTheme(sessionId: string): boolean {
+		const snapshot = this.live.get(sessionId);
+		if (snapshot) return snapshot.state.themeId === this.themeId;
+		return this.restSessions.some((row) => row.id === sessionId);
+	}
+
 	isDeviceOnline(sessionId: string, deviceId: string): boolean {
 		return this.deviceStatus.get(`${sessionId}:${deviceId}`) ?? false;
+	}
+
+	runsFor(sessionId: string): RunningEvent[] {
+		return this.runs.get(sessionId) ?? [];
 	}
 
 	assetName(id: string | null): string | null {
@@ -258,6 +320,7 @@ export class OperationData {
 			mode: row.mode,
 			state: live?.state.state ?? row.state,
 			phaseId: live ? live.state.phaseId : row.phaseId,
+			verdict: live ? live.state.verdict : row.verdict,
 			startedAt: row.startedAt,
 			live
 		};

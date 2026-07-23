@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import type { Prisma, Session } from '@prisma/client';
 import {
@@ -9,11 +10,14 @@ import {
   type HintShow,
   type JsonValue,
   type PlaybackProgress,
+  type RunningEvent,
   type SequenceEntry,
   type SessionLogEntry,
+  type SessionRuns,
   type SessionState,
   type SessionStateValue,
   type TimerState,
+  type Verdict,
   type WireCommand,
 } from '@roomkit/shared';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -43,12 +47,25 @@ interface ParsedEvent {
   data: EventData;
 }
 
+/** Engine action queued by an eval script; runs after the script returns. */
+type EvalAction =
+  | { kind: 'switchPhase'; name: string }
+  | { kind: 'notify'; message: string }
+  | { kind: 'adjustTimer'; arg: number | 'pause' | 'resume' }
+  | { kind: 'endTheme'; verdict: Verdict };
+
 export interface EngineDeps {
   prisma: PrismaService;
   logs: LogsService;
   resolver: CommandResolver;
   hints: HintService;
   transport: () => RuntimeTransport;
+  /**
+   * Post-end cleanup owned by the registry (engine removal, device-code
+   * release). Invoked on every end path, including engine-initiated ones
+   * (endTheme) that never pass through SessionRuntimeService.end().
+   */
+  onEnded: (sessionId: string) => Promise<void>;
 }
 
 /**
@@ -64,6 +81,7 @@ export class SessionEngine {
   private phaseId: string | null;
   private state: SessionStateValue;
   private vars: Record<string, JsonValue>;
+  private verdict: Verdict | null;
   private readonly timeLimitMs: number | null;
 
   private readonly timer = new CountdownTimer(() => void this.expireTimer());
@@ -79,6 +97,8 @@ export class SessionEngine {
   private gateRelease: (() => void) | null = null;
 
   private readonly runCounts = new Map<string, number>();
+  /** In-flight event runs, keyed by run id — mirrored to /admin on every step. */
+  private readonly activeRuns = new Map<string, RunningEvent>();
   private readonly pendingAcks = new Map<
     string,
     {
@@ -106,6 +126,7 @@ export class SessionEngine {
     this.phaseId = row.phaseId;
     this.state = row.state === 'ended' ? 'ended' : row.state;
     this.vars = (row.vars ?? {}) as Record<string, JsonValue>;
+    this.verdict = row.verdict;
     this.timeLimitMs = timeLimitMs;
     this.emitter.setMaxListeners(0);
   }
@@ -135,6 +156,11 @@ export class SessionEngine {
     void this.log('info', 'session', 'Session started');
     this.broadcastState();
     this.fireSystemEvents('session:start');
+    // Starting the session enters the initial phase — its enter hooks fire
+    // here, since no switchPhase ever targets the first phase.
+    if (this.phaseId !== null) {
+      this.fireSystemEvents('phase:enter', this.phaseId);
+    }
   }
 
   /** Restarted server: restore timer/pause state, do NOT re-fire session:start. */
@@ -216,11 +242,16 @@ export class SessionEngine {
     }
     this.unacked.clear();
     this.progressRelays.clear();
+    if (this.activeRuns.size > 0) {
+      this.activeRuns.clear();
+      this.broadcastRuns();
+    }
     this.openGate();
     this.queuePersist({ state: 'ended', endedAt: new Date() });
     await this.log('info', 'session', 'Session ended');
     this.broadcastState();
     await this.persistChain;
+    await this.deps.onEnded(this.id);
   }
 
   // ── timer ────────────────────────────────────────────────────────────────
@@ -296,6 +327,24 @@ export class SessionEngine {
 
   /** Device (or eval) trigger by name; fire-and-forget for all matching events. */
   async handleTrigger(name: string, source: string): Promise<void> {
+    // Callers void this promise, so a rejection (e.g. a transient DB error in
+    // findEvents) would otherwise become an unhandled rejection and can kill
+    // the process mid-game.
+    try {
+      await this.handleTriggerInner(name, source);
+    } catch (err) {
+      void this.log(
+        'error',
+        'trigger',
+        `Trigger "${name}" from ${source} failed: ${String(err)}`,
+      );
+    }
+  }
+
+  private async handleTriggerInner(
+    name: string,
+    source: string,
+  ): Promise<void> {
     if (this.state === 'ended') return;
     if (this.state === 'created') {
       void this.log(
@@ -349,6 +398,30 @@ export class SessionEngine {
       throw new EngineStateError('Session not started');
     }
     await this.switchPhase(phaseId, 'admin');
+  }
+
+  /** REST forced re-entry of the current phase: leave hooks, then enter hooks. */
+  async restartCurrentPhase(): Promise<void> {
+    if (this.state === 'created') {
+      throw new EngineStateError('Session not started');
+    }
+    if (this.phaseId === null) {
+      throw new EngineStateError('Session has no phase');
+    }
+    const phaseId = this.phaseId;
+    const phase = await this.deps.prisma.asset.findFirst({
+      where: { id: phaseId, themeId: this.themeId, kind: 'phase' },
+      select: { name: true },
+    });
+    await this.fireSystemEvents('phase:leave', phaseId);
+    this.checkAborted();
+    void this.log(
+      'info',
+      'phase',
+      `Phase "${phase?.name ?? phaseId}" restarted (admin)`,
+      { phaseId },
+    );
+    this.fireSystemEvents('phase:enter', phaseId).catch(() => {});
   }
 
   async resetAllDevices(): Promise<void> {
@@ -515,11 +588,22 @@ export class SessionEngine {
 
   private async executeRun(event: ParsedEvent, depth: number): Promise<void> {
     this.runCounts.set(event.id, (this.runCounts.get(event.id) ?? 0) + 1);
+    const run: RunningEvent = {
+      runId: randomUUID(),
+      eventId: event.id,
+      eventName: event.name,
+      startedAt: Date.now(),
+      entryIndex: 0,
+      entryCount: event.data.sequence.length,
+      commandType: event.data.sequence[0]?.type ?? null,
+    };
+    this.activeRuns.set(run.runId, run);
+    this.broadcastRuns();
     void this.log('info', 'event', `Event "${event.name}" started`, {
       eventId: event.id,
     });
     try {
-      await this.runSequence(event, depth);
+      await this.runSequence(event, depth, run);
       void this.log('info', 'event', `Event "${event.name}" finished`, {
         eventId: event.id,
       });
@@ -544,13 +628,22 @@ export class SessionEngine {
       const count = (this.runCounts.get(event.id) ?? 1) - 1;
       if (count <= 0) this.runCounts.delete(event.id);
       else this.runCounts.set(event.id, count);
+      this.activeRuns.delete(run.runId);
+      this.broadcastRuns();
     }
   }
 
   // ── sequence execution ───────────────────────────────────────────────────
 
-  private async runSequence(event: ParsedEvent, depth: number): Promise<void> {
-    for (const entry of event.data.sequence) {
+  private async runSequence(
+    event: ParsedEvent,
+    depth: number,
+    run: RunningEvent,
+  ): Promise<void> {
+    for (const [index, entry] of event.data.sequence.entries()) {
+      run.entryIndex = index;
+      run.commandType = entry.type;
+      this.broadcastRuns();
       await this.awaitGate();
       const stop = await this.runCommand(entry, depth);
       if (stop) return;
@@ -588,7 +681,7 @@ export class SessionEngine {
           );
           return false;
         }
-        await this.callEvent(entry.eventId, depth);
+        await this.callEvent(entry.eventId, depth, entry.waitUntilFinish);
         return false;
       case 'adjustTimer':
         try {
@@ -597,6 +690,21 @@ export class SessionEngine {
           void this.log('warn', 'timer', `adjustTimer skipped: ${msg(err)}`);
         }
         return false;
+      case 'endTheme':
+        await this.endTheme(entry.verdict);
+        return true; // session is over — nothing after this entry may run
+      case 'notify': {
+        const message = entry.message.trim();
+        if (message === '') {
+          void this.log('warn', 'command', 'notify skipped: message not set');
+          return false;
+        }
+        this.deps
+          .transport()
+          .broadcastNotification({ sessionId: this.id, message });
+        void this.log('info', 'command', `Operator notification: ${message}`);
+        return false;
+      }
       default:
         await this.dispatchCommand(entry);
         return false;
@@ -690,7 +798,11 @@ export class SessionEngine {
     });
   }
 
-  private async callEvent(eventId: string, depth: number): Promise<void> {
+  private async callEvent(
+    eventId: string,
+    depth: number,
+    waitUntilFinish: boolean,
+  ): Promise<void> {
     if (depth + 1 > CALL_EVENT_DEPTH_LIMIT) {
       throw new Error(
         `callEvent depth limit (${CALL_EVENT_DEPTH_LIMIT}) exceeded`,
@@ -708,7 +820,27 @@ export class SessionEngine {
       );
       return;
     }
-    await this.executeRun(event, depth + 1);
+    // executeRun never rejects (it catches internally), so fire-and-forget
+    // needs no .catch — same as handleTriggerInner. Depth still applies.
+    if (waitUntilFinish) await this.executeRun(event, depth + 1);
+    else void this.executeRun(event, depth + 1);
+  }
+
+  /**
+   * Game over (endTheme command): resets every device, records the verdict
+   * for the operation screen, then ends the session.
+   */
+  private async endTheme(verdict: Verdict): Promise<void> {
+    await this.dispatchCommand({ type: 'resetAllDevices' });
+    this.verdict = verdict;
+    this.queuePersist({ verdict });
+    void this.log(
+      'info',
+      'session',
+      `Theme ended with verdict "${verdict}"; all devices reset`,
+      { verdict },
+    );
+    await this.end();
   }
 
   private async switchPhase(phaseId: string, source: string): Promise<void> {
@@ -751,6 +883,10 @@ export class SessionEngine {
       });
       phaseName = phase?.name ?? null;
     }
+    // The script is synchronous in the vm; engine actions invoked through ctx
+    // are queued and run after it returns, in call order. A throw discards
+    // the queue (nothing the script asked for happens on failure).
+    const actions: EvalAction[] = [];
     let result: unknown;
     try {
       result = runEval(code, {
@@ -758,6 +894,24 @@ export class SessionEngine {
         phase: phaseName,
         trigger: (name) => void this.handleTrigger(String(name), 'eval'),
         log: (message) => void this.log('info', 'eval', String(message)),
+        switchPhase: (name) =>
+          void actions.push({ kind: 'switchPhase', name: String(name) }),
+        notify: (message) =>
+          void actions.push({ kind: 'notify', message: String(message) }),
+        adjustTimer: (arg) => {
+          if (arg !== 'pause' && arg !== 'resume' && !Number.isInteger(arg)) {
+            throw new TypeError(
+              "ctx.adjustTimer expects an integer deltaMs, 'pause', or 'resume'",
+            );
+          }
+          actions.push({ kind: 'adjustTimer', arg });
+        },
+        endTheme: (verdict) => {
+          if (verdict !== 'success' && verdict !== 'fail') {
+            throw new TypeError("ctx.endTheme expects 'success' or 'fail'");
+          }
+          actions.push({ kind: 'endTheme', verdict });
+        },
       });
     } catch (err) {
       // Fail safe: a throwing guard must not let the sequence continue.
@@ -765,9 +919,67 @@ export class SessionEngine {
       return true;
     }
     this.queuePersist({ vars: this.vars });
+    // Queued actions run even when the script returns false — they were
+    // invoked before the return, which is the least surprising rule.
+    if (await this.runEvalActions(actions)) return true;
     if (result === false) {
       void this.log('info', 'eval', 'eval returned false; sequence stopped');
       return true;
+    }
+    return false;
+  }
+
+  /** Returns true when the sequence must stop (an action ended the session). */
+  private async runEvalActions(actions: EvalAction[]): Promise<boolean> {
+    for (const action of actions) {
+      switch (action.kind) {
+        case 'switchPhase': {
+          const phase = await this.deps.prisma.asset.findFirst({
+            where: { themeId: this.themeId, kind: 'phase', name: action.name },
+            select: { id: true },
+          });
+          if (!phase) {
+            void this.log(
+              'warn',
+              'eval',
+              `ctx.switchPhase skipped: phase "${action.name}" not found`,
+            );
+            break;
+          }
+          await this.switchPhase(phase.id, 'eval');
+          break;
+        }
+        case 'notify': {
+          const message = action.message.trim();
+          if (message === '') {
+            void this.log('warn', 'eval', 'ctx.notify skipped: empty message');
+            break;
+          }
+          this.deps
+            .transport()
+            .broadcastNotification({ sessionId: this.id, message });
+          void this.log('info', 'eval', `Operator notification: ${message}`);
+          break;
+        }
+        case 'adjustTimer':
+          try {
+            this.adjustTimer(
+              typeof action.arg === 'number'
+                ? { deltaMs: action.arg }
+                : { action: action.arg },
+            );
+          } catch (err) {
+            void this.log(
+              'warn',
+              'timer',
+              `ctx.adjustTimer skipped: ${msg(err)}`,
+            );
+          }
+          break;
+        case 'endTheme':
+          await this.endTheme(action.verdict);
+          return true; // session is over — remaining actions are skipped
+      }
     }
     return false;
   }
@@ -884,13 +1096,23 @@ export class SessionEngine {
       mode: this.mode,
       phaseId: this.phaseId,
       state: this.state,
+      verdict: this.verdict,
       timerState,
       timerRemainingMs,
     };
   }
 
+  /** Snapshot of in-flight event runs — the /admin connect dump and broadcasts. */
+  sessionRuns(): SessionRuns {
+    return { sessionId: this.id, runs: [...this.activeRuns.values()] };
+  }
+
   private broadcastState(): void {
     this.deps.transport().broadcastSessionState(this.sessionState());
+  }
+
+  private broadcastRuns(): void {
+    this.deps.transport().broadcastSessionRuns(this.sessionRuns());
   }
 
   private log(

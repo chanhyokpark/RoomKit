@@ -314,12 +314,15 @@ describe('@roomkit/client (e2e)', () => {
       deviceCode: code,
       storage,
       retryOnFatalError: true,
-      fatalRetryDelayMs: 150
+      fatalRetryDelayMs: 150,
     });
     clients.push(rk);
     const statuses: string[] = [];
     rk.on('status', (s) => statuses.push(s));
-    const welcomePromise = waitFor<Welcome>((res) => rk.on('welcome', res), 5000);
+    const welcomePromise = waitFor<Welcome>(
+      (res) => rk.on('welcome', res),
+      5000,
+    );
     rk.connect();
 
     // Let at least one invalid_code cycle pass: still polling, never 'error'.
@@ -336,13 +339,13 @@ describe('@roomkit/client (e2e)', () => {
         kind: 'device',
         name: 'preboot',
         code: `pre-${randomUUID().slice(0, 8)}`,
-        data: { displayName: '프리부트' }
+        data: { displayName: '프리부트' },
       })
     ).id as string;
     const session = await post('/api/sessions', {
       themeId,
       mode: 'test',
-      deviceCodes: [{ deviceId, code }]
+      deviceCodes: [{ deviceId, code }],
     });
     sessionIds.push(session.id as string);
 
@@ -371,7 +374,11 @@ describe('@roomkit/client (e2e)', () => {
 
     const next = waitFor<HintShow>((res) => rk.on('hint', res));
     rk.requestHintStep(hintId, 1);
-    expect(await next).toMatchObject({ hintId, step: 1, textHtml: '<p>h2</p>' });
+    expect(await next).toMatchObject({
+      hintId,
+      step: 1,
+      textHtml: '<p>h2</p>',
+    });
 
     const error = waitFor<HintError>((res) => rk.on('hintError', res));
     rk.submitHint('9999');

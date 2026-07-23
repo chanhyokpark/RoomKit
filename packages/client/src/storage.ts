@@ -16,7 +16,13 @@ export function defaultStorage(): CodeStorage {
   }
 }
 
-/** One stored test code per server — a client process is exactly one device. */
+/**
+ * One stored test code per server — assumes the storage holds exactly one
+ * device. Consumers running several devices on one origin (shared
+ * localStorage, e.g. the player's stage windows) must set
+ * `persistTestCode: false` or scope `storage` per device, or every client
+ * prefers the same stored code and attaches as the same device.
+ */
 export function testCodeKey(serverUrl: string): string {
   let origin = serverUrl;
   try {

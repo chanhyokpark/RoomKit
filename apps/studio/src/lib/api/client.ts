@@ -1,6 +1,7 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { PUBLIC_API_URL } from '$env/static/public';
+import { toast } from 'svelte-sonner';
 import type { ZodType } from 'zod';
 import { auth } from '$lib/stores/auth.svelte';
 
@@ -70,4 +71,12 @@ async function parseJsonSafe(res: Response): Promise<unknown> {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Standard error toast for API failures: surfaces the server's message
+ * (ApiError extracts it) instead of swallowing it behind a generic string.
+ */
+export function toastApiError(error: unknown, fallback: string): void {
+	toast.error(error instanceof Error && error.message ? error.message : fallback);
 }

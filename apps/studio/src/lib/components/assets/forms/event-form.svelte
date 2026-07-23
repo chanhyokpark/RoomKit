@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { SystemTriggerSchema, type Asset, type TriggerKind } from '@roomkit/shared';
+	import { SYSTEM_TRIGGER_LABELS, triggerNameLabel } from '$lib/system-triggers';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
@@ -99,12 +100,14 @@
 		<Field.FieldLabel for="event-system-trigger">시스템 훅</Field.FieldLabel>
 		<Select.Root type="single" bind:value={triggerName}>
 			<Select.Trigger id="event-system-trigger" class="w-full">
-				{triggerName || '훅 선택'}
+				{triggerName ? triggerNameLabel(triggerName) : '훅 선택'}
 			</Select.Trigger>
 			<Select.Content>
 				<Select.Group>
 					{#each SystemTriggerSchema.options as hook (hook)}
-						<Select.Item value={hook} label={hook}>{hook}</Select.Item>
+						<Select.Item value={hook} label={SYSTEM_TRIGGER_LABELS[hook]}>
+							{SYSTEM_TRIGGER_LABELS[hook]}
+						</Select.Item>
 					{/each}
 				</Select.Group>
 			</Select.Content>

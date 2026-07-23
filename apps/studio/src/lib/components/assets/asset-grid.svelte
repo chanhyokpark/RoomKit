@@ -65,7 +65,7 @@
 								<span class="sr-only">재생</span>
 							{/if}
 						</Button>
-					{:else if asset.kind === 'video'}
+					{:else if asset.kind === 'video' && asset.data.fileKey !== null}
 						<Button
 							variant="ghost"
 							size="icon-sm"
@@ -105,7 +105,7 @@
 		<Dialog.Header>
 			<Dialog.Title>{previewVideo?.name}</Dialog.Title>
 		</Dialog.Header>
-		{#if previewVideo?.kind === 'video'}
+		{#if previewVideo?.kind === 'video' && previewVideo.data.fileKey !== null}
 			<MediaPreview fileKey={previewVideo.data.fileKey} media="video" />
 		{/if}
 	</Dialog.Content>

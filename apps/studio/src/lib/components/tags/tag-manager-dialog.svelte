@@ -1,12 +1,11 @@
 <script lang="ts">
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
-	import { toast } from 'svelte-sonner';
 	import type { Tag } from '@roomkit/shared';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
-	import { ApiError } from '$lib/api/client';
+	import { toastApiError } from '$lib/api/client';
 	import { createTag, deleteTag, updateTag } from '$lib/api/tags';
 
 	let {
@@ -32,7 +31,7 @@
 			await action();
 			onchanged();
 		} catch (error) {
-			toast.error(error instanceof ApiError ? error.message : failMessage);
+			toastApiError(error, failMessage);
 		} finally {
 			busy = false;
 		}

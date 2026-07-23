@@ -69,6 +69,13 @@ export function switchPhase(id: string, phaseId: string): Promise<SessionRespons
 	});
 }
 
+export function restartPhase(id: string): Promise<SessionResponse> {
+	return api(`/sessions/${id}/phase/restart`, {
+		method: 'POST',
+		schema: SessionResponseSchema
+	});
+}
+
 export function triggerEvent(id: string, eventId: string): Promise<void> {
 	return api(`/sessions/${id}/trigger`, { method: 'POST', body: { eventId } });
 }

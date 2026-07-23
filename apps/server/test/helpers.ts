@@ -1,6 +1,10 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ADMIN_NAMESPACE, DEVICE_NAMESPACE } from '@roomkit/shared';
+import {
+  ADMIN_NAMESPACE,
+  DEVICE_NAMESPACE,
+  PLAYER_NAMESPACE,
+} from '@roomkit/shared';
 import request from 'supertest';
 import { io, type Socket } from 'socket.io-client';
 import { AppModule } from '../src/app.module';
@@ -31,6 +35,18 @@ export async function createSocketTestApp(): Promise<{
 export function connectDevice(url: string, deviceCode: string): Socket {
   return io(`${url}${DEVICE_NAMESPACE}`, {
     auth: { deviceCode },
+    transports: ['websocket'],
+    reconnection: false,
+  });
+}
+
+export function connectPlayer(
+  url: string,
+  playerId: string,
+  playerName: string,
+): Socket {
+  return io(`${url}${PLAYER_NAMESPACE}`, {
+    auth: { playerId, playerName },
     transports: ['websocket'],
     reconnection: false,
   });

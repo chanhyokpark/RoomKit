@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -9,19 +10,26 @@ import {
   DeviceDataSchema,
   PhaseDataSchema,
   type CreateSessionInput,
+  type DeviceCodeInput,
   type JsonValue,
   type ListSessionsQuery,
   type SessionResponse,
   type TestDeviceCode,
 } from '@roomkit/shared';
+import { PlayerRegistry } from '../players/player-registry';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
+
+// No 0/1/l/o — codes get read aloud and typed on devices.
+const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+const CODE_LENGTH = 6;
 
 @Injectable()
 export class SessionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly runtime: SessionRuntimeService,
+    private readonly players: PlayerRegistry,
   ) {}
 
   async list(query: ListSessionsQuery): Promise<SessionResponse[]> {
@@ -48,14 +56,20 @@ export class SessionsService {
 
   /**
    * Creates an idle session (state 'created'); POST /sessions/:id/start begins
-   * the game. Test-mode device codes are operator-entered (validated against
-   * the theme's devices), not generated.
+   * the game. Test-mode device codes are either operator-entered (validated
+   * against the theme's devices) or, when `playerId` is given, generated for
+   * every theme device and pushed to the connected player launcher, which
+   * opens its device windows automatically.
    */
   async create(input: CreateSessionInput): Promise<SessionResponse> {
     const theme = await this.prisma.theme.findUnique({
       where: { id: input.themeId },
     });
     if (!theme) throw new NotFoundException('Theme not found');
+
+    if (input.playerId && !this.players.isOnline(input.playerId)) {
+      throw new BadRequestException('Player is not connected');
+    }
 
     if (input.mode === 'production') {
       const active = await this.prisma.session.findFirst({
@@ -73,7 +87,10 @@ export class SessionsService {
       }
     }
 
-    const deviceCodes = input.mode === 'test' ? (input.deviceCodes ?? []) : [];
+    let deviceCodes = input.mode === 'test' ? (input.deviceCodes ?? []) : [];
+    if (input.mode === 'test' && input.playerId) {
+      deviceCodes = await this.generateDeviceCodes(theme.id);
+    }
     if (deviceCodes.length > 0) {
       await this.validateDeviceCodes(theme.id, deviceCodes);
     }
@@ -118,7 +135,15 @@ export class SessionsService {
     }
 
     this.runtime.attach(row, theme.timeLimitMs);
-    return this.get(row.id);
+    const response = await this.get(row.id);
+    if (input.playerId) {
+      this.players.sendTestStart(input.playerId, {
+        sessionId: row.id,
+        themeId: theme.id,
+        devices: response.testDeviceCodes ?? [],
+      });
+    }
+    return response;
   }
 
   /** Ends the session and frees its test device codes. */
@@ -147,6 +172,45 @@ export class SessionsService {
     }
     await this.runtime.end(id);
     await this.prisma.session.delete({ where: { id } });
+  }
+
+  /**
+   * Fresh random codes for every device of the theme, checked against live
+   * sessions. The unique constraint still guards races; a create that loses
+   * one surfaces as the existing 409.
+   */
+  private async generateDeviceCodes(
+    themeId: string,
+  ): Promise<DeviceCodeInput[]> {
+    const devices = await this.prisma.asset.findMany({
+      where: { themeId, kind: 'device' },
+      select: { id: true },
+    });
+    if (devices.length === 0) return [];
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const codes = new Set<string>();
+      while (codes.size < devices.length) codes.add(this.randomCode());
+      const pool = [...codes];
+      const taken = await this.prisma.sessionDeviceCode.findFirst({
+        where: { code: { in: pool } },
+        select: { id: true },
+      });
+      if (!taken) {
+        return devices.map((device, i) => ({
+          deviceId: device.id,
+          code: pool[i],
+        }));
+      }
+    }
+    throw new ConflictException('Could not generate unique device codes');
+  }
+
+  private randomCode(): string {
+    let code = '';
+    for (let i = 0; i < CODE_LENGTH; i++) {
+      code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+    }
+    return code;
   }
 
   private async validateDeviceCodes(
@@ -228,6 +292,7 @@ function serialize(row: Session): SessionResponse {
     mode: row.mode,
     phaseId: row.phaseId,
     state: row.state,
+    verdict: row.verdict,
     vars: (row.vars ?? {}) as Record<string, JsonValue>,
     startedAt: row.startedAt,
     endedAt: row.endedAt,

@@ -1,13 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "launcher (main) and per-device stage windows",
-  "windows": ["main", "device-*"],
+  "description": "launcher (main), per-device stage windows, auto-started test windows",
+  "windows": [
+    "main",
+    "device-*",
+    "test-*"
+  ],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview-window",
     "core:window:allow-create",
     "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-set-focus",
     "core:window:allow-set-fullscreen",
     "core:window:allow-set-always-on-top",

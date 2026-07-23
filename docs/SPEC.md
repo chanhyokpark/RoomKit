@@ -11,7 +11,7 @@ A toolkit for building, managing, and running escape room games. This document i
 | Auth | **Single admin account** (one id+password, JWT Bearer) |
 | Production sessions | **One concurrent session per theme**. Multiple rooms of the same theme are handled by duplicating the theme |
 | Test sessions | Multiple concurrent test sessions per theme |
-| Website asset | **External URL registration only**. Sites opened inside the player's iframe embed the helper script; standalone websites and other platforms use `@roomkit/client` instead |
+| Website asset | **External URL or hosted zip**. External sites are registered by URL; hosted sites are uploaded as a zip, extracted to S3, and served by the server at `/api/sites/{assetId}/`. Sites opened inside the player's iframe embed the helper script; standalone websites and other platforms use `@roomkit/client` instead |
 | Hint delivery | Players **enter a code on a hint device** in the room → step-by-step hints shown |
 | JS eval | **Server-side execution** (for session variables and branching logic) |
 | Tag | **Label for asset organization** (filtering/search in the editor and admin UI) |
@@ -42,11 +42,15 @@ RoomKit/
 
 ### Theme
 
-Every asset, phase, event, and device belongs to a theme. Themes must be duplicable (deep copy) — for running multiple rooms of the same theme and for season-rework backups.
+Every asset, phase, event, and device belongs to a theme. Themes are duplicable (`POST themes/:id/duplicate`, deep copy) — for running multiple rooms of the same theme and for season-rework backups. The copy remaps every cross-asset id reference (player device refs, event phaseId, sequence command refs) to the new ids; device/hint codes copy verbatim (they are unique per theme); S3 fileKeys are shared with the source, not copied.
 
 ### Assets
 
-Common fields: `id`, `themeId`, `name`, `description`, `tags[]`, `createdAt`. File-backed assets hold an S3 key. Uploads use presigned URLs (the server only handles metadata), except dialogue zip uploads, which the server receives, extracts, and pushes to S3 file by file.
+Common fields: `id`, `themeId`, `name`, `description`, `tags[]`, `createdAt`. File-backed assets hold an S3 key. Uploads use presigned URLs (the server only handles metadata), except zip uploads (bulk media, dialogue, hosted websites), which the server receives, extracts, and pushes to S3 file by file.
+
+**Bulk zip upload** (`POST themes/:id/imports/:kind`, kind = bgm/sfx/video/dialogue): every media file in the zip becomes a new asset named after its filename (always create, no dedup). For dialogue, files named `name_1.mp3`, `name_2.mp3` group into one dialogue named `name` with lines ordered by the numeric suffix; files without a suffix become single-line dialogues. Junk entries (`__MACOSX/`, dotfiles, unsupported extensions) are skipped and reported.
+
+**Placeholder (fileless) media**: bgm/sfx/video assets and dialogue lines may be created without a file (`fileKey: null`) for testing before real media exists. Each carries a `durationMs` (defaults: bgm/sfx 2s, video 5s, dialogue line 3s; editable). The wire command then carries `url: null` + `durationMs`; clients show a placeholder, simulate playback for that long, and ack as usual (`waitUntilEnd` works unchanged). Placeholders are excluded from the device asset manifest.
 
 Every kind — including Phase and Event — is stored as an `Asset` row (`kind` enum + per-kind `data` JSON validated by zod).
 
@@ -59,7 +63,7 @@ Every kind — including Phase and Event — is stored as an `Asset` row (`kind`
 | Video | one video file |
 | Hint | `code` (auto-generated, unique within theme — 4 digits by default, manually editable), array of steps. Each step is text (HTML) + optional image |
 | Player | logical output group. `speakerDeviceId`, `screenDeviceId` (device that renders subtitles/video), `subtitleCss`. Dialogue/video playback commands target a player, not a raw device |
-| Website | only a `url` is registered. If the site is shown inside the player's iframe, it must have the helper script embedded; a standalone site connects with `@roomkit/client` instead |
+| Website | `mode: external \| hosted`. External: only a `url` is registered. Hosted: a zip (with `index.html` at its root; a single wrapping folder is auto-stripped) is extracted to an immutable S3 prefix (`sitePrefix`) and served by the server at `/api/sites/{assetId}/`; re-upload swaps the prefix. If the site is shown inside the player's iframe, it must have the helper script embedded; a standalone site connects with `@roomkit/client` instead |
 | Message | payload **schema** delivered to a device. `displayName` + `fields[]` (`key`, `label`, `type`: string/number/boolean/json, `required`). The asset only defines the shape; concrete values are entered dynamically in the editor when authoring a "send message to device" command |
 | Tag | `name`, `color`. Many-to-many with assets, organization only (no runtime meaning) |
 | Phase | `name`, `order`. Game progression stage. A session is always in exactly one phase |
@@ -73,7 +77,7 @@ All logic starts from an event.
 - Trigger kinds:
   - **Device trigger**: a device reports an event name via a `trigger` message (e.g. sensor, button)
   - **Manual trigger**: invoked directly from the admin page. Per-event `manualTriggerable` flag
-  - **System trigger**: run automatically on session start, phase enter/leave (per-phase hooks), and timer expiry
+  - **System trigger**: run automatically on session start, phase enter/leave (per-phase hooks), and timer expiry. Starting a session also fires `phase:enter` for the initial phase
 - Guard: only events belonging to the current phase (or common) can run. Out-of-phase triggers are ignored and only logged
 - Concurrency: event sequences may run in parallel within a session (e.g. another event while BGM plays). Re-entry of the same event is blocked by default (optionally allowed)
 
@@ -87,7 +91,7 @@ A sequence is stored as an array of commands (JSON). The runtime lives on the se
 | Play/stop dialogue | dialogue, player, `waitUntilEnd` | voice to the speaker device, subtitles to the screen device. With `waitUntilEnd`, the sequence waits for the playback-finished ack |
 | Play/stop SFX | sfx, player | |
 | Play/stop video | video, player, `waitUntilEnd` | plays on the screen device |
-| Play/stop BGM | bgm, player, `loop` | infinite loop toggle |
+| Play/stop BGM | bgm, player, `loop`, `fadeInMs` / `fadeOutMs` | infinite loop toggle; optional volume fade on play (fade-in) and stop (fade-out) |
 | Wait | duration (ms) | server timer. Pauses together with session pause |
 | Navigate device to website | device, website | sends `navigate(url)` to the device |
 | Send message to device | device, message, values | builds the payload from the message asset's field schema + values entered in the editor, then sends it to the device. Tauri relays it to the iframe via postMessage |
@@ -95,6 +99,7 @@ A sequence is stored as an array of commands (JSON). The runtime lives on the se
 | Call event | event | runs another event's sequence (for reuse; proposed addition) |
 | Reset all devices | — | sends `reset` to every device in the session (bulk version of "reset device") |
 | Adjust timer | delta (±ms) or pause/resume | grants bonus/penalty time or pauses the countdown from a sequence |
+| End theme | verdict (success/fail) | game over: resets every device and records the verdict, which the operation screen displays. The session stays live — the operator ends it manually |
 | JavaScript eval | code | runs in the server sandbox |
 
 **Eval sandbox**: `node:vm` + timeout (1s default). Injected API:
@@ -112,7 +117,7 @@ If the return value is `false`, the sequence stops → guard logic works without
 
 ```
 Session: id, themeId, mode(test|production), phaseId, state(created|running|paused|ended),
-         vars(json), startedAt, endedAt,
+         verdict(success|fail, null until endTheme runs), vars(json), startedAt, endedAt,
          timerEndsAt, timerRemainingMs (while paused)
 ```
 
@@ -163,8 +168,8 @@ Two namespaces:
 
 **`/admin`** — for studio. Authenticated with the admin token.
 
-- Subscribe to session list/state, log stream (events, errors, hint usage), device online status
-- Manual event trigger, forced phase switch, session start/pause/end, timer adjust (±minutes, pause/resume), bulk device reset
+- Subscribe to session list/state, log stream (events, errors, hint usage), device online status, and `session:runs` (live snapshot of in-flight event sequences: event name, current command index/type)
+- Manual event trigger, forced phase switch, current-phase restart (re-fires leave + enter hooks), session start/pause/end, timer adjust (±minutes, pause/resume), bulk device reset
 
 Command delivery is at-least-once with `commandId` idempotency. If a device is offline, the command is logged as failed and the sequence continues (waitUntilEnd commands time out).
 
@@ -201,7 +206,8 @@ const rk = new RoomKitClient({
 rk.connect();
 rk.trigger('button-pressed');
 rk.on('message', (payload) => ...);
-rk.on('navigate', (url) => ...);
+// ack once the site has actually changed — the server sequence waits on it
+rk.on('navigate', (url, cmd, done) => ...);
 // playback commands are exposed as callbacks — playback itself is up to the user; call ack when done
 rk.on('play', (cmd, done) => ...);
 // hint UIs (any device/website) are built on these — the player has none built in
@@ -243,4 +249,4 @@ Subtitle HTML and eval code are authored only by the creator (admin account) —
 3. **M3 Editor**: phase/event editing UI, command stack editor, inline asset creation
 4. **M4 Operation**: admin dashboard, test session runner UI, logs UI, hint flow, manual trigger / phase switch
 5. **M5 Clients**: tauri player (asset cache, playback, subtitles, testing mode w/ skip buttons), helper script
-6. **M6 Polish**: theme duplication, dialogue zip upload, error handling & reconnect hardening
+6. **M6 Polish**: theme duplication, bulk zip upload (bgm/sfx/video/dialogue with `name_N` grouping), hosted website zip upload + server-side serving, placeholder (fileless) media assets, error handling & reconnect hardening (device detach on session end, playback stop on end, unhandled-rejection safety, admin reconnect refresh)

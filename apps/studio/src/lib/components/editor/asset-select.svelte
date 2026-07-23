@@ -13,6 +13,7 @@
 		id = $bindable(),
 		label,
 		excludeId,
+		disabled = false,
 		onchanged
 	}: {
 		kind: AssetKind;
@@ -21,6 +22,8 @@
 		label: string;
 		/** Hidden from the options (e.g. the event being edited, for callEvent). */
 		excludeId?: string;
+		/** E.g. the target select while an "all" toggle overrides it. */
+		disabled?: boolean;
 		onchanged: () => void;
 	} = $props();
 
@@ -48,7 +51,7 @@
 		<meta.icon class="size-3" />
 		{label}
 	</span>
-	<Select.Root type="single" value={id ?? ''} onValueChange={handleChange}>
+	<Select.Root type="single" value={id ?? ''} onValueChange={handleChange} {disabled}>
 		<Select.Trigger size="sm" class="w-full" aria-label={label}>
 			{#if dangling}
 				<span class="text-destructive">삭제된 애셋</span>

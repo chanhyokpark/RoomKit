@@ -1,7 +1,8 @@
 <script lang="ts">
+	import FileArchiveIcon from '@lucide/svelte/icons/file-archive';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import TagsIcon from '@lucide/svelte/icons/tags';
-	import type { AssetKind, Tag } from '@roomkit/shared';
+	import { BulkUploadKindSchema, type AssetKind, type Tag } from '@roomkit/shared';
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 	import * as Tabs from '$lib/components/ui/tabs';
@@ -12,7 +13,8 @@
 		tagId = $bindable(),
 		tags,
 		oncreate,
-		onmanagetags
+		onmanagetags,
+		onbulkupload
 	}: {
 		activeKind: AssetKind;
 		/** Empty string = no tag filter. */
@@ -20,9 +22,11 @@
 		tags: Tag[];
 		oncreate: () => void;
 		onmanagetags: () => void;
+		onbulkupload: () => void;
 	} = $props();
 
 	const selectedTag = $derived(tags.find((tag) => tag.id === tagId));
+	const bulkUploadable = $derived(BulkUploadKindSchema.safeParse(activeKind).success);
 </script>
 
 <div class="flex flex-col gap-3">
@@ -76,7 +80,13 @@
 			<TagsIcon data-icon="inline-start" />
 			태그 관리
 		</Button>
-		<Button size="sm" class="ml-auto" onclick={oncreate}>
+		{#if bulkUploadable}
+			<Button variant="outline" size="sm" class="ml-auto" onclick={onbulkupload}>
+				<FileArchiveIcon data-icon="inline-start" />
+				ZIP 업로드
+			</Button>
+		{/if}
+		<Button size="sm" class={bulkUploadable ? '' : 'ml-auto'} onclick={oncreate}>
 			<PlusIcon data-icon="inline-start" />
 			새 {KIND_META[activeKind].label}
 		</Button>

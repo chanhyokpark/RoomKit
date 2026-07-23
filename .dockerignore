@@ -1,0 +1,13 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/build
+**/.svelte-kit
+**/.env
+**/.env.*
+!**/.env.example
+# Desktop app — not part of the docker stack, and the tauri target dir is huge.
+apps/player
+docs
+**/.DS_Store

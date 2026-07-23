@@ -4,7 +4,7 @@ import type { SessionState, Welcome } from '@roomkit/shared';
 /**
  * Owns this stage window's RoomKitClient (one window = one device) and
  * mirrors its events into runes the UI binds to. The client itself handles
- * reconnection, command dedupe/re-ack, and test-code persistence.
+ * reconnection and command dedupe/re-ack.
  */
 class ConnectionStore {
 	status = $state<ConnectionStatus>('idle');
@@ -25,11 +25,15 @@ class ConnectionStore {
 		this.stop();
 		// retryOnFatalError: room devices boot before the session (or their
 		// test code) exists — keep polling instead of dying on invalid_code.
+		// persistTestCode off: all stage windows share one localStorage origin,
+		// so the lib's single stored code would make every window attach as the
+		// same device. The launcher config is the source of truth for codes.
 		const client = new RoomKitClient({
 			serverUrl,
 			deviceCode,
 			deviceName,
-			retryOnFatalError: true
+			retryOnFatalError: true,
+			persistTestCode: false
 		});
 		this.client = client;
 		client.on('status', (status, detail) => {

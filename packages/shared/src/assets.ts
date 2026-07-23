@@ -27,22 +27,60 @@ export const DeviceDataSchema = z
     displayName: z.string(),
     /** This device runs the hint code-entry UI; hint:submit/next and admin pushes target it. */
     isHintDevice: z.boolean().default(false),
+    /**
+     * CSS applied to the on-screen hint code overlay (`.rk-hint-code`) shown by
+     * the showHintCode command. Trusted admin input, injected raw.
+     */
+    hintCodeCss: z.string().default(''),
   })
   .strict();
 export type DeviceData = z.infer<typeof DeviceDataSchema>;
 
-export const BgmDataSchema = z.object({ fileKey: z.string().min(1) });
+/**
+ * Simulated playback length for placeholder (fileless) media, per kind.
+ * Applied as a zod default so legacy rows without the field parse unchanged.
+ */
+export const PLACEHOLDER_DURATION_DEFAULTS = {
+  bgm: 2000,
+  sfx: 2000,
+  video: 5000,
+  dialogueLine: 3000,
+} as const;
+
+export const BgmDataSchema = z.object({
+  /** Null = placeholder (fileless) asset: clients simulate playback for durationMs. */
+  fileKey: z.string().min(1).nullable(),
+  /** Simulated playback length when fileKey is null; ignored otherwise. */
+  durationMs: z.number().int().positive().default(PLACEHOLDER_DURATION_DEFAULTS.bgm),
+  /** Volume ramp from 0 on playback start. 0 = no fade. */
+  fadeInMs: z.number().int().nonnegative().default(0),
+  /** Volume ramp to 0 on stop or replacement (crossfade). 0 = immediate. */
+  fadeOutMs: z.number().int().nonnegative().default(0),
+});
 export type BgmData = z.infer<typeof BgmDataSchema>;
 
-export const SfxDataSchema = z.object({ fileKey: z.string().min(1) });
+export const SfxDataSchema = z.object({
+  /** Null = placeholder (fileless) asset: clients simulate playback for durationMs. */
+  fileKey: z.string().min(1).nullable(),
+  /** Simulated playback length when fileKey is null; ignored otherwise. */
+  durationMs: z.number().int().positive().default(PLACEHOLDER_DURATION_DEFAULTS.sfx),
+});
 export type SfxData = z.infer<typeof SfxDataSchema>;
 
-export const VideoDataSchema = z.object({ fileKey: z.string().min(1) });
+export const VideoDataSchema = z.object({
+  /** Null = placeholder (fileless) asset: clients simulate playback for durationMs. */
+  fileKey: z.string().min(1).nullable(),
+  /** Simulated playback length when fileKey is null; ignored otherwise. */
+  durationMs: z.number().int().positive().default(PLACEHOLDER_DURATION_DEFAULTS.video),
+});
 export type VideoData = z.infer<typeof VideoDataSchema>;
 
 export const DialogueLineSchema = z.object({
   id: z.uuid(),
-  fileKey: z.string().min(1),
+  /** Null = placeholder (fileless) line: clients simulate playback for durationMs. */
+  fileKey: z.string().min(1).nullable(),
+  /** Simulated playback length when fileKey is null; ignored otherwise. */
+  durationMs: z.number().int().positive().default(PLACEHOLDER_DURATION_DEFAULTS.dialogueLine),
   /** Subtitle for this voice line. HTML allowed (trusted admin input). */
   subtitleHtml: z.string(),
 });
@@ -75,8 +113,25 @@ export const PlayerDataSchema = z.object({
 });
 export type PlayerData = z.infer<typeof PlayerDataSchema>;
 
-export const WebsiteDataSchema = z.object({ url: z.url() });
-export type WebsiteData = z.infer<typeof WebsiteDataSchema>;
+const websiteDataBranches = z.discriminatedUnion('mode', [
+  /** Externally hosted site — registered by URL (the original, pre-M6 shape). */
+  z.object({ mode: z.literal('external'), url: z.url() }),
+  z.object({
+    mode: z.literal('hosted'),
+    /**
+     * S3 prefix holding the extracted site (`sites/{themeId}/{uuid}`).
+     * Immutable: re-upload writes a new prefix and swaps this pointer.
+     * Served by the server at `/api/sites/{assetId}/`.
+     */
+    sitePrefix: z.string().min(1),
+  }),
+]);
+/** Legacy rows predate `mode` and are plain `{url}` — coerce them to external. */
+export const WebsiteDataSchema = z.preprocess(
+  (v) => (v && typeof v === 'object' && !('mode' in v) ? { ...v, mode: 'external' } : v),
+  websiteDataBranches,
+);
+export type WebsiteData = z.infer<typeof websiteDataBranches>;
 
 export const MessageFieldTypeSchema = z.enum(['string', 'number', 'boolean', 'json']);
 export type MessageFieldType = z.infer<typeof MessageFieldTypeSchema>;

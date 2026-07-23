@@ -6,6 +6,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { StorageModule } from './storage/storage.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { ZipImportsModule } from './zip-imports/zip-imports.module';
+import { SitesModule } from './sites/sites.module';
 import { ThemesModule } from './themes/themes.module';
 import { TagsModule } from './tags/tags.module';
 import { AssetsModule } from './assets/assets.module';
@@ -21,6 +23,8 @@ import { GatewayModule } from './gateway/gateway.module';
     AuthModule,
     StorageModule,
     UploadsModule,
+    ZipImportsModule,
+    SitesModule,
     ThemesModule,
     TagsModule,
     AssetsModule,

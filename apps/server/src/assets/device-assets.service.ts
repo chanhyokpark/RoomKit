@@ -100,15 +100,19 @@ function assetFiles(asset: {
             ? SfxDataSchema
             : VideoDataSchema;
       const parsed = schema.safeParse(asset.data);
-      return parsed.success ? [{ fileKey: parsed.data.fileKey }] : [];
+      // Placeholder assets (fileKey null) have nothing to cache.
+      return parsed.success && parsed.data.fileKey !== null
+        ? [{ fileKey: parsed.data.fileKey }]
+        : [];
     }
     case 'dialogue': {
       const parsed = DialogueDataSchema.safeParse(asset.data);
       if (!parsed.success) return [];
-      return parsed.data.lines.map((line) => ({
-        fileKey: line.fileKey,
-        lineId: line.id,
-      }));
+      return parsed.data.lines.flatMap((line) =>
+        line.fileKey !== null
+          ? [{ fileKey: line.fileKey, lineId: line.id }]
+          : [],
+      );
     }
     default:
       return [];

@@ -18,3 +18,9 @@ export type CreateThemeInput = z.infer<typeof CreateThemeInputSchema>;
 
 export const UpdateThemeInputSchema = CreateThemeInputSchema.partial();
 export type UpdateThemeInput = z.infer<typeof UpdateThemeInputSchema>;
+
+export const DuplicateThemeInputSchema = z.object({
+  /** Name for the copy. Defaults to "<source name> (사본)". */
+  name: z.string().min(1).optional(),
+});
+export type DuplicateThemeInput = z.infer<typeof DuplicateThemeInputSchema>;

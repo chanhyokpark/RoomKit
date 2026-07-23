@@ -21,23 +21,44 @@ export const CommandSchema = z.discriminatedUnion('type', [
     playerId: assetRef,
     waitUntilEnd: z.boolean(),
   }),
-  z.object({ type: z.literal('stopDialogue'), playerId: assetRef }),
+  z.object({
+    type: z.literal('stopDialogue'),
+    playerId: assetRef,
+    /** Stop on every player; playerId is ignored when set. */
+    allPlayers: z.boolean().default(false),
+  }),
   z.object({ type: z.literal('playSfx'), sfxId: assetRef, playerId: assetRef }),
-  z.object({ type: z.literal('stopSfx'), playerId: assetRef }),
+  z.object({
+    type: z.literal('stopSfx'),
+    playerId: assetRef,
+    /** Stop on every player; playerId is ignored when set. */
+    allPlayers: z.boolean().default(false),
+  }),
   z.object({
     type: z.literal('playVideo'),
     videoId: assetRef,
     playerId: assetRef,
     waitUntilEnd: z.boolean(),
   }),
-  z.object({ type: z.literal('stopVideo'), playerId: assetRef }),
+  z.object({
+    type: z.literal('stopVideo'),
+    playerId: assetRef,
+    /** Stop on every player; playerId is ignored when set. */
+    allPlayers: z.boolean().default(false),
+  }),
+  /** Fade in/out durations come from the BGM asset's data, not the command. */
   z.object({
     type: z.literal('playBgm'),
     bgmId: assetRef,
     playerId: assetRef,
     loop: z.boolean(),
   }),
-  z.object({ type: z.literal('stopBgm'), playerId: assetRef }),
+  z.object({
+    type: z.literal('stopBgm'),
+    playerId: assetRef,
+    /** Stop on every player; playerId is ignored when set. */
+    allPlayers: z.boolean().default(false),
+  }),
   z.object({ type: z.literal('wait'), durationMs: z.number().int().positive() }),
   z.object({ type: z.literal('navigate'), deviceId: assetRef, websiteId: assetRef }),
   z.object({
@@ -48,8 +69,18 @@ export const CommandSchema = z.discriminatedUnion('type', [
     values: z.record(z.string(), JsonValueSchema),
   }),
   z.object({ type: z.literal('switchPhase'), phaseId: assetRef }),
-  z.object({ type: z.literal('callEvent'), eventId: assetRef }),
+  z.object({
+    type: z.literal('callEvent'),
+    eventId: assetRef,
+    /** Await the called event's sequence before continuing; false = fire-and-forget. */
+    waitUntilFinish: z.boolean().default(false),
+  }),
   z.object({ type: z.literal('resetAllDevices') }),
+  /**
+   * Game over: resets every device, records the verdict for the operation
+   * screen, and ends the session.
+   */
+  z.object({ type: z.literal('endTheme'), verdict: z.enum(['success', 'fail']) }),
   z.object({
     type: z.literal('adjustTimer'),
     adjustment: z.union([
@@ -62,9 +93,48 @@ export const CommandSchema = z.discriminatedUnion('type', [
     /** Runs in the server node:vm sandbox. Returning false stops the sequence. */
     code: z.string(),
   }),
+  /** Shows a toast on the operation screen to alert the operators. */
+  z.object({ type: z.literal('notify'), message: z.string() }),
+  /** Displays the hint asset's entry code as an overlay on the device screen. */
+  z.object({ type: z.literal('showHintCode'), hintId: assetRef, deviceId: assetRef }),
+  z.object({
+    type: z.literal('hideHintCode'),
+    deviceId: assetRef,
+    /** Hide on every device; deviceId is ignored when set. */
+    allDevices: z.boolean().default(false),
+  }),
 ]);
 export type Command = z.infer<typeof CommandSchema>;
 export type CommandType = Command['type'];
+
+/**
+ * Asset-id reference fields per command type, for consumers that must walk or
+ * rewrite refs (e.g. theme duplication's id remap). The `satisfies` clause
+ * makes adding a command type a compile error until it is listed here.
+ */
+export const COMMAND_ASSET_REFS = {
+  resetDevice: ['deviceId'],
+  playDialogue: ['dialogueId', 'playerId'],
+  stopDialogue: ['playerId'],
+  playSfx: ['sfxId', 'playerId'],
+  stopSfx: ['playerId'],
+  playVideo: ['videoId', 'playerId'],
+  stopVideo: ['playerId'],
+  playBgm: ['bgmId', 'playerId'],
+  stopBgm: ['playerId'],
+  wait: [],
+  navigate: ['deviceId', 'websiteId'],
+  sendMessage: ['deviceId', 'messageId'],
+  switchPhase: ['phaseId'],
+  callEvent: ['eventId'],
+  resetAllDevices: [],
+  endTheme: [],
+  adjustTimer: [],
+  eval: [],
+  notify: [],
+  showHintCode: ['hintId', 'deviceId'],
+  hideHintCode: ['deviceId'],
+} as const satisfies Record<CommandType, readonly string[]>;
 
 /** Each entry carries a stable id so the editor can reorder without losing identity. */
 export const SequenceEntrySchema = z.intersection(

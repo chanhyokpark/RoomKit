@@ -5,6 +5,7 @@
 	import AssetActionsMenu from '$lib/components/assets/asset-actions-menu.svelte';
 	import { sequenceHasIssues } from './commands/registry';
 	import { useEditorData, type EventAsset } from './editor-data.svelte';
+	import { triggerNameLabel } from '$lib/system-triggers';
 
 	let {
 		event,
@@ -30,7 +31,7 @@
 
 	const triggerSummary = $derived(
 		event.data.triggerName
-			? `${TRIGGER_LABELS[event.data.triggerKind]} · ${event.data.triggerName}`
+			? `${TRIGGER_LABELS[event.data.triggerKind]} · ${triggerNameLabel(event.data.triggerName)}`
 			: TRIGGER_LABELS[event.data.triggerKind]
 	);
 	const hasIssues = $derived(sequenceHasIssues(event.data.sequence, editorData.byId));

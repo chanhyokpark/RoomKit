@@ -46,6 +46,66 @@ services:
       exit 0
       "
 
+  # server and studio only start under the "app" profile (compose.sh enables
+  # it). A plain `docker compose up` keeps booting infra only, so host dev
+  # servers on 3000/5173 don't collide.
+  server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    profiles: ['app']
+    ports:
+      - '${SERVER_PORT:-3000}:3000'
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://roomkit:roomkit@postgres:5432/roomkit
+      JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me}
+      ADMIN_ID: ${ADMIN_ID:-admin}
+      # Default is bcrypt("roomkit") — matches local dev creds.
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-$$2b$$10$$Ha7ajwI4Ub8WWFpvmgvBhO1VsK2N4kL1AKmXoPp5n35oSI.K9RuDG}
+      S3_ENDPOINT: http://minio:9000
+      # Browsers/devices fetch presigned URLs via the published host port.
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: roomkit
+      S3_ACCESS_KEY_ID: roomkit
+      S3_SECRET_ACCESS_KEY: roomkit123
+      S3_FORCE_PATH_STYLE: 'true'
+      PUBLIC_SERVER_URL: ${PUBLIC_SERVER_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbucket:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api').then(() => process.exit(0), () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  studio:
+    build:
+      context: .
+      dockerfile: docker/studio.Dockerfile
+      args:
+        # Baked into the client bundle at build time — must be the server
+        # origin as reachable from the operator's browser.
+        PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+    profiles: ['app']
+    ports:
+      - '${STUDIO_PORT:-5173}:3000'
+    depends_on:
+      server:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   minio-data:

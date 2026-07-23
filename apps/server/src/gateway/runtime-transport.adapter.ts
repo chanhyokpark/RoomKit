@@ -4,6 +4,8 @@ import type {
   HintShow,
   PlaybackProgress,
   SessionLogEntry,
+  SessionNotification,
+  SessionRuns,
   SessionState,
   WireCommand,
 } from '@roomkit/shared';
@@ -53,6 +55,11 @@ export class RuntimeTransportAdapter implements RuntimeTransport, OnModuleInit {
     if (state.mode === 'production' && state.state !== 'ended') {
       this.deviceGateway.sweepLobby(state.sessionId, state.themeId);
     }
+    // Socket.io writes packets in order, so clients see the ended state before
+    // the disconnect. Their reconnect re-auths into the lobby/next session.
+    if (state.state === 'ended') {
+      this.deviceGateway.endSession(state.sessionId);
+    }
   }
 
   broadcastLog(entry: SessionLogEntry): void {
@@ -61,5 +68,13 @@ export class RuntimeTransportAdapter implements RuntimeTransport, OnModuleInit {
 
   broadcastDeviceStatus(status: DeviceStatus): void {
     this.adminGateway.broadcastDeviceStatus(status);
+  }
+
+  broadcastSessionRuns(runs: SessionRuns): void {
+    this.adminGateway.broadcastSessionRuns(runs);
+  }
+
+  broadcastNotification(notification: SessionNotification): void {
+    this.adminGateway.broadcastNotification(notification);
   }
 }

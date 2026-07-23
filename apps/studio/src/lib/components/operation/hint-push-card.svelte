@@ -7,6 +7,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import { pushHint } from '$lib/api/sessions';
 	import { useOperationData, type SessionView } from './operation-data.svelte';
+	import { toastApiError } from '$lib/api/client';
 
 	let { session, disabled }: { session: SessionView; disabled: boolean } = $props();
 
@@ -33,7 +34,7 @@
 			await pushHint(session.id, { hintId, step });
 			toast.success('힌트를 전송했습니다.');
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : '힌트 전송에 실패했습니다.');
+			toastApiError(err, '힌트 전송에 실패했습니다.');
 		} finally {
 			busy = false;
 		}

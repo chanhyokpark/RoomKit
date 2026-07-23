@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { JsonValueSchema } from './json.js';
-import { SessionModeSchema, SessionStateValueSchema } from './protocol.js';
+import { SessionModeSchema, SessionStateValueSchema, VerdictSchema } from './protocol.js';
 
 export const SessionSchema = z.object({
   id: z.uuid(),
@@ -8,6 +8,8 @@ export const SessionSchema = z.object({
   mode: SessionModeSchema,
   phaseId: z.uuid().nullable(),
   state: SessionStateValueSchema,
+  /** Game outcome recorded by the endTheme command; null until it runs. */
+  verdict: VerdictSchema.nullable().default(null),
   vars: z.record(z.string(), JsonValueSchema),
   startedAt: z.coerce.date(),
   endedAt: z.coerce.date().nullable(),
@@ -27,28 +29,47 @@ export type DeviceCodeInput = z.infer<typeof DeviceCodeInputSchema>;
 
 /**
  * Sessions are created idle; POST /sessions/:id/start begins the game.
- * `deviceCodes` is required for test mode (may be empty) and rejected for
- * production mode.
+ * Test mode takes exactly one of `deviceCodes` (operator-entered, may be
+ * empty) or `playerId` (server generates codes for every theme device and
+ * pushes them to the connected player). Production mode rejects both.
  */
 export const CreateSessionInputSchema = z
   .object({
     themeId: z.uuid(),
     mode: SessionModeSchema,
     deviceCodes: z.array(DeviceCodeInputSchema).optional(),
+    /** Connected player launcher that should auto-open the device windows. */
+    playerId: z.uuid().optional(),
   })
   .superRefine((input, ctx) => {
-    if (input.mode === 'test' && input.deviceCodes === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['deviceCodes'],
-        message: 'deviceCodes is required for test sessions',
-      });
+    if (input.mode === 'test') {
+      if (input.deviceCodes === undefined && input.playerId === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['deviceCodes'],
+          message: 'deviceCodes or playerId is required for test sessions',
+        });
+      }
+      if (input.deviceCodes !== undefined && input.playerId !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['playerId'],
+          message: 'deviceCodes and playerId are mutually exclusive',
+        });
+      }
     }
     if (input.mode === 'production' && input.deviceCodes !== undefined) {
       ctx.addIssue({
         code: 'custom',
         path: ['deviceCodes'],
         message: 'deviceCodes is only allowed for test sessions',
+      });
+    }
+    if (input.mode === 'production' && input.playerId !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['playerId'],
+        message: 'playerId is only allowed for test sessions',
       });
     }
   });
@@ -61,6 +82,14 @@ export const TestDeviceCodeSchema = z.object({
   code: z.string(),
 });
 export type TestDeviceCode = z.infer<typeof TestDeviceCodeSchema>;
+
+/** /player `test:start` payload — open a stage window per device. */
+export const PlayerTestStartSchema = z.object({
+  sessionId: z.uuid(),
+  themeId: z.uuid(),
+  devices: z.array(TestDeviceCodeSchema),
+});
+export type PlayerTestStart = z.infer<typeof PlayerTestStartSchema>;
 
 /** Create/get response; `testDeviceCodes` present only for test sessions. */
 export const SessionResponseSchema = SessionSchema.extend({

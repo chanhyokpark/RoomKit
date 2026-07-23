@@ -1,10 +1,13 @@
 <script lang="ts">
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import WorkflowIcon from '@lucide/svelte/icons/workflow';
 	import type { Asset } from '@roomkit/shared';
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 	import type { EditorState } from '$lib/components/assets/types';
 	import AssetDialog from './asset-dialog.svelte';
 	import { provideEditorData } from './editor-data.svelte';
@@ -18,6 +21,8 @@
 	// The route keys this component by themeId, so init-once is safe.
 	// svelte-ignore state_referenced_locally
 	const editorData = provideEditorData(themeId);
+
+	const isMobile = new IsMobile();
 
 	/** 'common' or a phase asset id. */
 	let workspace = $state(page.url.searchParams.get('phase') ?? 'common');
@@ -69,47 +74,64 @@
 		/>
 	</div>
 	<div class="flex min-h-0 flex-1">
-		<div class="flex w-72 shrink-0 flex-col overflow-y-auto border-r p-3">
-			{#if editorData.loading}
-				<div class="flex flex-col gap-2">
-					<Skeleton class="h-20 w-full" />
-					<Skeleton class="h-20 w-full" />
-				</div>
-			{:else}
-				<EventList
-					phaseId={workspacePhaseId}
-					bind:selectedEventId
-					oncreate={() => (eventDialog = { mode: 'create', kind: 'event' })}
-					onedit={(event) => (eventDialog = { mode: 'edit', asset: event })}
-				/>
-			{/if}
-		</div>
-		<div class="flex min-h-0 min-w-0 flex-1 flex-col">
-			{#if selectedEvent}
-				{#key selectedEvent.id}
-					<SequenceEditor
-						event={selectedEvent}
-						oneditmeta={() => {
-							if (selectedEvent) eventDialog = { mode: 'edit', asset: selectedEvent };
-						}}
+		<!-- Mobile is master-detail: the list and the editor swap in the same space. -->
+		{#if !isMobile.current || !selectedEvent}
+			<div
+				class="flex shrink-0 flex-col overflow-y-auto p-3 {isMobile.current
+					? 'w-full'
+					: 'w-72 border-r'}"
+			>
+				{#if editorData.loading}
+					<div class="flex flex-col gap-2">
+						<Skeleton class="h-20 w-full" />
+						<Skeleton class="h-20 w-full" />
+					</div>
+				{:else}
+					<EventList
+						phaseId={workspacePhaseId}
+						bind:selectedEventId
+						oncreate={() => (eventDialog = { mode: 'create', kind: 'event' })}
+						onedit={(event) => (eventDialog = { mode: 'edit', asset: event })}
 					/>
-				{/key}
-			{:else}
-				<div class="flex flex-1 items-center justify-center p-8">
-					<Empty.Root>
-						<Empty.Header>
-							<Empty.Media variant="icon">
-								<WorkflowIcon />
-							</Empty.Media>
-							<Empty.Title>이벤트를 선택하세요</Empty.Title>
-							<Empty.Description>
-								왼쪽 목록에서 이벤트를 선택하면 커맨드 시퀀스를 편집할 수 있습니다.
-							</Empty.Description>
-						</Empty.Header>
-					</Empty.Root>
-				</div>
-			{/if}
-		</div>
+				{/if}
+			</div>
+		{/if}
+		{#if !isMobile.current || selectedEvent}
+			<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+				{#if selectedEvent}
+					{#if isMobile.current}
+						<div class="flex shrink-0 items-center border-b px-2 py-1">
+							<Button variant="ghost" size="sm" onclick={() => (selectedEventId = null)}>
+								<ChevronLeftIcon data-icon="inline-start" />
+								이벤트 목록
+							</Button>
+						</div>
+					{/if}
+					{#key selectedEvent.id}
+						<SequenceEditor
+							event={selectedEvent}
+							oneditmeta={() => {
+								if (selectedEvent) eventDialog = { mode: 'edit', asset: selectedEvent };
+							}}
+						/>
+					{/key}
+				{:else}
+					<div class="flex flex-1 items-center justify-center p-8">
+						<Empty.Root>
+							<Empty.Header>
+								<Empty.Media variant="icon">
+									<WorkflowIcon />
+								</Empty.Media>
+								<Empty.Title>이벤트를 선택하세요</Empty.Title>
+								<Empty.Description>
+									왼쪽 목록에서 이벤트를 선택하면 커맨드 시퀀스를 편집할 수 있습니다.
+								</Empty.Description>
+							</Empty.Header>
+						</Empty.Root>
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</div>
 </div>
 

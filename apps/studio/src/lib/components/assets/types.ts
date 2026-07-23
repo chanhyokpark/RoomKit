@@ -9,10 +9,12 @@ import type {
 
 export type EditorState = { mode: 'create'; kind: AssetKind } | { mode: 'edit'; asset: Asset };
 
-/** Dialogue line while editing — fileKey may still be missing. */
+/** Dialogue line while editing — no fileKey = placeholder line. */
 export interface DraftDialogueLine {
 	id: string;
 	fileKey: string | null;
+	/** Simulated playback length while the line has no file. */
+	durationMs: number;
 	subtitleHtml: string;
 }
 
@@ -21,12 +23,13 @@ export interface DraftDialogueLine {
  * needs it (nullable file keys before upload, numbers as raw input text).
  */
 export type Draft =
-	| { kind: 'device'; displayName: string; isHintDevice: boolean }
-	| { kind: 'bgm' | 'sfx' | 'video'; fileKey: string | null }
+	| { kind: 'device'; displayName: string; isHintDevice: boolean; hintCodeCss: string }
+	| { kind: 'bgm'; fileKey: string | null; durationMs: number; fadeInMs: number; fadeOutMs: number }
+	| { kind: 'sfx' | 'video'; fileKey: string | null; durationMs: number }
 	| { kind: 'dialogue'; keepSubtitleAfterEnd: boolean; lines: DraftDialogueLine[] }
 	| { kind: 'hint'; steps: HintStep[] }
 	| { kind: 'player'; speakerDeviceId: string; screenDeviceId: string; subtitleCss: string }
-	| { kind: 'website'; url: string }
+	| { kind: 'website'; mode: 'external' | 'hosted'; url: string; sitePrefix: string | null }
 	| { kind: 'message'; displayName: string; fields: MessageField[] }
 	| { kind: 'phase'; orderText: string }
 	| {

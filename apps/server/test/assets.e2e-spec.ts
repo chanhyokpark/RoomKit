@@ -165,6 +165,31 @@ describe('Assets (e2e)', () => {
     }).expect(201);
   });
 
+  it('applies defaults for new bgm fade and device hintCodeCss fields', async () => {
+    // Legacy-shaped payloads (without the new fields) must still parse.
+    const bgm = await createAsset({
+      kind: 'bgm',
+      name: 'legacy bgm',
+      data: { fileKey: 'themes/x/legacy.mp3' },
+    }).expect(201);
+    expect(bgm.body.data).toMatchObject({ fadeInMs: 0, fadeOutMs: 0 });
+
+    const device = await createAsset({
+      kind: 'device',
+      name: 'legacy device',
+      code: `legacy-${randomUUID().slice(0, 8)}`,
+      data: { displayName: 'Legacy' },
+    }).expect(201);
+    expect(device.body.data).toMatchObject({ hintCodeCss: '' });
+
+    const faded = await createAsset({
+      kind: 'bgm',
+      name: 'faded bgm',
+      data: { fileKey: 'themes/x/faded.mp3', fadeInMs: 1500, fadeOutMs: 3000 },
+    }).expect(201);
+    expect(faded.body.data).toMatchObject({ fadeInMs: 1500, fadeOutMs: 3000 });
+  });
+
   it('rejects a duplicate device code with 409', () =>
     createAsset({
       kind: 'device',

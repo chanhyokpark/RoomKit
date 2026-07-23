@@ -1,11 +1,11 @@
 <script lang="ts">
 	import ZapIcon from '@lucide/svelte/icons/zap';
-	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { triggerEvent } from '$lib/api/sessions';
 	import { useOperationData, type SessionView } from './operation-data.svelte';
+	import { toastApiError } from '$lib/api/client';
 
 	let { session, disabled }: { session: SessionView; disabled: boolean } = $props();
 
@@ -28,7 +28,7 @@
 		try {
 			await triggerEvent(session.id, eventId);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : '이벤트 실행에 실패했습니다.');
+			toastApiError(err, '이벤트 실행에 실패했습니다.');
 		} finally {
 			busyId = null;
 		}

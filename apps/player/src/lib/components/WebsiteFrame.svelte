@@ -20,6 +20,7 @@
 	<iframe
 		bind:this={iframe}
 		src={stage.iframeUrl}
+		onload={() => stage.siteLoaded()}
 		title="website"
 		class="absolute inset-0 z-0 h-full w-full border-0 bg-black"
 	></iframe>

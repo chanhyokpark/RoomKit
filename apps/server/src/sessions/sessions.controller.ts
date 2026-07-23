@@ -108,6 +108,13 @@ export class SessionsController {
     return this.sessionsService.get(id);
   }
 
+  @Post(':id/phase/restart')
+  async restartPhase(@Param('id') id: string) {
+    await this.sessionsService.get(id);
+    await this.runtime.restartPhase(id);
+    return this.sessionsService.get(id);
+  }
+
   @Post(':id/trigger')
   @HttpCode(204)
   async trigger(

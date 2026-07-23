@@ -26,8 +26,14 @@ export class PlaybackEngine {
 		client.on('stop', (cmd) => this.onStop(cmd));
 		client.on('progress', (progress) => this.dialogue.onProgress(progress));
 		client.on('reset', () => this.resetAll());
-		client.on('navigate', (url) => {
-			stage.iframeUrl = url;
+		client.on('navigate', (url, _cmd, done) => stage.navigate(url, done));
+		client.on('hintCode', (cmd) => {
+			stage.hintCode = cmd.code === null ? null : { code: cmd.code, css: cmd.css };
+		});
+		// Session end stops everything — otherwise looping BGM/video would play
+		// into the next team's setup (and the server detaches the socket anyway).
+		client.on('sessionState', (state) => {
+			if (state.state === 'ended') this.resetAll();
 		});
 	}
 
@@ -48,19 +54,24 @@ export class PlaybackEngine {
 		}
 	}
 
+	/** `playerId: null` = the "all players" stop for the channel. */
 	private onStop(cmd: WireStop): void {
 		switch (cmd.channel) {
 			case 'bgm':
-				this.bgm.stop(cmd.playerId);
+				if (cmd.playerId === null) this.bgm.stopAllPlayers();
+				else this.bgm.stop(cmd.playerId);
 				break;
 			case 'sfx':
-				this.sfx.stop(cmd.playerId);
+				if (cmd.playerId === null) this.sfx.stopAll();
+				else this.sfx.stop(cmd.playerId);
 				break;
 			case 'video':
-				this.video.stop(cmd.playerId);
+				if (cmd.playerId === null) this.video.stopAll();
+				else this.video.stop(cmd.playerId);
 				break;
 			case 'dialogue':
-				this.dialogue.stop(cmd.playerId);
+				if (cmd.playerId === null) this.dialogue.stopAll();
+				else this.dialogue.stop(cmd.playerId);
 				break;
 		}
 	}

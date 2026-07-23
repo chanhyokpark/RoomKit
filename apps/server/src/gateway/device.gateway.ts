@@ -247,6 +247,16 @@ export class DeviceGateway
       .emit(DeviceEvents.sessionState, state);
   }
 
+  /**
+   * Detaches every socket bound to an ended session. Clients auto-reconnect
+   * and re-run auth, landing in the lobby or the theme's next session —
+   * without this, devices stay bound to the dead session's rooms and the next
+   * production session sees them all offline until an app restart.
+   */
+  endSession(sessionId: string): void {
+    this.server.in(sessionRoom(sessionId)).disconnectSockets(true);
+  }
+
   // ── inbound ──────────────────────────────────────────────────────────────
 
   @SubscribeMessage(DeviceEvents.ack)
@@ -305,8 +315,7 @@ export class DeviceGateway
       return this.deviceAssets.buildManifest(themeId, attach.deviceId);
     }
     const lobby = socket.data.lobby as
-      | { themeId: string; deviceId: string }
-      | undefined;
+      { themeId: string; deviceId: string } | undefined;
     if (lobby) {
       return this.deviceAssets.buildManifest(lobby.themeId, lobby.deviceId);
     }

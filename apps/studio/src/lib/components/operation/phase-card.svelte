@@ -1,12 +1,13 @@
 <script lang="ts">
 	import MilestoneIcon from '@lucide/svelte/icons/milestone';
-	import { toast } from 'svelte-sonner';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Select from '$lib/components/ui/select';
-	import { switchPhase } from '$lib/api/sessions';
+	import { restartPhase, switchPhase } from '$lib/api/sessions';
 	import { useOperationData, type SessionView } from './operation-data.svelte';
+	import { toastApiError } from '$lib/api/client';
 
 	let { session, disabled }: { session: SessionView; disabled: boolean } = $props();
 
@@ -14,6 +15,7 @@
 
 	let targetPhaseId = $state('');
 	let confirming = $state(false);
+	let confirmingRestart = $state(false);
 	let busy = $state(false);
 
 	const currentPhaseName = $derived(
@@ -28,7 +30,19 @@
 			await switchPhase(session.id, targetPhaseId);
 			targetPhaseId = '';
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : '페이즈 전환에 실패했습니다.');
+			toastApiError(err, '페이즈 전환에 실패했습니다.');
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function handleRestart(): Promise<void> {
+		if (busy) return;
+		busy = true;
+		try {
+			await restartPhase(session.id);
+		} catch (err) {
+			toastApiError(err, '페이즈 재시작에 실패했습니다.');
 		} finally {
 			busy = false;
 		}
@@ -43,9 +57,23 @@
 		</Card.Title>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-3">
-		<p class="text-sm">
-			현재: <span class="font-medium">{currentPhaseName ?? '없음 (공통만)'}</span>
-		</p>
+		<div class="flex items-center gap-2">
+			<p class="text-sm">
+				현재: <span class="font-medium">{currentPhaseName ?? '없음 (공통만)'}</span>
+			</p>
+			{#if session.phaseId !== null}
+				<Button
+					size="sm"
+					variant="outline"
+					class="ml-auto"
+					disabled={disabled || busy}
+					onclick={() => (confirmingRestart = true)}
+				>
+					<RotateCcwIcon data-icon="inline-start" />
+					재시작
+				</Button>
+			{/if}
+		</div>
 		{#if data.phases.length === 0}
 			<p class="text-sm text-muted-foreground">페이즈가 없습니다.</p>
 		{:else}
@@ -71,6 +99,33 @@
 		{/if}
 	</Card.Content>
 </Card.Root>
+
+<AlertDialog.Root
+	open={confirmingRestart}
+	onOpenChange={(value) => {
+		if (!value) confirmingRestart = false;
+	}}
+>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>현재 페이즈를 재시작할까요?</AlertDialog.Title>
+			<AlertDialog.Description>
+				"{currentPhaseName}" 페이즈의 이탈 훅과 진입 훅을 다시 실행합니다.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>취소</AlertDialog.Cancel>
+			<AlertDialog.Action
+				onclick={() => {
+					confirmingRestart = false;
+					void handleRestart();
+				}}
+			>
+				재시작
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 <AlertDialog.Root
 	open={confirming}

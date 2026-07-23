@@ -4,13 +4,13 @@ import { JsonValueSchema } from './json.js';
 /**
  * Wire-level commands delivered to devices over the /device namespace.
  *
- * The 17 authoring commands (commands.ts) are resolved server-side into these
+ * The authoring commands (commands.ts) are resolved server-side into these
  * coarse wire commands: asset ids become presigned URLs, player targets are
  * split into per-device deliveries, and `waitUntilEnd` stays server-side (the
  * runtime decides whether the sequence awaits the ack; devices always ack).
  *
- * Ack contract: apply-type commands (stop/navigate/reset/message) are acked
- * immediately on apply; play commands are acked when playback finishes.
+ * Ack contract: apply-type commands (stop/navigate/reset/message/hintCode) are
+ * acked immediately on apply; play commands are acked when playback finishes.
  * Looping BGM acks on playback start.
  *
  * `id` is the delivery id — redeliveries reuse it, clients dedupe on it.
@@ -21,15 +21,37 @@ export type PlayChannel = z.infer<typeof PlayChannelSchema>;
 
 const wireBase = { id: z.uuid() };
 
+/**
+ * Media reference shared by all play wires. Invariant:
+ * `fileKey === null ⇔ url === null ⇔ durationMs !== null`.
+ * Null media = placeholder (fileless) asset: the client shows a placeholder,
+ * simulates playback for `durationMs`, then acks as usual.
+ */
+const wireMediaFields = {
+  /** Asset display name — shown by placeholder overlays. */
+  assetName: z.string(),
+  fileKey: z.string().nullable(),
+  url: z.url().nullable(),
+  /** Simulated playback length; set exactly when fileKey/url are null. */
+  durationMs: z.number().int().positive().nullable(),
+};
+
 export const WirePlayBgmSchema = z.object({
   ...wireBase,
   type: z.literal('play'),
   channel: z.literal('bgm'),
   playerId: z.uuid(),
   assetId: z.uuid(),
-  fileKey: z.string(),
-  url: z.url(),
+  ...wireMediaFields,
   loop: z.boolean(),
+  /** Volume ramp from 0 on playback start. 0 = no fade. From the BGM asset. */
+  fadeInMs: z.number().int().nonnegative().default(0),
+  /**
+   * Volume ramp to 0 on stop or replacement (crossfade). 0 = immediate.
+   * From the BGM asset; the client stores it and applies it when the track
+   * is later stopped or replaced.
+   */
+  fadeOutMs: z.number().int().nonnegative().default(0),
 });
 export type WirePlayBgm = z.infer<typeof WirePlayBgmSchema>;
 
@@ -39,15 +61,16 @@ export const WirePlaySfxSchema = z.object({
   channel: z.literal('sfx'),
   playerId: z.uuid(),
   assetId: z.uuid(),
-  fileKey: z.string(),
-  url: z.url(),
+  ...wireMediaFields,
 });
 export type WirePlaySfx = z.infer<typeof WirePlaySfxSchema>;
 
 export const WireDialogueLineSchema = z.object({
   lineId: z.uuid(),
-  fileKey: z.string(),
-  url: z.url(),
+  /** Null media = placeholder line; see wireMediaFields invariant. */
+  fileKey: z.string().nullable(),
+  url: z.url().nullable(),
+  durationMs: z.number().int().positive().nullable(),
   subtitleHtml: z.string(),
 });
 export type WireDialogueLine = z.infer<typeof WireDialogueLineSchema>;
@@ -64,6 +87,8 @@ export const WirePlayDialogueSchema = z.object({
   channel: z.literal('dialogue'),
   playerId: z.uuid(),
   assetId: z.uuid(),
+  /** Asset display name — shown by placeholder overlays. */
+  assetName: z.string(),
   role: z.enum(['speaker', 'screen', 'both']),
   lines: z.array(WireDialogueLineSchema),
   subtitleCss: z.string(),
@@ -77,8 +102,7 @@ export const WirePlayVideoSchema = z.object({
   channel: z.literal('video'),
   playerId: z.uuid(),
   assetId: z.uuid(),
-  fileKey: z.string(),
-  url: z.url(),
+  ...wireMediaFields,
 });
 export type WirePlayVideo = z.infer<typeof WirePlayVideoSchema>;
 
@@ -90,12 +114,18 @@ export const WirePlayCommandSchema = z.discriminatedUnion('channel', [
 ]);
 export type WirePlayCommand = z.infer<typeof WirePlayCommandSchema>;
 
-/** Stopping dialogue also clears any visible subtitle. */
+/**
+ * Stopping dialogue also clears any visible subtitle. BGM stops fade out with
+ * the fadeOutMs delivered on the play wire.
+ */
 export const WireStopSchema = z.object({
   ...wireBase,
   type: z.literal('stop'),
   channel: PlayChannelSchema,
-  playerId: z.uuid(),
+  /** Null = stop everything on this channel (the "all players" option). */
+  playerId: z.uuid().nullable(),
+  /** @deprecated Fade-out now rides WirePlayBgm; kept for one release, unused. */
+  fadeOutMs: z.number().int().nonnegative().optional(),
 });
 export type WireStop = z.infer<typeof WireStopSchema>;
 
@@ -113,6 +143,19 @@ export const WireResetSchema = z.object({
 });
 export type WireReset = z.infer<typeof WireResetSchema>;
 
+/**
+ * Shows (code set) or hides (code null) the hint entry-code overlay on the
+ * device screen. One code per device; a newer show replaces the previous.
+ */
+export const WireHintCodeSchema = z.object({
+  ...wireBase,
+  type: z.literal('hintCode'),
+  code: z.string().nullable(),
+  /** Device asset's hintCodeCss; injected raw (trusted admin input). */
+  css: z.string().default(''),
+});
+export type WireHintCode = z.infer<typeof WireHintCodeSchema>;
+
 export const WireMessageSchema = z.object({
   ...wireBase,
   type: z.literal('message'),
@@ -128,6 +171,7 @@ export const WireCommandSchema = z.union([
   WireNavigateSchema,
   WireResetSchema,
   WireMessageSchema,
+  WireHintCodeSchema,
 ]);
 export type WireCommand = z.infer<typeof WireCommandSchema>;
 

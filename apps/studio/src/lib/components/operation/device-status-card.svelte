@@ -8,6 +8,7 @@
 	import * as Card from '$lib/components/ui/card';
 	import { resetDevices } from '$lib/api/sessions';
 	import { useOperationData, type SessionView } from './operation-data.svelte';
+	import { toastApiError } from '$lib/api/client';
 
 	let { session, disabled }: { session: SessionView; disabled: boolean } = $props();
 
@@ -23,7 +24,7 @@
 			await resetDevices(session.id);
 			toast.success('모든 디바이스에 초기화 명령을 보냈습니다.');
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : '디바이스 초기화에 실패했습니다.');
+			toastApiError(err, '디바이스 초기화에 실패했습니다.');
 		} finally {
 			busy = false;
 		}

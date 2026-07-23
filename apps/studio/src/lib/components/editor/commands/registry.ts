@@ -1,9 +1,13 @@
 import type { Icon as IconType } from '@lucide/svelte';
+import BellRingIcon from '@lucide/svelte/icons/bell-ring';
 import CircleStopIcon from '@lucide/svelte/icons/circle-stop';
 import CodeIcon from '@lucide/svelte/icons/code';
+import EyeOffIcon from '@lucide/svelte/icons/eye-off';
 import FilmIcon from '@lucide/svelte/icons/film';
+import FlagIcon from '@lucide/svelte/icons/flag';
 import GlobeIcon from '@lucide/svelte/icons/globe';
 import HourglassIcon from '@lucide/svelte/icons/hourglass';
+import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
 import MilestoneIcon from '@lucide/svelte/icons/milestone';
 import MusicIcon from '@lucide/svelte/icons/music';
@@ -31,7 +35,7 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	stopDialogue: {
 		label: '대사 정지',
 		icon: CircleStopIcon,
-		create: () => ({ type: 'stopDialogue', playerId: null })
+		create: () => ({ type: 'stopDialogue', playerId: null, allPlayers: false })
 	},
 	playSfx: {
 		label: '효과음 재생',
@@ -41,7 +45,7 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	stopSfx: {
 		label: '효과음 정지',
 		icon: CircleStopIcon,
-		create: () => ({ type: 'stopSfx', playerId: null })
+		create: () => ({ type: 'stopSfx', playerId: null, allPlayers: false })
 	},
 	playVideo: {
 		label: '비디오 재생',
@@ -51,7 +55,7 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	stopVideo: {
 		label: '비디오 정지',
 		icon: CircleStopIcon,
-		create: () => ({ type: 'stopVideo', playerId: null })
+		create: () => ({ type: 'stopVideo', playerId: null, allPlayers: false })
 	},
 	playBgm: {
 		label: 'BGM 재생',
@@ -61,7 +65,7 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	stopBgm: {
 		label: 'BGM 정지',
 		icon: CircleStopIcon,
-		create: () => ({ type: 'stopBgm', playerId: null })
+		create: () => ({ type: 'stopBgm', playerId: null, allPlayers: false })
 	},
 	resetDevice: {
 		label: '장치 리셋',
@@ -96,17 +100,37 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	callEvent: {
 		label: '이벤트 호출',
 		icon: ZapIcon,
-		create: () => ({ type: 'callEvent', eventId: null })
+		create: () => ({ type: 'callEvent', eventId: null, waitUntilFinish: false })
 	},
 	adjustTimer: {
 		label: '타이머 조정',
 		icon: TimerIcon,
 		create: () => ({ type: 'adjustTimer', adjustment: { deltaMs: 60_000 } })
 	},
+	endTheme: {
+		label: '테마 종료',
+		icon: FlagIcon,
+		create: () => ({ type: 'endTheme', verdict: 'success' })
+	},
 	eval: {
 		label: 'JavaScript 실행',
 		icon: CodeIcon,
 		create: () => ({ type: 'eval', code: '' })
+	},
+	notify: {
+		label: '알림 보내기',
+		icon: BellRingIcon,
+		create: () => ({ type: 'notify', message: '' })
+	},
+	showHintCode: {
+		label: '힌트 코드 표시',
+		icon: KeyRoundIcon,
+		create: () => ({ type: 'showHintCode', hintId: null, deviceId: null })
+	},
+	hideHintCode: {
+		label: '힌트 코드 숨김',
+		icon: EyeOffIcon,
+		create: () => ({ type: 'hideHintCode', deviceId: null, allDevices: false })
 	}
 };
 
@@ -129,9 +153,20 @@ export const COMMAND_GROUPS: CommandGroup[] = [
 			'stopBgm'
 		]
 	},
-	{ label: '장치', types: ['resetDevice', 'resetAllDevices', 'navigate', 'sendMessage'] },
-	{ label: '흐름', types: ['wait', 'switchPhase', 'callEvent', 'eval'] },
-	{ label: '타이머', types: ['adjustTimer'] }
+	{
+		label: '장치',
+		types: [
+			'resetDevice',
+			'resetAllDevices',
+			'navigate',
+			'sendMessage',
+			'showHintCode',
+			'hideHintCode'
+		]
+	},
+	{ label: '흐름', types: ['wait', 'switchPhase', 'callEvent', 'eval', 'endTheme'] },
+	{ label: '타이머', types: ['adjustTimer'] },
+	{ label: '운영', types: ['notify'] }
 ];
 
 export interface CommandRef {
@@ -168,7 +203,8 @@ export function commandRefs(cmd: Command): CommandRef[] {
 		case 'stopSfx':
 		case 'stopVideo':
 		case 'stopBgm':
-			return [{ kind: 'player', id: cmd.playerId }];
+			// "All players" needs no ref — suppress the unset-ref warning.
+			return cmd.allPlayers ? [] : [{ kind: 'player', id: cmd.playerId }];
 		case 'navigate':
 			return [
 				{ kind: 'device', id: cmd.deviceId },
@@ -183,6 +219,13 @@ export function commandRefs(cmd: Command): CommandRef[] {
 			return [{ kind: 'phase', id: cmd.phaseId }];
 		case 'callEvent':
 			return [{ kind: 'event', id: cmd.eventId }];
+		case 'showHintCode':
+			return [
+				{ kind: 'hint', id: cmd.hintId },
+				{ kind: 'device', id: cmd.deviceId }
+			];
+		case 'hideHintCode':
+			return cmd.allDevices ? [] : [{ kind: 'device', id: cmd.deviceId }];
 		default:
 			return [];
 	}

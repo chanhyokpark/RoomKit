@@ -2,12 +2,12 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import TimerIcon from '@lucide/svelte/icons/timer';
-	import { toast } from 'svelte-sonner';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { adjustTimer } from '$lib/api/sessions';
 	import type { SessionView } from './operation-data.svelte';
+	import { toastApiError } from '$lib/api/client';
 
 	let { session, disabled }: { session: SessionView; disabled: boolean } = $props();
 
@@ -48,7 +48,7 @@
 		try {
 			await adjustTimer(session.id, input);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : '타이머 조정에 실패했습니다.');
+			toastApiError(err, '타이머 조정에 실패했습니다.');
 		} finally {
 			busy = false;
 		}

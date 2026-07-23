@@ -2,11 +2,13 @@
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
+	import { Textarea } from '$lib/components/ui/textarea';
 
 	let {
 		displayName = $bindable(),
-		isHintDevice = $bindable()
-	}: { displayName: string; isHintDevice: boolean } = $props();
+		isHintDevice = $bindable(),
+		hintCodeCss = $bindable()
+	}: { displayName: string; isHintDevice: boolean; hintCodeCss: string } = $props();
 </script>
 
 <Field.Field>
@@ -25,4 +27,18 @@
 		</Field.FieldDescription>
 	</Field.FieldContent>
 	<Switch id="device-hint" bind:checked={isHintDevice} />
+</Field.Field>
+
+<Field.Field>
+	<Field.FieldLabel for="device-hint-code-css">힌트 코드 CSS</Field.FieldLabel>
+	<Textarea
+		id="device-hint-code-css"
+		class="font-mono"
+		rows={4}
+		bind:value={hintCodeCss}
+		placeholder={'.rk-hint-code { font-size: 4rem; }'}
+	/>
+	<Field.FieldDescription>
+		힌트 코드 표시 명령으로 이 장치 화면(기본: 우상단)에 표시되는 코드의 스타일입니다.
+	</Field.FieldDescription>
 </Field.Field>

@@ -12,11 +12,26 @@ export interface DeviceEntry {
 
 export interface PlayerConfig {
 	serverUrl: string;
+	/** Stable self-generated identity for the /player namespace. */
+	playerId?: string;
+	/** Operator-facing name shown in studio's player list. */
+	playerName?: string;
 	devices: DeviceEntry[];
 }
 
 const DEFAULTS: PlayerConfig = { serverUrl: 'http://localhost:3000', devices: [] };
 const WEB_KEY = 'roomkit-player.config';
+
+// Same alphabet as test codes — readable, no 0/1/l/o.
+const NAME_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+function randomNameSuffix(): string {
+	let suffix = '';
+	for (let i = 0; i < 4; i++) {
+		suffix += NAME_ALPHABET[Math.floor(Math.random() * NAME_ALPHABET.length)];
+	}
+	return suffix;
+}
 
 /**
  * Launcher-editable settings, persisted to config.json in the app data dir
@@ -26,6 +41,8 @@ const WEB_KEY = 'roomkit-player.config';
  */
 class ConfigStore {
 	serverUrl = $state(DEFAULTS.serverUrl);
+	playerId = $state('');
+	playerName = $state('');
 	devices = $state<DeviceEntry[]>([]);
 	loaded = $state(false);
 
@@ -43,12 +60,21 @@ class ConfigStore {
 			const raw = localStorage.getItem(WEB_KEY);
 			this.apply(raw ? (JSON.parse(raw) as PlayerConfig) : DEFAULTS);
 		}
+		// First run (or pre-identity config): mint and persist the identity so
+		// studio sees a stable player across restarts.
+		if (!this.playerId || !this.playerName) {
+			if (!this.playerId) this.playerId = crypto.randomUUID();
+			if (!this.playerName) this.playerName = `플레이어-${randomNameSuffix()}`;
+			await this.save();
+		}
 		this.loaded = true;
 	}
 
 	async save(): Promise<void> {
 		const snapshot: PlayerConfig = {
 			serverUrl: this.serverUrl,
+			playerId: this.playerId,
+			playerName: this.playerName,
 			devices: this.devices.map((d) => ({ ...d }))
 		};
 		if (this.tauriStore) {
@@ -80,6 +106,8 @@ class ConfigStore {
 
 	private apply(config: PlayerConfig): void {
 		this.serverUrl = config.serverUrl ?? DEFAULTS.serverUrl;
+		this.playerId = config.playerId ?? '';
+		this.playerName = config.playerName ?? '';
 		this.devices = Array.isArray(config.devices) ? config.devices : [];
 	}
 }

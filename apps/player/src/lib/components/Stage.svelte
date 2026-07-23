@@ -7,13 +7,30 @@
 	import { connection } from '../stores/connection.svelte';
 	import { stage } from '../stores/stage.svelte';
 	import ConnectionBadge from './ConnectionBadge.svelte';
+	import HintCodeOverlay from './HintCodeOverlay.svelte';
+	import PlaceholderOverlay from './PlaceholderOverlay.svelte';
 	import SubtitleOverlay from './SubtitleOverlay.svelte';
 	import TestOverlay from './TestOverlay.svelte';
 	import WebsiteFrame from './WebsiteFrame.svelte';
 
-	const { deviceId }: { deviceId: string } = $props();
+	const {
+		deviceId,
+		codeOverride = null,
+		labelOverride = null
+	}: { deviceId: string; codeOverride?: string | null; labelOverride?: string | null } = $props();
 
-	const device = $derived(config.deviceById(deviceId));
+	// Auto-started test windows carry their code in the URL; launcher-opened
+	// windows look their entry up in the shared config.
+	const device = $derived(
+		codeOverride
+			? {
+					id: deviceId,
+					label: labelOverride ?? deviceId,
+					deviceCode: codeOverride,
+					kiosk: false
+				}
+			: config.deviceById(deviceId)
+	);
 
 	let engine = $state<PlaybackEngine | null>(null);
 
@@ -55,7 +72,9 @@
 				onerror={() => engine?.video.handleError()}
 			></video>
 		{/if}
+		<PlaceholderOverlay />
 		<SubtitleOverlay />
+		<HintCodeOverlay />
 		{#if connection.isTest}
 			<TestOverlay />
 		{/if}

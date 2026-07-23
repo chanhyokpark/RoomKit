@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { toast } from 'svelte-sonner';
-	import { ApiError } from '$lib/api/client';
+	import { toastApiError } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Field from '$lib/components/ui/field';
@@ -39,7 +39,7 @@
 			open = false;
 			toast.success('세션을 시작했습니다.');
 		} catch (err) {
-			toast.error(err instanceof ApiError ? err.message : '세션 시작에 실패했습니다.');
+			toastApiError(err, '세션 시작에 실패했습니다.');
 		} finally {
 			busy = false;
 		}
