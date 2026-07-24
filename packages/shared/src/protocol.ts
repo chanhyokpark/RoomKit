@@ -36,6 +36,12 @@ export const DeviceEvents = {
   /** S→C: broadcast of session state (phase, pause, timer). */
   sessionState: 'session:state',
   /**
+   * C→S with a socket.io ack: request a fresh `SessionState` snapshot (null
+   * when the socket is not attached to a live session). Used by clients to
+   * resynchronize their locally-ticking timer.
+   */
+  sessionSync: 'session:sync',
+  /**
    * C→S with a socket.io ack: request the media manifest this device should
    * pre-cache (`DeviceAssetManifest`, or null when the socket has no theme).
    * Works while attached to a session and while lobby-parked.

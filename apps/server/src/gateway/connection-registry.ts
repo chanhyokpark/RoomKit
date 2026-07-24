@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Socket } from 'socket.io';
+import type { DefaultEventsMap, Socket } from 'socket.io';
 
 export interface AttachedDevice {
   sessionId: string;
@@ -8,9 +8,22 @@ export interface AttachedDevice {
   displayName: string;
 }
 
+/** Auth middleware sets exactly one of these before the connection event. */
+export interface DeviceSocketData {
+  attach?: AttachedDevice;
+  lobby?: Omit<LobbyEntry, 'socket'>;
+}
+
+export type DeviceSocket = Socket<
+  DefaultEventsMap,
+  DefaultEventsMap,
+  DefaultEventsMap,
+  DeviceSocketData
+>;
+
 /** A production device whose code is valid but whose theme has no active session yet. */
 export interface LobbyEntry {
-  socket: Socket;
+  socket: DeviceSocket;
   code: string;
   themeId: string;
   deviceId: string;

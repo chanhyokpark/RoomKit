@@ -2,8 +2,6 @@
 	import PauseIcon from '@lucide/svelte/icons/pause';
 	import PlayIcon from '@lucide/svelte/icons/play';
 	import SquareIcon from '@lucide/svelte/icons/square';
-	import TrophyIcon from '@lucide/svelte/icons/trophy';
-	import XCircleIcon from '@lucide/svelte/icons/x-circle';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -16,6 +14,7 @@
 	import LogPanel from './log-panel.svelte';
 	import PhaseCard from './phase-card.svelte';
 	import RunningEventsCard from './running-events-card.svelte';
+	import SessionSummaryCard from './session-summary-card.svelte';
 	import StartSessionDialog from './start-session-dialog.svelte';
 	import TestCodesCard from './test-codes-card.svelte';
 	import TimerCard from './timer-card.svelte';
@@ -110,21 +109,8 @@
 		</div>
 	</div>
 
-	{#if session.verdict !== null}
-		<div
-			class="flex items-center gap-2 rounded-lg border p-3 {session.verdict === 'success'
-				? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-				: 'border-destructive/50 bg-destructive/10 text-destructive'}"
-		>
-			{#if session.verdict === 'success'}
-				<TrophyIcon class="size-4 shrink-0" />
-			{:else}
-				<XCircleIcon class="size-4 shrink-0" />
-			{/if}
-			<p class="text-sm font-medium">
-				테마 종료 — 판정: {session.verdict === 'success' ? '성공' : '실패'}
-			</p>
-		</div>
+	{#if ended}
+		<SessionSummaryCard {session} />
 	{/if}
 
 	<div class="grid gap-4 md:grid-cols-2">

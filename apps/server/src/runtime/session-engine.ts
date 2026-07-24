@@ -22,7 +22,11 @@ import {
 } from '@roomkit/shared';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { LogsService } from '../logs/logs.service';
-import { CommandResolver, ResolutionError } from './command-resolver';
+import {
+  CommandResolver,
+  ResolutionError,
+  type Resolution,
+} from './command-resolver';
 import { CountdownTimer } from './countdown-timer';
 import { runEval } from './eval-sandbox';
 import type { HintService, ResolvedHint } from './hint.service';
@@ -155,11 +159,11 @@ export class SessionEngine {
     this.queuePersist({ state: 'running', startedAt: new Date() });
     void this.log('info', 'session', 'Session started');
     this.broadcastState();
-    this.fireSystemEvents('session:start');
+    this.fireSystemEvents('session:start').catch(() => {});
     // Starting the session enters the initial phase — its enter hooks fire
     // here, since no switchPhase ever targets the first phase.
     if (this.phaseId !== null) {
-      this.fireSystemEvents('phase:enter', this.phaseId);
+      this.fireSystemEvents('phase:enter', this.phaseId).catch(() => {});
     }
   }
 
@@ -313,7 +317,7 @@ export class SessionEngine {
     this.queuePersist({ timerEndsAt: null, timerRemainingMs: 0 });
     await this.log('info', 'timer', 'Timer expired');
     this.broadcastState();
-    this.fireSystemEvents('timer:expired');
+    this.fireSystemEvents('timer:expired').catch(() => {});
   }
 
   private persistTimer(): void {
@@ -712,7 +716,7 @@ export class SessionEngine {
   }
 
   private async dispatchCommand(cmd: Command): Promise<void> {
-    let resolution;
+    let resolution: Resolution;
     try {
       resolution = await this.deps.resolver.resolve(this.themeId, cmd);
     } catch (err) {
@@ -769,7 +773,11 @@ export class SessionEngine {
     const online = this.deps.transport().sendCommand(this.id, deviceId, wire);
     if (online) {
       let perDevice = this.unacked.get(deviceId);
-      if (!perDevice) this.unacked.set(deviceId, (perDevice = new Map()));
+      if (!perDevice)
+        this.unacked.set(
+          deviceId,
+          (perDevice = new Map<string, WireCommand>()),
+        );
       perDevice.set(wire.id, wire);
       void this.log('info', 'command', `${label} sent to device`, {
         deviceId,

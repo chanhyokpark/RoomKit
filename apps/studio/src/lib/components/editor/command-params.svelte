@@ -83,9 +83,7 @@
 			/>
 			반복 재생
 		</label>
-		<p class="w-full text-xs text-muted-foreground">
-			페이드 인/아웃은 BGM 애셋 설정을 따릅니다.
-		</p>
+		<p class="w-full text-xs text-muted-foreground">페이드 인/아웃은 BGM 애셋 설정을 따릅니다.</p>
 	{:else if entry.type === 'stopDialogue' || entry.type === 'stopSfx' || entry.type === 'stopVideo' || entry.type === 'stopBgm'}
 		<AssetSelect
 			kind="player"
@@ -256,17 +254,16 @@
 			/>
 			<p class="text-xs text-muted-foreground">
 				ctx.vars(세션 변수) · ctx.phase(현재 페이즈) · ctx.trigger(이름) · ctx.log(메시지) ·
-				ctx.switchPhase(페이즈 이름) · ctx.notify(메시지) · ctx.adjustTimer(ms | 'pause' |
-				'resume') · ctx.endTheme('success' | 'fail') 사용 가능. false를 반환하면 시퀀스가
-				중단되며, switchPhase 등의 동작은 스크립트 종료 후 호출 순서대로 실행됩니다.
+				ctx.switchPhase(페이즈 이름) · ctx.notify(메시지) · ctx.adjustTimer(ms | 'pause' | 'resume')
+				· ctx.endTheme('success' | 'fail') 사용 가능. false를 반환하면 시퀀스가 중단되며,
+				switchPhase 등의 동작은 스크립트 종료 후 호출 순서대로 실행됩니다.
 			</p>
 		</div>
 	{:else if entry.type === 'showHintCode'}
 		<AssetSelect kind="hint" label="힌트" bind:id={entry.hintId} {onchanged} />
 		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
 		<p class="w-full text-xs text-muted-foreground">
-			장치 화면 우상단에 힌트 입력 코드를 표시합니다. 스타일은 장치 애셋의 힌트 코드 CSS를
-			따릅니다.
+			장치 화면 우상단에 힌트 입력 코드를 표시합니다. 스타일은 장치 애셋의 힌트 코드 CSS를 따릅니다.
 		</p>
 	{:else if entry.type === 'hideHintCode'}
 		<AssetSelect

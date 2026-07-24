@@ -25,11 +25,16 @@ import {
   type SessionState,
   type WireCommand,
 } from '@roomkit/shared';
-import type { Namespace, Socket } from 'socket.io';
+import type { DefaultEventsMap, Namespace } from 'socket.io';
 import { DeviceAssetsService } from '../assets/device-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
-import { ConnectionRegistry, type AttachedDevice } from './connection-registry';
+import {
+  ConnectionRegistry,
+  type AttachedDevice,
+  type DeviceSocket,
+  type DeviceSocketData,
+} from './connection-registry';
 
 const sessionRoom = (sessionId: string) => `session:${sessionId}`;
 const deviceRoom = (sessionId: string, deviceId: string) =>
@@ -56,7 +61,12 @@ export class DeviceGateway
   private readonly logger = new Logger(DeviceGateway.name);
 
   @WebSocketServer()
-  server!: Namespace;
+  server!: Namespace<
+    DefaultEventsMap,
+    DefaultEventsMap,
+    DefaultEventsMap,
+    DeviceSocketData
+  >;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -74,7 +84,7 @@ export class DeviceGateway
     });
   }
 
-  private async authenticate(socket: Socket): Promise<void> {
+  private async authenticate(socket: DeviceSocket): Promise<void> {
     const parsed = DeviceAuthSchema.safeParse(socket.handshake.auth);
     if (!parsed.success) throw new Error('invalid_code');
     const code = parsed.data.deviceCode;
@@ -137,17 +147,18 @@ export class DeviceGateway
     };
   }
 
-  handleConnection(socket: Socket): void {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+  handleConnection(socket: DeviceSocket): void {
+    const attach = socket.data.attach;
     if (attach) {
       this.attachSocket(socket, attach);
       return;
     }
-    this.registry.addToLobby({ socket, ...socket.data.lobby });
+    const lobby = socket.data.lobby;
+    if (lobby) this.registry.addToLobby({ socket, ...lobby });
   }
 
-  handleDisconnect(socket: Socket): void {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+  handleDisconnect(socket: DeviceSocket): void {
+    const attach = socket.data.attach;
     if (attach) {
       const wentOffline = this.registry.remove(
         attach.sessionId,
@@ -167,7 +178,7 @@ export class DeviceGateway
     }
   }
 
-  private attachSocket(socket: Socket, attach: AttachedDevice): void {
+  private attachSocket(socket: DeviceSocket, attach: AttachedDevice): void {
     socket.data.attach = attach;
     void socket.join([
       sessionRoom(attach.sessionId),
@@ -260,8 +271,11 @@ export class DeviceGateway
   // ── inbound ──────────────────────────────────────────────────────────────
 
   @SubscribeMessage(DeviceEvents.ack)
-  onAck(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown): void {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+  onAck(
+    @ConnectedSocket() socket: DeviceSocket,
+    @MessageBody() body: unknown,
+  ): void {
+    const attach = socket.data.attach;
     if (!attach) return;
     const parsed = AckSchema.safeParse(body);
     if (!parsed.success) return;
@@ -270,10 +284,10 @@ export class DeviceGateway
 
   @SubscribeMessage(DeviceEvents.trigger)
   onTrigger(
-    @ConnectedSocket() socket: Socket,
+    @ConnectedSocket() socket: DeviceSocket,
     @MessageBody() body: unknown,
   ): void {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+    const attach = socket.data.attach;
     if (!attach) return;
     const parsed = TriggerSchema.safeParse(body);
     if (!parsed.success) return;
@@ -286,10 +300,10 @@ export class DeviceGateway
 
   @SubscribeMessage(DeviceEvents.progress)
   onProgress(
-    @ConnectedSocket() socket: Socket,
+    @ConnectedSocket() socket: DeviceSocket,
     @MessageBody() body: unknown,
   ): void {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+    const attach = socket.data.attach;
     if (!attach) return;
     const parsed = PlaybackProgressSchema.safeParse(body);
     if (!parsed.success) return;
@@ -299,9 +313,9 @@ export class DeviceGateway
   /** Returned value = socket.io ack payload (manifest, or null w/o a theme). */
   @SubscribeMessage(DeviceEvents.assetManifest)
   async onAssetManifest(
-    @ConnectedSocket() socket: Socket,
+    @ConnectedSocket() socket: DeviceSocket,
   ): Promise<DeviceAssetManifest | null> {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+    const attach = socket.data.attach;
     if (attach) {
       const themeId =
         this.runtime.getSessionState(attach.sessionId)?.themeId ??
@@ -314,20 +328,31 @@ export class DeviceGateway
       if (!themeId) return null;
       return this.deviceAssets.buildManifest(themeId, attach.deviceId);
     }
-    const lobby = socket.data.lobby as
-      { themeId: string; deviceId: string } | undefined;
+    const lobby = socket.data.lobby;
     if (lobby) {
       return this.deviceAssets.buildManifest(lobby.themeId, lobby.deviceId);
     }
     return null;
   }
 
+  /**
+   * Returned value = socket.io ack payload: a fresh session-state snapshot
+   * for timer resync, or null when the socket is lobby-parked or the session
+   * engine is gone (e.g. ended).
+   */
+  @SubscribeMessage(DeviceEvents.sessionSync)
+  onSessionSync(@ConnectedSocket() socket: DeviceSocket): SessionState | null {
+    const attach = socket.data.attach;
+    if (!attach) return null;
+    return this.runtime.getSessionState(attach.sessionId);
+  }
+
   @SubscribeMessage(DeviceEvents.hintSubmit)
   async onHintSubmit(
-    @ConnectedSocket() socket: Socket,
+    @ConnectedSocket() socket: DeviceSocket,
     @MessageBody() body: unknown,
   ): Promise<void> {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+    const attach = socket.data.attach;
     if (!attach) return;
     const parsed = HintSubmitSchema.safeParse(body);
     if (!parsed.success) return;
@@ -345,10 +370,10 @@ export class DeviceGateway
 
   @SubscribeMessage(DeviceEvents.hintNext)
   async onHintNext(
-    @ConnectedSocket() socket: Socket,
+    @ConnectedSocket() socket: DeviceSocket,
     @MessageBody() body: unknown,
   ): Promise<void> {
-    const attach = socket.data.attach as AttachedDevice | undefined;
+    const attach = socket.data.attach;
     if (!attach) return;
     const parsed = HintNextSchema.safeParse(body);
     if (!parsed.success) return;
@@ -369,7 +394,7 @@ export class DeviceGateway
    * in sync); errors only to the requesting socket.
    */
   private emitHintResult(
-    socket: Socket,
+    socket: DeviceSocket,
     attach: AttachedDevice,
     result: HintShow | { reason: string },
   ): void {

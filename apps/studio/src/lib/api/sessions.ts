@@ -2,11 +2,13 @@ import { z } from 'zod';
 import {
 	SessionResponseSchema,
 	SessionSchema,
+	SessionSummarySchema,
 	type AdjustTimerInput,
 	type CreateSessionInput,
 	type PushHintInput,
 	type Session,
-	type SessionResponse
+	type SessionResponse,
+	type SessionSummary
 } from '@roomkit/shared';
 import { api } from './client';
 
@@ -31,6 +33,11 @@ export function createSession(input: CreateSessionInput): Promise<SessionRespons
 
 export function getSession(id: string): Promise<SessionResponse> {
 	return api(`/sessions/${id}`, { schema: SessionResponseSchema });
+}
+
+/** Post-game analytics; the server answers 409 until the session row is ended. */
+export function getSessionSummary(id: string): Promise<SessionSummary> {
+	return api(`/sessions/${id}/summary`, { schema: SessionSummarySchema });
 }
 
 export function deleteSession(id: string): Promise<void> {

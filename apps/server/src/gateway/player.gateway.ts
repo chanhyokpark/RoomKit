@@ -10,9 +10,20 @@ import {
   PlayerAuthSchema,
   type PlayerAuth,
 } from '@roomkit/shared';
-import type { Namespace, Socket } from 'socket.io';
+import type { DefaultEventsMap, Namespace, Socket } from 'socket.io';
 import { PlayerRegistry } from '../players/player-registry';
 import { AdminGateway } from './admin.gateway';
+
+/** Auth middleware sets `player` before the connection event. */
+interface PlayerSocketData {
+  player?: PlayerAuth;
+}
+type PlayerSocket = Socket<
+  DefaultEventsMap,
+  DefaultEventsMap,
+  DefaultEventsMap,
+  PlayerSocketData
+>;
 
 /**
  * Player launcher namespace. Unauthenticated like /device (players hold no
@@ -28,7 +39,12 @@ export class PlayerGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
-  server!: Namespace;
+  server!: Namespace<
+    DefaultEventsMap,
+    DefaultEventsMap,
+    DefaultEventsMap,
+    PlayerSocketData
+  >;
 
   constructor(
     private readonly players: PlayerRegistry,
@@ -47,8 +63,9 @@ export class PlayerGateway
     });
   }
 
-  handleConnection(socket: Socket): void {
-    const player = socket.data.player as PlayerAuth;
+  handleConnection(socket: PlayerSocket): void {
+    const player = socket.data.player;
+    if (!player) return;
     this.players.add(player.playerId, player.playerName, socket);
     // Broadcast on every connect (not just first-socket): a rename reconnects
     // with the same playerId and admins upsert by id, so this refreshes the name.
@@ -59,8 +76,8 @@ export class PlayerGateway
     });
   }
 
-  handleDisconnect(socket: Socket): void {
-    const player = socket.data.player as PlayerAuth | undefined;
+  handleDisconnect(socket: PlayerSocket): void {
+    const player = socket.data.player;
     if (!player) return;
     if (this.players.remove(player.playerId, socket)) {
       this.admin.broadcastPlayerStatus({

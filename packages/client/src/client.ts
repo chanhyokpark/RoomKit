@@ -68,6 +68,18 @@ export interface RoomKitClientOptions {
 }
 
 const FATAL_RETRY_DELAY_MS = 5000;
+const RESYNC_TIMEOUT_MS = 10_000;
+
+export interface GetRemainingTimeOptions {
+  /**
+   * Fetch a fresh session-state snapshot from the server before computing,
+   * instead of ticking from the last broadcast. Best effort: falls back to
+   * the local value when not connected or on timeout. Default false.
+   */
+  resync?: boolean;
+  /** Resync round-trip timeout. Default 10000ms. */
+  timeoutMs?: number;
+}
 
 export interface RoomKitClientEvents extends Record<string, unknown[]> {
   welcome: [Welcome];
@@ -123,6 +135,8 @@ export class RoomKitClient {
 
   private currentStatus: ConnectionStatus = 'idle';
   private lastSessionState: SessionState | null = null;
+  /** Epoch ms when lastSessionState was received — base for local ticking. */
+  private lastSessionStateAt = 0;
 
   constructor(private readonly options: RoomKitClientOptions) {
     this.storage = options.storage ?? defaultStorage();
@@ -182,7 +196,7 @@ export class RoomKitClient {
       const parsed = WelcomeSchema.safeParse(payload);
       if (!parsed.success) return;
       const welcome = parsed.data;
-      this.lastSessionState = welcome.session;
+      this.rememberSessionState(welcome.session);
       // A test-mode welcome means the code we used is a test code — persist
       // it for auto-rejoin (codes carry no reserved prefix).
       if (
@@ -199,7 +213,7 @@ export class RoomKitClient {
     socket.on(DeviceEvents.sessionState, (payload: unknown) => {
       const parsed = SessionStateSchema.safeParse(payload);
       if (!parsed.success) return;
-      this.lastSessionState = parsed.data;
+      this.rememberSessionState(parsed.data);
       if (parsed.data.state === 'ended') this.forgetTestCode();
       this.emitter.emit('sessionState', parsed.data);
     });
@@ -278,6 +292,44 @@ export class RoomKitClient {
             resolve(parsed.data);
           },
         );
+    });
+  }
+
+  /**
+   * Remaining timer milliseconds: ticks down locally while the timer is
+   * running, frozen while paused, 0 when expired. Null when the theme has no
+   * timer or no session state has been received yet. With `resync: true` the
+   * server is asked for a fresh snapshot first (see GetRemainingTimeOptions).
+   */
+  async getRemainingTime(
+    options: GetRemainingTimeOptions = {},
+  ): Promise<number | null> {
+    if (options.resync) {
+      await this.resyncSessionState(options.timeoutMs ?? RESYNC_TIMEOUT_MS);
+    }
+    const state = this.lastSessionState;
+    if (!state || state.timerState === null || state.timerRemainingMs === null) {
+      return null;
+    }
+    if (state.timerState !== 'running') return state.timerRemainingMs;
+    const elapsed = Date.now() - this.lastSessionStateAt;
+    return Math.max(0, state.timerRemainingMs - elapsed);
+  }
+
+  /** Best-effort snapshot refresh; keeps the current one on any failure. */
+  private resyncSessionState(timeoutMs: number): Promise<void> {
+    const socket = this.socket;
+    if (!socket?.connected) return Promise.resolve();
+    return new Promise((resolve) => {
+      socket
+        .timeout(timeoutMs)
+        .emit(DeviceEvents.sessionSync, {}, (err: Error | null, ack: unknown) => {
+          if (!err) {
+            const parsed = SessionStateSchema.safeParse(ack);
+            if (parsed.success) this.rememberSessionState(parsed.data);
+          }
+          resolve();
+        });
     });
   }
 
@@ -378,6 +430,11 @@ export class RoomKitClient {
       const oldest = this.seenOrder.shift();
       if (oldest !== undefined) this.seen.delete(oldest);
     }
+  }
+
+  private rememberSessionState(state: SessionState): void {
+    this.lastSessionState = state;
+    this.lastSessionStateAt = Date.now();
   }
 
   private clearRetry(): void {

@@ -110,6 +110,42 @@ describe('RoomKitHelper', () => {
     expect(onError).toHaveBeenCalledExactlyOnceWith(error);
   });
 
+  it('getRemainingTime posts a schema-valid request and resolves on the reply', async () => {
+    const { helper, posted, inject } = env();
+    const promise = helper.getRemainingTime({ resync: true });
+    const request = HelperToPlayerSchema.parse(posted[1]);
+    expect(request).toMatchObject({
+      source: 'roomkit-helper',
+      type: 'timer:get',
+      resync: true,
+    });
+    const requestId = (request as { requestId: string }).requestId;
+    inject({ source: 'roomkit-player', type: 'timer', requestId, remainingMs: 61_500 });
+    await expect(promise).resolves.toBe(61_500);
+  });
+
+  it('getRemainingTime ignores replies for other requests and times out', async () => {
+    vi.useFakeTimers();
+    try {
+      const { helper, posted, inject } = env();
+      const promise = helper.getRemainingTime({ timeoutMs: 1000 });
+      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
+        type: 'timer:get',
+        resync: false,
+      });
+      inject({
+        source: 'roomkit-player',
+        type: 'timer',
+        requestId: '33333333-3333-4333-8333-333333333333',
+        remainingMs: 5,
+      });
+      vi.advanceTimersByTime(1000);
+      await expect(promise).rejects.toThrow('timer request timed out');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('ignores malformed, wrong-source, and unknown messages', () => {
     const { helper, inject } = env();
     const onAny = vi.fn();

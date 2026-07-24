@@ -2,6 +2,7 @@ import type { RoomKitClient } from '@roomkit/client';
 import {
 	HelperToPlayerSchema,
 	PLAYER_SOURCE,
+	type HelperTimerGet,
 	type HintError,
 	type HintShow,
 	type JsonValue,
@@ -74,7 +75,21 @@ export class HelperBridge {
 			case 'hint:next':
 				this.client.requestHintStep(msg.hintId, msg.step);
 				return;
+			case 'timer:get':
+				void this.answerTimer(msg);
+				return;
 		}
+	}
+
+	/** Never rejects: the client's resync is best-effort with a local fallback. */
+	private async answerTimer(msg: HelperTimerGet): Promise<void> {
+		const remainingMs = await this.client.getRemainingTime({ resync: msg.resync });
+		this.send({
+			source: PLAYER_SOURCE,
+			type: 'timer',
+			requestId: msg.requestId,
+			remainingMs
+		});
 	}
 
 	private send(msg: PlayerToHelper): void {

@@ -25,12 +25,14 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { SessionsService } from './sessions.service';
+import { SessionSummaryService } from './session-summary.service';
 
 @Controller('sessions')
 export class SessionsController {
   constructor(
     private readonly sessionsService: SessionsService,
     private readonly runtime: SessionRuntimeService,
+    private readonly summaryService: SessionSummaryService,
   ) {}
 
   @Get()
@@ -52,6 +54,12 @@ export class SessionsController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.sessionsService.get(id);
+  }
+
+  /** Post-game analytics; 409 until the session row is 'ended'. */
+  @Get(':id/summary')
+  summary(@Param('id') id: string) {
+    return this.summaryService.compute(id);
   }
 
   @Delete(':id')

@@ -179,9 +179,7 @@
 			case 'bgm':
 				if (!draft.fileKey && !isValidDuration(draft.durationMs))
 					return '재생 시간(ms)은 양의 정수여야 합니다.';
-				return [draft.fadeInMs, draft.fadeOutMs].every(
-					(ms) => Number.isInteger(ms) && ms >= 0
-				)
+				return [draft.fadeInMs, draft.fadeOutMs].every((ms) => Number.isInteger(ms) && ms >= 0)
 					? null
 					: '페이드(ms)는 0 이상의 정수여야 합니다.';
 			case 'sfx':

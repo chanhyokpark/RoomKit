@@ -54,11 +54,25 @@ export const HelperHintNextSchema = z.object({
 });
 export type HelperHintNext = z.infer<typeof HelperHintNextSchema>;
 
+/**
+ * Ask the player for the timer's remaining time; answered with a
+ * `PlayerTimer` carrying the same `requestId`.
+ */
+export const HelperTimerGetSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('timer:get'),
+  requestId: z.uuid(),
+  /** Resynchronize the player's snapshot with the server before answering. */
+  resync: z.boolean(),
+});
+export type HelperTimerGet = z.infer<typeof HelperTimerGetSchema>;
+
 export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperHelloSchema,
   HelperTriggerSchema,
   HelperHintSubmitSchema,
   HelperHintNextSchema,
+  HelperTimerGetSchema,
 ]);
 export type HelperToPlayer = z.infer<typeof HelperToPlayerSchema>;
 
@@ -88,9 +102,23 @@ export const PlayerHintErrorSchema = z.object({
 });
 export type PlayerHintError = z.infer<typeof PlayerHintErrorSchema>;
 
+/** Reply to a `HelperTimerGet` with the matching `requestId`. */
+export const PlayerTimerSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('timer'),
+  requestId: z.uuid(),
+  /**
+   * Remaining timer milliseconds — frozen while paused, 0 when expired.
+   * Null when the theme has no timer (or no session state is known yet).
+   */
+  remainingMs: z.number().int().nonnegative().nullable(),
+});
+export type PlayerTimer = z.infer<typeof PlayerTimerSchema>;
+
 export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerMessageSchema,
   PlayerHintShowSchema,
   PlayerHintErrorSchema,
+  PlayerTimerSchema,
 ]);
 export type PlayerToHelper = z.infer<typeof PlayerToHelperSchema>;
