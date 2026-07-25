@@ -90,7 +90,7 @@ A sequence is stored as an array of commands (JSON). The runtime lives on the se
 | Command | Parameters | Behavior |
 |---|---|---|
 | Reset device | device | sends `reset` to the device (device returns to initial state) |
-| Play/stop dialogue | dialogue, player, `waitUntilEnd` | voice to the speaker device, subtitles to the screen device. With `waitUntilEnd`, the sequence waits for the playback-finished ack |
+| Play/stop dialogue | dialogue, player, `waitUntilEnd`, `lineCues` | voice to the speaker device, subtitles to the screen device. With `waitUntilEnd`, the sequence waits for the playback-finished ack. `lineCues` wedges commands (any except another play-dialogue) into the gaps between lines, anchored to the preceding line's id: the speaker pauses at the gap (previous subtitle stays up), the server runs the cue commands in order, then playback resumes; skip/stop cancels un-run cues. A cue whose line vanished or is last is skipped with a warning |
 | Play/stop SFX | sfx, player | |
 | Play/stop video | video, player, `waitUntilEnd` | plays on the screen device |
 | Play/stop BGM | bgm, player, `loop`, `fadeInMs` / `fadeOutMs` | infinite loop toggle; optional volume fade on play (fade-in) and stop (fade-out) |

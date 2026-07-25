@@ -1,4 +1,5 @@
 import type {
+  PlaybackProgress,
   SessionState,
   WebsiteTestActivity,
   WebsiteTestRun,
@@ -13,6 +14,12 @@ import type {
 export interface WebsiteTestTransport {
   /** Emit a command to the run's device. Returns false when it is offline. */
   sendCommand(runId: string, deviceId: string, wire: WireCommand): boolean;
+  /** Dialogue line-cue go-ahead to the run's (holding) device. */
+  sendProgress(
+    runId: string,
+    deviceId: string,
+    progress: PlaybackProgress,
+  ): void;
   /**
    * Broadcast the synthetic session state to the run's device room only.
    * Website-test states never reach /admin's session:state (they are not
@@ -31,6 +38,7 @@ export interface WebsiteTestTransport {
 /** Used until the gateway registers the real transport (and in unit tests). */
 export const NOOP_WEBSITE_TEST_TRANSPORT: WebsiteTestTransport = {
   sendCommand: () => false,
+  sendProgress: () => {},
   broadcastRunSessionState: () => {},
   disconnectRun: () => {},
   broadcastRunState: () => {},

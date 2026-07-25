@@ -347,8 +347,12 @@ export class DeviceGateway
     if (!attach) return;
     const parsed = PlaybackProgressSchema.safeParse(body);
     if (!parsed.success) return;
-    // Website-test dialogue is single-window (role 'both') — nothing to relay.
-    if (socket.data.websiteTest) return;
+    // Website-test dialogue is single-window (role 'both') — no subtitle
+    // relay, but `waiting` (line-cue hold) still needs answering.
+    if (socket.data.websiteTest) {
+      this.websiteTest.handleProgress(attach.sessionId, parsed.data);
+      return;
+    }
     this.runtime.handleProgress(attach.sessionId, attach.deviceId, parsed.data);
   }
 

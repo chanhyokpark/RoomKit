@@ -73,6 +73,13 @@ export const WireDialogueLineSchema = z.object({
   url: z.url().nullable(),
   durationMs: z.number().int().positive().nullable(),
   subtitleHtml: z.string(),
+  /**
+   * The speaker must pause before this line and emit `progress` with
+   * `waiting: true`; the server runs the authored line cue, then answers with
+   * a plain `progress` for the same lineIndex as the go-ahead. The previous
+   * subtitle stays up during the hold. Screen-role devices ignore this flag.
+   */
+  holdBefore: z.boolean().default(false),
 });
 export type WireDialogueLine = z.infer<typeof WireDialogueLineSchema>;
 
@@ -186,9 +193,17 @@ export const WireCommandSchema = z.union([
 ]);
 export type WireCommand = z.infer<typeof WireCommandSchema>;
 
-/** C→S from the speaker as each dialogue line starts; relayed S→C to the screen. */
+/**
+ * Dialogue line sync. C→S from the speaker as each line starts; relayed S→C
+ * to the screen device (subtitle sync). Two additional uses around line cues:
+ * - C→S with `waiting: true` — the speaker reached a `holdBefore` line and is
+ *   paused; never relayed to the screen.
+ * - S→C to the *speaker* (plain, same lineIndex) — the go-ahead after the
+ *   line cue finished; the speaker resumes with that line.
+ */
 export const PlaybackProgressSchema = z.object({
   commandId: z.uuid(),
   lineIndex: z.number().int().nonnegative(),
+  waiting: z.boolean().default(false),
 });
 export type PlaybackProgress = z.infer<typeof PlaybackProgressSchema>;

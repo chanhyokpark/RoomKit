@@ -30,7 +30,13 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	playDialogue: {
 		label: '대사 재생',
 		icon: MessagesSquareIcon,
-		create: () => ({ type: 'playDialogue', dialogueId: null, playerId: null, waitUntilEnd: false })
+		create: () => ({
+			type: 'playDialogue',
+			dialogueId: null,
+			playerId: null,
+			waitUntilEnd: false,
+			lineCues: []
+		})
 	},
 	stopDialogue: {
 		label: '대사 정지',
@@ -179,11 +185,17 @@ export function commandRefs(cmd: Command): CommandRef[] {
 	switch (cmd.type) {
 		case 'resetDevice':
 			return [{ kind: 'device', id: cmd.deviceId }];
-		case 'playDialogue':
-			return [
+		case 'playDialogue': {
+			const refs: CommandRef[] = [
 				{ kind: 'dialogue', id: cmd.dialogueId },
 				{ kind: 'player', id: cmd.playerId }
 			];
+			// Line cue commands carry refs of their own (cues never nest further).
+			for (const cue of cmd.lineCues) {
+				for (const cueEntry of cue.sequence) refs.push(...commandRefs(cueEntry));
+			}
+			return refs;
+		}
 		case 'playSfx':
 			return [
 				{ kind: 'sfx', id: cmd.sfxId },
@@ -231,6 +243,27 @@ export function commandRefs(cmd: Command): CommandRef[] {
 	}
 }
 
+/** Commands allowed inside a dialogue line cue: everything but playDialogue. */
+export const DIALOGUE_CUE_TYPES = (Object.keys(COMMAND_META) as CommandType[]).filter(
+	(type) => type !== 'playDialogue'
+);
+
+/**
+ * A cue's anchor line is gone from the dialogue asset (or became the last
+ * line — no gap follows). Such cues are skipped at runtime with a warning.
+ */
+export function orphanLineCue(
+	cmd: Extract<Command, { type: 'playDialogue' }>,
+	afterLineId: string,
+	byId: Map<string, Asset>
+): boolean {
+	if (cmd.dialogueId === null) return false;
+	const asset = byId.get(cmd.dialogueId);
+	if (!asset || asset.kind !== 'dialogue') return false;
+	const index = asset.data.lines.findIndex((line) => line.id === afterLineId);
+	return index === -1 || index === asset.data.lines.length - 1;
+}
+
 export interface RefIssues {
 	/** A reference is still null — the command is incomplete. */
 	unset: boolean;
@@ -246,6 +279,14 @@ export function commandRefIssues(cmd: Command, byId: Map<string, Asset>): RefIss
 		else {
 			const asset = byId.get(ref.id);
 			if (!asset || asset.kind !== ref.kind) dangling = true;
+		}
+	}
+	// A cue anchored to a vanished line would be silently skipped at runtime —
+	// surface it like a dangling asset ref.
+	if (cmd.type === 'playDialogue') {
+		for (const cue of cmd.lineCues) {
+			if (cue.sequence.length === 0) continue;
+			if (orphanLineCue(cmd, cue.afterLineId, byId)) dangling = true;
 		}
 	}
 	return { unset, dangling };

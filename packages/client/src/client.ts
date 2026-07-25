@@ -103,7 +103,10 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
   navigate: [string, WireNavigate, DoneFn];
   message: [Record<string, JsonValue>, WireMessage];
   reset: [WireReset];
-  /** Dialogue line sync relayed from the speaker (screen role only). */
+  /**
+   * Dialogue line sync relayed from the speaker (screen role), or the
+   * go-ahead ending a line-cue hold (speaker role; see sendProgress).
+   */
   progress: [PlaybackProgress];
   sessionState: [SessionState];
   status: [ConnectionStatus, string?];
@@ -250,10 +253,13 @@ export class RoomKitClient {
 
   /**
    * Speaker-role dialogue: report that `lineIndex` started playing so the
-   * server can relay subtitle sync to the screen device.
+   * server can relay subtitle sync to the screen device. With `waiting: true`
+   * the speaker instead reports that it is holding before `lineIndex` (a
+   * line-cue gap); the server answers with a plain 'progress' event for the
+   * same commandId/lineIndex as the go-ahead.
    */
-  sendProgress(commandId: string, lineIndex: number): void {
-    this.socket?.emit(DeviceEvents.progress, { commandId, lineIndex });
+  sendProgress(commandId: string, lineIndex: number, waiting = false): void {
+    this.socket?.emit(DeviceEvents.progress, { commandId, lineIndex, waiting });
   }
 
   /**

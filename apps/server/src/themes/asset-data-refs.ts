@@ -74,6 +74,16 @@ function remapSequenceEntry(
     // null, which the runtime already treats as skip-and-log.
     remapped[field] = typeof ref === 'string' ? (idMap.get(ref) ?? null) : null;
   }
+  // Line cue commands carry refs of their own. afterLineId stays verbatim:
+  // dialogue line ids are copied unchanged by duplication.
+  if (entry.type === 'playDialogue') {
+    remapped.lineCues = entry.lineCues.map((cue) => ({
+      ...cue,
+      sequence: cue.sequence.map((cueEntry) =>
+        remapSequenceEntry(cueEntry, idMap),
+      ),
+    }));
+  }
   return remapped as SequenceEntry;
 }
 
@@ -177,6 +187,21 @@ function remapManifestEntry(
       out[field] =
         entry[field] == null ? null : mapNullableRef(entry[field], idMap);
     }
+  }
+  // Line cue commands carry refs of their own. afterLineId must be a real
+  // dialogue-line uuid already — manifests have no map for line ids, so a
+  // symbolic value is left for schema validation to reject.
+  if (type === 'playDialogue' && Array.isArray(entry.lineCues)) {
+    out.lineCues = entry.lineCues.map((cue: unknown) =>
+      isRecord(cue) && Array.isArray(cue.sequence)
+        ? {
+            ...cue,
+            sequence: cue.sequence.map((cueEntry: unknown) =>
+              remapManifestEntry(cueEntry, idMap),
+            ),
+          }
+        : cue,
+    );
   }
   return out;
 }

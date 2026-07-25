@@ -1034,11 +1034,16 @@ describe('Runtime (e2e)', () => {
     runtime.handleProgress(sessionId, speakerId, {
       commandId: bySpeaker!.wire.id,
       lineIndex: 1,
+      waiting: false,
     });
     expect(transport.progress).toEqual([
       {
         deviceId: screenId,
-        progress: { commandId: byScreen!.wire.id, lineIndex: 1 },
+        progress: {
+          commandId: byScreen!.wire.id,
+          lineIndex: 1,
+          waiting: false,
+        },
       },
     ]);
 
@@ -1050,14 +1055,135 @@ describe('Runtime (e2e)', () => {
     });
     expect(transport.progress[1]).toEqual({
       deviceId: screenId,
-      progress: { commandId: byScreen!.wire.id, lineIndex: 2 },
+      progress: { commandId: byScreen!.wire.id, lineIndex: 2, waiting: false },
     });
     // relay is gone — further acks/progress relay nothing
     runtime.handleProgress(sessionId, speakerId, {
       commandId: bySpeaker!.wire.id,
       lineIndex: 1,
+      waiting: false,
     });
     expect(transport.progress).toHaveLength(2);
+  });
+
+  it('runs line cue commands during a dialogue hold, then releases the speaker', async () => {
+    const themeId = await createTheme();
+    const stageDeviceId = await createDevice(themeId, 'stage');
+    const propDeviceId = await createDevice(themeId, 'prop');
+    const playerId = await createAsset(themeId, {
+      kind: 'player',
+      name: 'both',
+      data: {
+        speakerDeviceId: stageDeviceId,
+        screenDeviceId: stageDeviceId,
+        subtitleCss: '',
+      },
+    });
+    const lineIds = [randomUUID(), randomUUID(), randomUUID()];
+    const dialogueId = await createAsset(themeId, {
+      kind: 'dialogue',
+      name: 'cued talk',
+      data: {
+        keepSubtitleAfterEnd: false,
+        lines: lineIds.map((id, i) => ({
+          id,
+          fileKey: `themes/test/cue-l${i}.mp3`,
+          subtitleHtml: `<b>${i}</b>`,
+        })),
+      },
+    });
+    const messageId = await createAsset(themeId, {
+      kind: 'message',
+      name: 'cue-msg',
+      data: { displayName: 'cue-msg', fields: [] },
+    });
+    const eventId = await createEvent(themeId, 'cued talk', {
+      sequence: [
+        entry({
+          type: 'playDialogue',
+          dialogueId,
+          playerId,
+          waitUntilEnd: false,
+          lineCues: [
+            {
+              afterLineId: lineIds[0],
+              sequence: [
+                entry({
+                  type: 'sendMessage',
+                  deviceId: propDeviceId,
+                  messageId,
+                  values: {},
+                }),
+              ],
+            },
+            // Anchored to the last line — no gap follows; dropped with a warning.
+            {
+              afterLineId: lineIds[2],
+              sequence: [
+                entry({
+                  type: 'sendMessage',
+                  deviceId: propDeviceId,
+                  messageId,
+                  values: {},
+                }),
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(() => transport.ofType('play').length === 1);
+    const play = transport.ofType('play')[0];
+    const lines = (play.wire as { lines: { holdBefore: boolean }[] }).lines;
+    // only the line after the (valid) cue anchor holds
+    expect(lines.map((l) => l.holdBefore)).toEqual([false, true, false]);
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) =>
+        l.message.includes('line cue(s) skipped'),
+      ),
+    );
+
+    // the speaker holds before line 1 → the cue's command runs, then a plain
+    // progress for the same line releases the hold
+    runtime.handleProgress(sessionId, stageDeviceId, {
+      commandId: play.wire.id,
+      lineIndex: 1,
+      waiting: true,
+    });
+    await waitFor(() => transport.progress.length === 1);
+    expect(transport.ofType('message')).toHaveLength(1);
+    expect(transport.ofType('message')[0].deviceId).toBe(propDeviceId);
+    expect(transport.progress[0]).toEqual({
+      deviceId: stageDeviceId,
+      progress: { commandId: play.wire.id, lineIndex: 1, waiting: false },
+    });
+
+    // a re-announce (reconnect) after completion answers again without
+    // re-running the cue
+    runtime.handleProgress(sessionId, stageDeviceId, {
+      commandId: play.wire.id,
+      lineIndex: 1,
+      waiting: true,
+    });
+    await waitFor(() => transport.progress.length === 2);
+    expect(transport.ofType('message')).toHaveLength(1);
+
+    // after the final ack the cue state is gone; a stray hold still gets an
+    // immediate go-ahead so no speaker can hang
+    runtime.handleAck(sessionId, stageDeviceId, {
+      commandId: play.wire.id,
+      status: 'done',
+    });
+    runtime.handleProgress(sessionId, stageDeviceId, {
+      commandId: play.wire.id,
+      lineIndex: 1,
+      waiting: true,
+    });
+    await waitFor(() => transport.progress.length === 3);
+    expect(transport.ofType('message')).toHaveLength(1);
   });
 
   it('fires timer:expired and recovers sessions across restarts', async () => {

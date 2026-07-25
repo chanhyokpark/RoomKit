@@ -4,6 +4,7 @@ import type { Prisma, Session } from '@prisma/client';
 import {
   assetDataSchemas,
   type Command,
+  type DialogueCueEntry,
   type EventData,
   type HintError,
   type HintNext,
@@ -49,6 +50,22 @@ interface ParsedEvent {
   id: string;
   name: string;
   data: EventData;
+}
+
+/** Line cues of one in-flight playDialogue, keyed by the speaker wire id. */
+interface DialogueCueState {
+  /** Speaker device — where `waiting` progress comes from and continues go. */
+  deviceId: string;
+  /** Cue commands keyed by the line index the speaker holds before. */
+  byLine: Map<number, DialogueCueEntry[]>;
+  /** callEvent depth of the sequence that started the dialogue. */
+  depth: number;
+  /** Line indexes whose cue is currently executing (dedupes re-announces). */
+  running: Set<number>;
+  /** Line indexes whose cue already ran (re-announce → immediate go-ahead). */
+  completed: Set<number>;
+  /** Last go-ahead sent — re-sent when the speaker reconnects (lost send). */
+  lastContinue: number | null;
 }
 
 /** Engine action queued by an eval script; runs after the script returns. */
@@ -115,6 +132,7 @@ export class SessionEngine {
     string,
     { toDeviceId: string; toCommandId: string; lineCount: number }
   >();
+  private readonly pendingDialogueCues = new Map<string, DialogueCueState>();
 
   private persistChain: Promise<void> = Promise.resolve();
   private logChain: Promise<void> = Promise.resolve();
@@ -246,6 +264,7 @@ export class SessionEngine {
     }
     this.unacked.clear();
     this.progressRelays.clear();
+    this.pendingDialogueCues.clear();
     if (this.activeRuns.size > 0) {
       this.activeRuns.clear();
       this.broadcastRuns();
@@ -710,12 +729,12 @@ export class SessionEngine {
         return false;
       }
       default:
-        await this.dispatchCommand(entry);
+        await this.dispatchCommand(entry, depth);
         return false;
     }
   }
 
-  private async dispatchCommand(cmd: Command): Promise<void> {
+  private async dispatchCommand(cmd: Command, depth = 0): Promise<void> {
     let resolution: Resolution;
     try {
       resolution = await this.deps.resolver.resolve(this.themeId, cmd);
@@ -736,6 +755,26 @@ export class SessionEngine {
         toCommandId: resolution.relay.toCommandId,
         lineCount: resolution.relay.lineCount,
       });
+    }
+    if (resolution.dialogueCues) {
+      const { deviceId, commandId, byLine, dropped } = resolution.dialogueCues;
+      if (dropped > 0) {
+        void this.log(
+          'warn',
+          'command',
+          `${cmd.type}: ${dropped} line cue(s) skipped (line missing from the dialogue or last)`,
+        );
+      }
+      if (byLine.size > 0) {
+        this.pendingDialogueCues.set(commandId, {
+          deviceId,
+          byLine,
+          depth,
+          running: new Set(),
+          completed: new Set(),
+          lastContinue: null,
+        });
+      }
     }
     const online = new Map<string, boolean>();
     for (const delivery of resolution.deliveries) {
@@ -1000,6 +1039,9 @@ export class SessionEngine {
     status: 'done' | 'failed',
   ): void {
     this.unacked.get(deviceId)?.delete(commandId);
+    // Dialogue over (finished, skipped, or stopped): un-run line cues die with
+    // it; a cue already mid-run finishes on its own (its go-ahead is ignored).
+    this.pendingDialogueCues.delete(commandId);
     // Speaker acked a split dialogue: tell the screen it ended with an
     // out-of-range lineIndex sentinel so it can clear the subtitle.
     const relay = this.progressRelays.get(commandId);
@@ -1008,6 +1050,7 @@ export class SessionEngine {
       this.deps.transport().sendProgress(this.id, relay.toDeviceId, {
         commandId: relay.toCommandId,
         lineIndex: relay.lineCount,
+        waiting: false,
       });
     }
     const pending = this.pendingAcks.get(commandId);
@@ -1018,20 +1061,116 @@ export class SessionEngine {
   }
 
   handleProgress(deviceId: string, progress: PlaybackProgress): void {
+    if (progress.waiting) {
+      // Speaker holds before a cue line; never relayed to the screen (its
+      // subtitle stays on the previous line until the go-ahead).
+      this.handleDialogueHold(deviceId, progress.commandId, progress.lineIndex);
+      return;
+    }
     const relay = this.progressRelays.get(progress.commandId);
     if (!relay) return;
     this.deps.transport().sendProgress(this.id, relay.toDeviceId, {
       commandId: relay.toCommandId,
       lineIndex: progress.lineIndex,
+      waiting: false,
+    });
+  }
+
+  private handleDialogueHold(
+    deviceId: string,
+    commandId: string,
+    lineIndex: number,
+  ): void {
+    const state = this.pendingDialogueCues.get(commandId);
+    const entries = state?.byLine.get(lineIndex);
+    // Nothing to run — no cue authored for this line, state lost to a server
+    // restart, or a reconnect re-announce after the cue already completed.
+    // Always answer, or the speaker would hold forever.
+    if (!state || !entries || state.completed.has(lineIndex)) {
+      this.sendDialogueContinue(deviceId, commandId, lineIndex, state);
+      return;
+    }
+    // Re-announce while the cue still runs: the go-ahead comes when it ends.
+    if (state.running.has(lineIndex)) return;
+    state.running.add(lineIndex);
+    void this.runDialogueCue(state, deviceId, commandId, lineIndex, entries);
+  }
+
+  /** Runs one line cue, then releases the holding speaker. */
+  private async runDialogueCue(
+    state: DialogueCueState,
+    deviceId: string,
+    commandId: string,
+    lineIndex: number,
+    entries: DialogueCueEntry[],
+  ): Promise<void> {
+    void this.log(
+      'info',
+      'command',
+      `Dialogue line cue started before line ${lineIndex + 1} (${entries.length} command(s))`,
+    );
+    try {
+      for (const entry of entries) {
+        await this.awaitGate();
+        // Same stop semantics as a sequence (eval false / endTheme); a stopped
+        // cue still releases the dialogue — only its remaining commands die.
+        const stop = await this.runCommand(entry, state.depth);
+        if (stop) break;
+      }
+      void this.log(
+        'info',
+        'command',
+        `Dialogue line cue finished before line ${lineIndex + 1}`,
+      );
+    } catch (err) {
+      if (!(err instanceof RunAbortedError)) {
+        void this.log(
+          'error',
+          'command',
+          `Dialogue line cue failed: ${msg(err)}`,
+        );
+      }
+    } finally {
+      state.running.delete(lineIndex);
+      if (!this.abort.signal.aborted) {
+        state.completed.add(lineIndex);
+        this.sendDialogueContinue(deviceId, commandId, lineIndex, state);
+      }
+    }
+  }
+
+  private sendDialogueContinue(
+    deviceId: string,
+    commandId: string,
+    lineIndex: number,
+    state: DialogueCueState | undefined,
+  ): void {
+    if (state) state.lastContinue = lineIndex;
+    this.deps.transport().sendProgress(this.id, deviceId, {
+      commandId,
+      lineIndex,
+      waiting: false,
     });
   }
 
   /** Redeliver unacked commands (same ids — clients dedupe). */
   onDeviceConnected(deviceId: string): void {
     const perDevice = this.unacked.get(deviceId);
-    if (!perDevice) return;
-    for (const wire of perDevice.values()) {
-      this.deps.transport().sendCommand(this.id, deviceId, wire);
+    if (perDevice) {
+      for (const wire of perDevice.values()) {
+        this.deps.transport().sendCommand(this.id, deviceId, wire);
+      }
+    }
+    // A go-ahead sent while the speaker was offline is lost — repeat the last
+    // one so a reconnecting speaker doesn't stay held (it dedupes by state).
+    for (const [commandId, state] of this.pendingDialogueCues) {
+      if (state.deviceId === deviceId && state.lastContinue !== null) {
+        this.deps.transport().sendProgress(this.id, deviceId, {
+          commandId,
+          lineIndex: state.lastContinue,
+          waiting: false,
+        });
+      }
     }
   }
 

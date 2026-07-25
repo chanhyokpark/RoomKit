@@ -19,9 +19,14 @@ export class PlaybackEngine {
 	readonly dialogue: DialogueChannel;
 
 	constructor(client: RoomKitClient) {
-		this.dialogue = new DialogueChannel((commandId, lineIndex) =>
-			client.sendProgress(commandId, lineIndex)
+		this.dialogue = new DialogueChannel((commandId, lineIndex, waiting) =>
+			client.sendProgress(commandId, lineIndex, waiting)
 		);
+		// A line-cue go-ahead sent while offline is lost; re-announce pending
+		// holds so the server answers again.
+		client.on('status', (status) => {
+			if (status === 'connected') this.dialogue.reannounceHolds();
+		});
 		// The helper bridge reports delegated-video outcomes from the website.
 		stage.videoDelegate = {
 			ended: (commandId) => this.video.handleDelegatedEnded(commandId),

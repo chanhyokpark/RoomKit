@@ -10,6 +10,10 @@ interface ActiveDialogue {
 	audio: HTMLAudioElement | null;
 	cancelSimulation: (() => void) | null;
 	aborted: boolean;
+	/** Line index we are holding before (line-cue gap); null = not holding. */
+	holdLineIndex: number | null;
+	/** Resolves the pending hold (go-ahead received, or teardown). */
+	holdRelease: (() => void) | null;
 }
 
 /**
@@ -26,11 +30,22 @@ interface ActiveDialogue {
  * Placeholder lines (url null) simulate for durationMs; subtitles and the
  * progress relay behave exactly as with real files. A chip is shown while a
  * dialogue containing placeholder lines runs on the speaker.
+ *
+ * Line cues: a line flagged `holdBefore` makes the speaker pause, report
+ * `waiting` progress, and resume when the server relays a plain progress for
+ * the same line (the go-ahead after the authored cue commands ran). The
+ * previous subtitle stays visible during the hold; skip/stop cancels it.
  */
 export class DialogueChannel {
 	private readonly active = new Map<string, ActiveDialogue>();
 
-	constructor(private readonly reportProgress: (commandId: string, lineIndex: number) => void) {}
+	constructor(
+		private readonly reportProgress: (
+			commandId: string,
+			lineIndex: number,
+			waiting?: boolean
+		) => void
+	) {}
 
 	play(cmd: WirePlayDialogue, done: DoneFn): void {
 		this.stop(cmd.playerId);
@@ -39,7 +54,9 @@ export class DialogueChannel {
 			done,
 			audio: null,
 			cancelSimulation: null,
-			aborted: false
+			aborted: false,
+			holdLineIndex: null,
+			holdRelease: null
 		};
 		this.active.set(cmd.playerId, entry);
 		if (cmd.role === 'screen') {
@@ -57,15 +74,34 @@ export class DialogueChannel {
 		void this.runSpeaker(entry);
 	}
 
-	/** Relayed from the speaker device (screen role only). */
+	/**
+	 * Server progress. Screen role: subtitle sync relayed from the speaker.
+	 * Speaker/both roles: the go-ahead ending a line-cue hold.
+	 */
 	onProgress(progress: PlaybackProgress): void {
 		for (const entry of this.active.values()) {
 			const { cmd } = entry;
-			if (cmd.id !== progress.commandId || cmd.role !== 'screen') continue;
-			if (progress.lineIndex >= cmd.lines.length) {
-				this.endScreen(entry);
-			} else {
-				this.showLine(cmd, progress.lineIndex);
+			if (cmd.id !== progress.commandId) continue;
+			if (cmd.role === 'screen') {
+				if (progress.lineIndex >= cmd.lines.length) {
+					this.endScreen(entry);
+				} else {
+					this.showLine(cmd, progress.lineIndex);
+				}
+			} else if (entry.holdLineIndex === progress.lineIndex) {
+				entry.holdRelease?.();
+			}
+		}
+	}
+
+	/**
+	 * Re-report pending holds after a reconnect: the go-ahead may have been
+	 * sent while offline (the server answers re-announces idempotently).
+	 */
+	reannounceHolds(): void {
+		for (const entry of this.active.values()) {
+			if (entry.holdLineIndex !== null) {
+				this.reportProgress(entry.cmd.id, entry.holdLineIndex, true);
 			}
 		}
 	}
@@ -88,6 +124,10 @@ export class DialogueChannel {
 		let failures = 0;
 		for (let i = 0; i < cmd.lines.length; i++) {
 			if (entry.aborted) return;
+			if (cmd.lines[i].holdBefore) {
+				await this.holdBeforeLine(entry, i);
+				if (entry.aborted) return;
+			}
 			this.reportProgress(cmd.id, i);
 			if (cmd.role === 'both') this.showLine(cmd, i);
 			const ok = await this.playLine(entry, cmd.lines[i]);
@@ -96,6 +136,23 @@ export class DialogueChannel {
 		if (entry.aborted) return;
 		const allFailed = cmd.lines.length > 0 && failures === cmd.lines.length;
 		this.endSpeaker(entry, allFailed ? 'failed' : 'done');
+	}
+
+	/**
+	 * Line-cue gap: report the hold and wait for the server's go-ahead (a
+	 * plain progress for the same line). Teardown releases the hold too — the
+	 * caller re-checks `aborted` afterwards.
+	 */
+	private holdBeforeLine(entry: ActiveDialogue, lineIndex: number): Promise<void> {
+		return new Promise((resolve) => {
+			entry.holdLineIndex = lineIndex;
+			entry.holdRelease = () => {
+				entry.holdLineIndex = null;
+				entry.holdRelease = null;
+				resolve();
+			};
+			this.reportProgress(entry.cmd.id, lineIndex, true);
+		});
 	}
 
 	private playLine(entry: ActiveDialogue, line: WireDialogueLine): Promise<boolean> {
@@ -149,6 +206,7 @@ export class DialogueChannel {
 
 	private teardown(entry: ActiveDialogue): void {
 		entry.aborted = true;
+		entry.holdRelease?.();
 		entry.cancelSimulation?.();
 		entry.cancelSimulation = null;
 		if (entry.audio) {

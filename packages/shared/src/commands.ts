@@ -12,15 +12,15 @@ const assetRef = z.uuid().nullable();
 /**
  * Sequence command definitions. The runtime (M2) executes these on the server;
  * the editor (M3) authors them. Stored as a JSON array on Event.sequence.
+ *
+ * Every command except playDialogue is defined in `nonDialogueOptions` so it
+ * can double as a dialogue line cue (see {@link DialogueLineCueSchema});
+ * playDialogue itself is excluded from cues — starting a dialogue would stop
+ * the one the cue is running inside of (callEvent is the escape hatch) — which
+ * also keeps the schema non-recursive.
  */
-export const CommandSchema = z.discriminatedUnion('type', [
+const nonDialogueOptions = [
   z.object({ type: z.literal('resetDevice'), deviceId: assetRef }),
-  z.object({
-    type: z.literal('playDialogue'),
-    dialogueId: assetRef,
-    playerId: assetRef,
-    waitUntilEnd: z.boolean(),
-  }),
   z.object({
     type: z.literal('stopDialogue'),
     playerId: assetRef,
@@ -103,6 +103,45 @@ export const CommandSchema = z.discriminatedUnion('type', [
     /** Hide on every device; deviceId is ignored when set. */
     allDevices: z.boolean().default(false),
   }),
+] as const;
+
+/** Commands allowed inside a dialogue line cue: everything but playDialogue. */
+export const DialogueCueCommandSchema = z.discriminatedUnion(
+  'type',
+  nonDialogueOptions,
+);
+export type DialogueCueCommand = z.infer<typeof DialogueCueCommandSchema>;
+
+/** Cue entries carry a stable id, like sequence entries (editor identity). */
+export const DialogueCueEntrySchema = z.intersection(
+  z.object({ id: z.uuid() }),
+  DialogueCueCommandSchema,
+);
+export type DialogueCueEntry = z.infer<typeof DialogueCueEntrySchema>;
+
+/**
+ * Commands wedged into the gap after one dialogue line. The speaker pauses
+ * before the next line, the server runs `sequence` in order, then playback
+ * continues. Anchored to the line's stable id so cues survive line reorder in
+ * the asset editor; a cue whose line no longer exists (or is the last line —
+ * no gap follows) is skipped with a warning at runtime.
+ */
+export const DialogueLineCueSchema = z.object({
+  afterLineId: z.uuid(),
+  sequence: z.array(DialogueCueEntrySchema),
+});
+export type DialogueLineCue = z.infer<typeof DialogueLineCueSchema>;
+
+export const CommandSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('playDialogue'),
+    dialogueId: assetRef,
+    playerId: assetRef,
+    waitUntilEnd: z.boolean(),
+    /** Commands to run between lines; waitUntilEnd spans cue time too. */
+    lineCues: z.array(DialogueLineCueSchema).default([]),
+  }),
+  ...nonDialogueOptions,
 ]);
 export type Command = z.infer<typeof CommandSchema>;
 export type CommandType = Command['type'];
@@ -111,6 +150,11 @@ export type CommandType = Command['type'];
  * Asset-id reference fields per command type, for consumers that must walk or
  * rewrite refs (e.g. theme duplication's id remap). The `satisfies` clause
  * makes adding a command type a compile error until it is listed here.
+ *
+ * Lists direct fields only: playDialogue's nested lineCues sequences must be
+ * walked recursively by the consumer (each cue entry is itself a command).
+ * A cue's afterLineId is a dialogue *line* id, not an asset id — line ids are
+ * copied verbatim by duplication/import, so it never needs remapping.
  */
 export const COMMAND_ASSET_REFS = {
   resetDevice: ['deviceId'],

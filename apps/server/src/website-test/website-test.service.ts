@@ -15,10 +15,11 @@ import {
   type Ack,
   type Command,
   type CreateWebsiteTestInput,
+  type DialogueCueEntry,
+  type PlaybackProgress,
   type SessionState,
   type Trigger,
   type WebsiteTestActivity,
-  type WebsiteTestCommandStatus,
   type WebsiteTestMatchedEvent,
   type WebsiteTestRun,
   type WebsiteTestTimerInput,
@@ -87,6 +88,24 @@ interface EventRunState {
   abort: AbortController;
 }
 
+/** Activity attribution shared by every command execution path. */
+interface CommandMeta {
+  source: 'manual' | 'event';
+  eventRunId?: string;
+  entryIndex?: number;
+}
+
+/** Line cues of one in-flight playDialogue, keyed by the speaker wire id. */
+interface DialogueCueState {
+  /** Cue commands keyed by the line index the device holds before. */
+  byLine: Map<number, DialogueCueEntry[]>;
+  /** Manual-console origin: cue targets collapse onto the test device too. */
+  forceDevice: boolean;
+  meta: CommandMeta;
+  running: Set<number>;
+  completed: Set<number>;
+}
+
 interface RunState {
   runId: string;
   themeId: string;
@@ -110,6 +129,8 @@ interface RunState {
   timerRunningSince: number | null;
   pendingAcks: Map<string, PendingAck>;
   eventRun: EventRunState | null;
+  /** In-flight dialogue line cues, keyed by the play wire's id. */
+  dialogueCues: Map<string, DialogueCueState>;
   activity: WebsiteTestActivity[];
 }
 
@@ -191,6 +212,7 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
       timerRunningSince: theme.timeLimitMs === null ? null : Date.now(),
       pendingAcks: new Map(),
       eventRun: null,
+      dialogueCues: new Map(),
       activity: [],
     };
     this.runs.set(run.runId, run);
@@ -326,11 +348,73 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
   handleAck(runId: string, ack: Ack): void {
     const run = this.runs.get(runId);
     if (!run) return;
+    // Dialogue over (finished, skipped, or stopped): drop its un-run line cues.
+    run.dialogueCues.delete(ack.commandId);
     const pending = run.pendingAcks.get(ack.commandId);
     if (!pending) return;
     clearTimeout(pending.timeout);
     run.pendingAcks.delete(ack.commandId);
     pending.settle(ack.status);
+  }
+
+  /**
+   * Dialogue progress from the test device. Only `waiting` matters here
+   * (single-window role 'both' needs no subtitle relay): run the line cue,
+   * then send the go-ahead. Always answers, or the device would hold forever.
+   */
+  handleProgress(runId: string, progress: PlaybackProgress): void {
+    const run = this.runs.get(runId);
+    if (!run || !progress.waiting) return;
+    const { commandId, lineIndex } = progress;
+    const state = run.dialogueCues.get(commandId);
+    const entries = state?.byLine.get(lineIndex);
+    if (!state || !entries || state.completed.has(lineIndex)) {
+      this.sendCueContinue(run, commandId, lineIndex);
+      return;
+    }
+    if (state.running.has(lineIndex)) return; // go-ahead comes when it ends
+    state.running.add(lineIndex);
+    void this.runDialogueCue(run, state, commandId, lineIndex, entries);
+  }
+
+  private async runDialogueCue(
+    run: RunState,
+    state: DialogueCueState,
+    commandId: string,
+    lineIndex: number,
+    entries: DialogueCueEntry[],
+  ): Promise<void> {
+    this.emitActivity(run, {
+      kind: 'status',
+      level: 'info',
+      message: `대사 라인 큐 실행 — ${lineIndex + 1}번째 라인 전 (커맨드 ${entries.length}개)`,
+    });
+    try {
+      for (const entry of entries) {
+        if (!run.active) break;
+        await this.runSequenceEntry(run, entry, state.meta, {
+          forceDevice: state.forceDevice,
+        });
+      }
+    } catch (err) {
+      this.logger.error(`Dialogue line cue failed: ${String(err)}`);
+    } finally {
+      state.running.delete(lineIndex);
+      state.completed.add(lineIndex);
+      if (run.active) this.sendCueContinue(run, commandId, lineIndex);
+    }
+  }
+
+  private sendCueContinue(
+    run: RunState,
+    commandId: string,
+    lineIndex: number,
+  ): void {
+    this.transport.sendProgress(run.runId, run.deviceId, {
+      commandId,
+      lineIndex,
+      waiting: false,
+    });
   }
 
   /** Website triggers are reported, never executed. */
@@ -530,94 +614,116 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
         eventRunId: eventRun.eventRunId,
         entryIndex: index,
       };
-      if (SKIPPED_IN_EVENT.has(entry.type)) {
-        this.emitActivity(run, {
-          kind: 'command',
-          level: 'info',
-          message: `${entry.type} 커맨드 건너뜀 (웹 테스트에서 실행 불가)`,
-          commandType: entry.type,
-          status: 'skipped',
-          ...meta,
-        });
-        continue;
-      }
-      if (entry.type === 'wait') {
-        this.emitActivity(run, {
-          kind: 'command',
-          level: 'info',
-          message: `대기 ${entry.durationMs}ms`,
-          commandType: entry.type,
-          status: 'done',
-          ...meta,
-        });
-        await abortableSleep(entry.durationMs, signal);
-        continue;
-      }
-      if (entry.type === 'notify') {
-        this.emitActivity(run, {
-          kind: 'command',
-          level: 'info',
-          message: `알림: ${entry.message}`,
-          commandType: entry.type,
-          status: 'done',
-          ...meta,
-        });
-        continue;
-      }
-      let resolution: Resolution;
-      try {
-        // Resolve with real targets, then keep only the test device's
-        // deliveries — commands aimed at other devices are reported, not run.
-        resolution = await this.resolver.resolve(run.themeId, entry);
-      } catch (err) {
-        if (err instanceof ResolutionError) {
-          this.emitActivity(run, {
-            kind: 'command',
-            level: 'warn',
-            message: `${entry.type} 실행 실패: ${err.message}`,
-            commandType: entry.type,
-            status: 'failed',
-            ...meta,
-          });
-          continue;
-        }
-        throw err;
-      }
-      const dropped = resolution.deliveries.filter(
-        (d) => d.deviceId !== run.deviceId,
-      );
-      const kept = resolution.deliveries.filter(
-        (d) => d.deviceId === run.deviceId,
-      );
-      if (dropped.length > 0) {
-        this.emitActivity(run, {
-          kind: 'command',
-          level: 'info',
-          message:
-            kept.length === 0
-              ? `${entry.type} 커맨드 건너뜀 (다른 장치/플레이어 대상)`
-              : `${entry.type}: 다른 장치 대상 전송 ${dropped.length}건 건너뜀`,
-          commandType: entry.type,
-          status: 'skipped',
-          ...meta,
-        });
-      }
-      if (kept.length === 0) continue;
-      const awaited = this.dispatch(
-        run,
-        entry.type,
-        { ...resolution, deliveries: kept },
-        meta,
-      );
-      if (awaited) {
-        await Promise.race([awaited, abortedPromise(signal)]);
-      }
+      await this.runSequenceEntry(run, entry, meta, {
+        forceDevice: false,
+        signal,
+      });
     }
     this.emitEventRunStatus(
       run,
       eventRun,
       signal.aborted || !run.active ? 'aborted' : 'finished',
     );
+  }
+
+  /**
+   * Executes one sequence entry — event runs and dialogue line cues share
+   * this. `forceDevice` mirrors the entry's origin: manual-console commands
+   * resolve with every target collapsed onto the test device, event entries
+   * resolve real targets and keep only the test device's deliveries.
+   */
+  private async runSequenceEntry(
+    run: RunState,
+    entry: Command,
+    meta: CommandMeta,
+    opts: { forceDevice: boolean; signal?: AbortSignal },
+  ): Promise<void> {
+    if (SKIPPED_IN_EVENT.has(entry.type)) {
+      this.emitActivity(run, {
+        kind: 'command',
+        level: 'info',
+        message: `${entry.type} 커맨드 건너뜀 (웹 테스트에서 실행 불가)`,
+        commandType: entry.type,
+        status: 'skipped',
+        ...meta,
+      });
+      return;
+    }
+    if (entry.type === 'wait') {
+      this.emitActivity(run, {
+        kind: 'command',
+        level: 'info',
+        message: `대기 ${entry.durationMs}ms`,
+        commandType: entry.type,
+        status: 'done',
+        ...meta,
+      });
+      await abortableSleep(entry.durationMs, opts.signal);
+      return;
+    }
+    if (entry.type === 'notify') {
+      this.emitActivity(run, {
+        kind: 'command',
+        level: 'info',
+        message: `알림: ${entry.message}`,
+        commandType: entry.type,
+        status: 'done',
+        ...meta,
+      });
+      return;
+    }
+    let resolution: Resolution;
+    try {
+      resolution = await this.resolver.resolve(
+        run.themeId,
+        entry,
+        opts.forceDevice ? { forceDeviceId: run.deviceId } : {},
+      );
+    } catch (err) {
+      if (err instanceof ResolutionError) {
+        this.emitActivity(run, {
+          kind: 'command',
+          level: 'warn',
+          message: `${entry.type} 실행 실패: ${err.message}`,
+          commandType: entry.type,
+          status: 'failed',
+          ...meta,
+        });
+        return;
+      }
+      throw err;
+    }
+    const dropped = resolution.deliveries.filter(
+      (d) => d.deviceId !== run.deviceId,
+    );
+    const kept = resolution.deliveries.filter(
+      (d) => d.deviceId === run.deviceId,
+    );
+    if (dropped.length > 0) {
+      this.emitActivity(run, {
+        kind: 'command',
+        level: 'info',
+        message:
+          kept.length === 0
+            ? `${entry.type} 커맨드 건너뜀 (다른 장치/플레이어 대상)`
+            : `${entry.type}: 다른 장치 대상 전송 ${dropped.length}건 건너뜀`,
+        commandType: entry.type,
+        status: 'skipped',
+        ...meta,
+      });
+    }
+    if (kept.length === 0) return;
+    const awaited = this.dispatch(
+      run,
+      entry.type,
+      { ...resolution, deliveries: kept },
+      meta,
+    );
+    if (awaited && opts.signal) {
+      await Promise.race([awaited, abortedPromise(opts.signal)]);
+    } else if (awaited) {
+      await awaited;
+    }
   }
 
   /**
@@ -628,12 +734,27 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
     run: RunState,
     commandType: string,
     resolution: Resolution,
-    meta: {
-      source: 'manual' | 'event';
-      eventRunId?: string;
-      entryIndex?: number;
-    },
+    meta: CommandMeta,
   ): Promise<unknown> | null {
+    if (resolution.dialogueCues) {
+      const { commandId, byLine, dropped } = resolution.dialogueCues;
+      if (dropped > 0) {
+        this.emitActivity(run, {
+          kind: 'status',
+          level: 'warn',
+          message: `대사 라인 큐 ${dropped}건 건너뜀 (라인이 없거나 마지막 라인)`,
+        });
+      }
+      if (byLine.size > 0) {
+        run.dialogueCues.set(commandId, {
+          byLine,
+          forceDevice: meta.source === 'manual',
+          meta: { source: meta.source, eventRunId: meta.eventRunId },
+          running: new Set(),
+          completed: new Set(),
+        });
+      }
+    }
     let awaited: Promise<unknown> | null = null;
     for (const delivery of resolution.deliveries) {
       const sent = this.transport.sendCommand(
@@ -909,17 +1030,17 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    if (signal.aborted) {
+    if (signal?.aborted) {
       resolve();
       return;
     }
     const timeout = setTimeout(done, ms);
-    signal.addEventListener('abort', done, { once: true });
+    signal?.addEventListener('abort', done, { once: true });
     function done(): void {
       clearTimeout(timeout);
-      signal.removeEventListener('abort', done);
+      signal?.removeEventListener('abort', done);
       resolve();
     }
   });

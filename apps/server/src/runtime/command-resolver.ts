@@ -14,6 +14,7 @@ import {
   type WireCommand,
   type WireDialogueLine,
 } from '@roomkit/shared';
+import type { DialogueCueEntry } from '@roomkit/shared';
 import type { Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -56,6 +57,21 @@ export interface Resolution {
     toDeviceId: string;
     toCommandId: string;
     lineCount: number;
+  };
+  /**
+   * Dialogue line cues: the speaker holds before each line in `byLine` and
+   * reports `waiting` progress; the executor runs that line's cue commands,
+   * then sends a plain progress back to `deviceId` as the go-ahead.
+   */
+  dialogueCues?: {
+    /** Speaker (or 'both') device — the hold/continue counterpart. */
+    deviceId: string;
+    /** The speaker wire's id; `waiting` progress arrives under it. */
+    commandId: string;
+    /** Cue commands keyed by the line index the speaker holds before. */
+    byLine: Map<number, DialogueCueEntry[]>;
+    /** Cues whose line vanished from the asset or is the last line. */
+    dropped: number;
   };
 }
 
@@ -339,8 +355,27 @@ export class CommandResolver {
   ): Promise<Resolution> {
     const player = await this.getPlayer(themeId, cmd.playerId, opts);
     const dialogue = await this.getAsset(themeId, cmd.dialogueId, 'dialogue');
+    // Line cues anchor to line ids; a cue whose line is gone (asset edited
+    // since authoring) or last (no gap follows) is dropped — the engine logs.
+    const cuesByLine = new Map<number, DialogueCueEntry[]>();
+    let droppedCues = 0;
+    for (const cue of cmd.lineCues) {
+      if (cue.sequence.length === 0) continue;
+      const lineIndex = dialogue.data.lines.findIndex(
+        (line) => line.id === cue.afterLineId,
+      );
+      if (lineIndex === -1 || lineIndex === dialogue.data.lines.length - 1) {
+        droppedCues++;
+        continue;
+      }
+      const holdIndex = lineIndex + 1;
+      cuesByLine.set(holdIndex, [
+        ...(cuesByLine.get(holdIndex) ?? []),
+        ...cue.sequence,
+      ]);
+    }
     const lines: WireDialogueLine[] = await Promise.all(
-      dialogue.data.lines.map(async (line) => ({
+      dialogue.data.lines.map(async (line, index) => ({
         lineId: line.id,
         ...(line.fileKey === null
           ? { fileKey: null, url: null, durationMs: line.durationMs }
@@ -350,6 +385,7 @@ export class CommandResolver {
               durationMs: null,
             }),
         subtitleHtml: line.subtitleHtml,
+        holdBefore: cuesByLine.has(index),
       })),
     );
     const base = {
@@ -365,6 +401,11 @@ export class CommandResolver {
     };
     const { speakerDeviceId, screenDeviceId } = player.data;
 
+    const dialogueCues = (deviceId: string, commandId: string) =>
+      cuesByLine.size > 0 || droppedCues > 0
+        ? { deviceId, commandId, byLine: cuesByLine, dropped: droppedCues }
+        : undefined;
+
     if (speakerDeviceId === screenDeviceId) {
       const wire = { ...base, id: randomUUID(), role: 'both' as const };
       return {
@@ -372,6 +413,7 @@ export class CommandResolver {
         awaitAckOf: cmd.waitUntilEnd
           ? { deviceId: speakerDeviceId, commandId: wire.id }
           : undefined,
+        dialogueCues: dialogueCues(speakerDeviceId, wire.id),
       };
     }
 
@@ -391,6 +433,7 @@ export class CommandResolver {
         toCommandId: screenWire.id,
         lineCount: lines.length,
       },
+      dialogueCues: dialogueCues(speakerDeviceId, speakerWire.id),
     };
   }
 

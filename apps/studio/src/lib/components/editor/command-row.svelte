@@ -11,6 +11,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import CommandParams from './command-params.svelte';
+	import DialogueCueEditor from './dialogue-cue-editor.svelte';
 	import { COMMAND_META, commandRefIssues } from './commands/registry';
 	import { useEditorData } from './editor-data.svelte';
 
@@ -103,5 +104,8 @@
 			</div>
 		</div>
 		<CommandParams {entry} {ownEventId} {onchanged} />
+		{#if entry.type === 'playDialogue'}
+			<DialogueCueEditor {entry} {ownEventId} {onchanged} />
+		{/if}
 	</div>
 </div>
