@@ -1,7 +1,7 @@
 import type { DoneFn } from '@roomkit/client';
 import type { PlaybackProgress, WireDialogueLine, WirePlayDialogue } from '@roomkit/shared';
 import { stage } from '../stores/stage.svelte';
-import { resolveSrc } from './resolve';
+import { createAudio } from './resolve';
 import { simulate } from './simulate';
 
 interface ActiveDialogue {
@@ -169,7 +169,7 @@ export class DialogueChannel {
 		}
 		const { fileKey, url } = line;
 		return new Promise((resolve) => {
-			const audio = new Audio(resolveSrc(fileKey, url));
+			const audio = createAudio(fileKey, url);
 			entry.audio = audio;
 			audio.addEventListener('ended', () => resolve(true));
 			audio.addEventListener('error', () => resolve(false));

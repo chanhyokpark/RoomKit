@@ -1,3 +1,4 @@
+import { vlog } from './log';
 import { isTauri } from './tauri';
 import type { DeviceEntry } from './stores/config.svelte';
 
@@ -7,6 +8,7 @@ import type { DeviceEntry } from './stores/config.svelte';
  * re-opening focuses instead of duplicating.
  */
 export async function openDeviceWindow(device: DeviceEntry): Promise<void> {
+	vlog('windows', 'open device window', { id: device.id, label: device.label });
 	const url = `index.html?device=${encodeURIComponent(device.id)}`;
 	if (!isTauri()) {
 		// Browser dev harness: a plain tab.
@@ -70,6 +72,7 @@ export async function closeWebsiteTestWindows(runId: string): Promise<void> {
 	const suffix = `-${runId.slice(0, 8)}`;
 	for (const w of await WebviewWindow.getAll()) {
 		if (w.label.startsWith('wtest-') && w.label.endsWith(suffix)) {
+			vlog('windows', 'close website test window', w.label);
 			await w.destroy().catch(() => {});
 		}
 	}
@@ -95,14 +98,17 @@ async function openCodedWindow(
 	const windowLabel = `${prefix}-${device.deviceId}-${scopeId.slice(0, 8)}`;
 	for (const w of await WebviewWindow.getAll()) {
 		if (w.label.startsWith(`${prefix}-${device.deviceId}-`) && w.label !== windowLabel) {
+			vlog('windows', 'replace stale window', w.label);
 			await w.destroy().catch(() => {});
 		}
 	}
 	const existing = await WebviewWindow.getByLabel(windowLabel);
 	if (existing) {
+		vlog('windows', 'focus existing window', windowLabel);
 		await existing.setFocus();
 		return;
 	}
+	vlog('windows', 'open window', windowLabel, { device: device.deviceName, label });
 	new WebviewWindow(windowLabel, {
 		url: `index.html?${query}`,
 		title: `RoomKit Player — ${label}`,

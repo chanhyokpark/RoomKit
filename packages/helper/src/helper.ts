@@ -15,6 +15,7 @@ import type {
   PlayerSubtitle,
   PlayerVideoPlay,
   PlayerVideoStop,
+  SessionMode,
 } from '@roomkit/shared';
 import { Emitter } from './emitter.js';
 
@@ -28,6 +29,8 @@ import { Emitter } from './emitter.js';
 const HELPER_SOURCE = 'roomkit-helper';
 const PLAYER_SOURCE = 'roomkit-player';
 const TIMER_TIMEOUT_MS = 10_000;
+const HELLO_RETRY_MS = 800;
+const HELLO_RETRY_MAX = 25;
 
 /** uuid v4; falls back to Math.random on non-secure contexts (LAN http). */
 function requestId(): string {
@@ -48,7 +51,9 @@ export interface RoomKitHelperOptions {
   /**
    * Disable the context menu and text selection document-wide, matching the
    * player's kiosk defaults (inputs/textareas stay selectable). Default true;
-   * set false while developing the site in a normal browser.
+   * set false while developing the site in a normal browser. In test sessions
+   * the player reports its mode and the context menu stays available so
+   * devtools can be opened.
    */
   lockdown?: boolean;
   /**
@@ -98,9 +103,16 @@ export class RoomKitHelper {
   private readonly parent: Pick<Window, 'postMessage'>;
   private readonly self: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   private readonly onMessage = (event: MessageEvent) => this.receive(event.data);
-  private readonly onContextMenu = (event: Event) => event.preventDefault();
+  // Test sessions keep the context menu so devtools stay reachable.
+  private readonly onContextMenu = (event: Event) => {
+    if (this.mode !== 'test') event.preventDefault();
+  };
+  /** Player-reported session mode; production (locked down) until told. */
+  private mode: SessionMode = 'production';
   /** Injected lockdown stylesheet, kept for removal in destroy(). */
   private lockdownStyle: HTMLStyleElement | null = null;
+  /** hello retry timer; stopped by the first player message (the ack). */
+  private helloTimer: ReturnType<typeof setInterval> | null = null;
   /** In-flight timer:get requests, keyed by requestId. */
   private readonly pendingTimers = new Map<
     string,
@@ -114,7 +126,7 @@ export class RoomKitHelper {
     if (options.lockdown !== false) this.lockdown();
     // Tells the player this frame is ready (and which slots it renders); the
     // player flushes buffered messages on it.
-    this.post({
+    const hello: HelperHello = {
       source: HELPER_SOURCE,
       type: 'hello',
       renders: {
@@ -122,13 +134,36 @@ export class RoomKitHelper {
         hintCode: options.renders?.hintCode ?? false,
         video: options.renders?.video ?? false,
       },
-    } satisfies HelperHello);
+    };
+    this.post(hello);
+    // The player's bridge may not be listening yet (created after this frame
+    // ran) or may have reset on a load event that raced this hello — repeat
+    // until any player message proves the bridge heard us (it replies 'mode'
+    // to every hello). Bounded so a page opened outside the player goes quiet.
+    let attempts = 0;
+    this.helloTimer = setInterval(() => {
+      if (++attempts >= HELLO_RETRY_MAX) this.stopHelloRetry();
+      this.post(hello);
+    }, HELLO_RETRY_MS);
+  }
+
+  private stopHelloRetry(): void {
+    if (this.helloTimer !== null) {
+      clearInterval(this.helloTimer);
+      this.helloTimer = null;
+    }
+  }
+
+  /** Session mode as reported by the player ('production' until told otherwise). */
+  get sessionMode(): SessionMode {
+    return this.mode;
   }
 
   /**
    * The iframe is its own document, so the player's kiosk defaults do not
    * reach it — re-apply them here: no context menu, no text selection
-   * (inputs/textareas excepted so puzzle forms keep working).
+   * (inputs/textareas excepted so puzzle forms keep working). In test
+   * sessions the context menu stays available (right-click → devtools).
    */
   private lockdown(): void {
     if (typeof document === 'undefined') return;
@@ -228,6 +263,7 @@ export class RoomKitHelper {
 
   /** Unregisters the message listener; the instance is dead afterwards. */
   destroy(): void {
+    this.stopHelloRetry();
     this.self.removeEventListener('message', this.onMessage as EventListener);
     if (typeof document !== 'undefined') {
       document.removeEventListener('contextmenu', this.onContextMenu, true);
@@ -260,6 +296,8 @@ export class RoomKitHelper {
     if (typeof data !== 'object' || data === null) return;
     const msg = data as Record<string, unknown>;
     if (msg.source !== PLAYER_SOURCE) return;
+    // Any player message means the bridge is up and has seen our hello.
+    this.stopHelloRetry();
     switch (msg.type) {
       case 'message': {
         if (typeof msg.payload !== 'object' || msg.payload === null) return;
@@ -315,6 +353,11 @@ export class RoomKitHelper {
       case 'video:stop': {
         if (typeof msg.commandId !== 'string') return;
         this.emitter.emit('videoStop', { commandId: msg.commandId });
+        return;
+      }
+      case 'mode': {
+        if (msg.mode !== 'test' && msg.mode !== 'production') return;
+        this.mode = msg.mode;
         return;
       }
       default:

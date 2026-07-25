@@ -12,6 +12,8 @@ import {
 	type PlayerVideoPlay,
 	type WireMessage
 } from '@roomkit/shared';
+import { connection } from '../stores/connection.svelte';
+import { vlog } from '../log';
 import { stage } from '../stores/stage.svelte';
 
 /**
@@ -25,6 +27,8 @@ import { stage } from '../stores/stage.svelte';
  */
 export class HelperBridge {
 	private ready = false;
+	/** A hello arrived after the previous iframe load event (or construction). */
+	private helloSinceLoad = false;
 	private buffered: PlayerToHelper[] = [];
 	private readonly targetOrigin: string;
 	private readonly cleanups: (() => void)[] = [];
@@ -45,9 +49,19 @@ export class HelperBridge {
 		// `hello` again before it can receive, so buffer until then — otherwise
 		// messages posted mid-reload land on a page that isn't listening yet.
 		// Render claims die with the old page; the new page re-claims in hello.
+		//
+		// BUT the load event races the hello: the site's module script runs (and
+		// posts hello) before its resources finish loading, and WKWebView also
+		// fires a load for the iframe's initial about:blank. A hello received
+		// since the previous load event therefore belongs to the document that
+		// just finished loading — resetting then would wipe an established
+		// handshake for good (the helper's hello is one-shot on old bundles).
 		const onLoad = () => {
-			this.ready = false;
-			stage.dropHelperClaims();
+			if (!this.helloSinceLoad) {
+				this.ready = false;
+				stage.dropHelperClaims();
+			}
+			this.helloSinceLoad = false;
 		};
 		iframe.addEventListener('load', onLoad);
 		this.cleanups.push(() => iframe.removeEventListener('load', onLoad));
@@ -96,12 +110,28 @@ export class HelperBridge {
 	private receive(event: MessageEvent): void {
 		if (event.source !== this.iframe.contentWindow) return;
 		const parsed = HelperToPlayerSchema.safeParse(event.data);
-		if (!parsed.success) return;
+		if (!parsed.success) {
+			// Only warn for messages that claim to be from the helper — a silent
+			// drop here means an invisible version mismatch with the site's bundle.
+			if ((event.data as { source?: unknown } | null)?.source === 'roomkit-helper') {
+				console.warn('[player] dropped malformed helper message', event.data, parsed.error);
+			}
+			return;
+		}
 		const msg = parsed.data;
+		vlog('bridge', '← helper', msg.type, msg);
 		switch (msg.type) {
 			case 'hello': {
 				this.ready = true;
+				this.helloSinceLoad = true;
 				stage.helperRenders = { ...msg.renders };
+				// Replied to every hello so a reloaded page learns it again; test
+				// mode keeps the site's context menu usable (devtools).
+				this.post({
+					source: PLAYER_SOURCE,
+					type: 'mode',
+					mode: connection.session?.mode ?? 'production'
+				});
 				for (const queued of this.buffered.splice(0)) this.post(queued);
 				return;
 			}
@@ -139,6 +169,7 @@ export class HelperBridge {
 
 	private send(msg: PlayerToHelper): void {
 		if (!this.ready) {
+			vlog('bridge', 'buffered until hello', msg.type, msg);
 			this.buffered.push(msg);
 			return;
 		}
@@ -146,6 +177,20 @@ export class HelperBridge {
 	}
 
 	private post(msg: PlayerToHelper): void {
-		this.iframe.contentWindow?.postMessage(msg, this.targetOrigin);
+		vlog('bridge', '→ helper', msg.type, msg);
+		// Envelopes assembled from $state (stage.subtitle/delegatedVideo/…) carry
+		// Svelte proxies in nested fields; structured clone rejects proxies, so a
+		// raw postMessage throws DataCloneError — which kills the posting $effect
+		// and with it the whole bridge. The wire shapes are plain JSON, so a JSON
+		// round-trip deproxies losslessly; the catch keeps a bad envelope from
+		// ever tearing the bridge down again.
+		try {
+			this.iframe.contentWindow?.postMessage(
+				JSON.parse(JSON.stringify(msg)),
+				this.targetOrigin
+			);
+		} catch (err) {
+			console.error('[player] bridge post failed', msg.type, err);
+		}
 	}
 }

@@ -27,6 +27,9 @@ export class VideoChannel {
 		done: DoneFn;
 		cancelSimulation: (() => void) | null;
 		delegated: boolean;
+		/** Presigned URL to retry once when the cached copy fails; null = none. */
+		fallbackUrl: string | null;
+		fileKey: string | null;
 	} | null = null;
 
 	play(cmd: WirePlayVideo, done: DoneFn): void {
@@ -37,14 +40,18 @@ export class VideoChannel {
 			commandId: cmd.id,
 			done,
 			cancelSimulation: null,
-			delegated
+			delegated,
+			fallbackUrl: null,
+			fileKey: cmd.fileKey
 		};
 		const placeholder = cmd.url === null || cmd.fileKey === null;
 		if (delegated) {
+			const src = placeholder ? null : (cache.httpSrc(cmd.fileKey as string) ?? cmd.url);
+			if (src !== null && src !== cmd.url) this.active.fallbackUrl = cmd.url;
 			stage.delegatedVideo = {
 				commandId: cmd.id,
 				assetName: cmd.assetName,
-				url: placeholder ? null : (cache.httpSrc(cmd.fileKey as string) ?? cmd.url),
+				url: src,
 				durationMs: placeholder ? cmd.durationMs : null,
 				frame: cmd.frame,
 				params: cmd.params
@@ -54,7 +61,9 @@ export class VideoChannel {
 			if (placeholder) {
 				stage.videoPlaceholder = cmd.assetName;
 			} else {
-				stage.videoSrc = resolveSrc(cmd.fileKey as string, cmd.url as string);
+				const src = resolveSrc(cmd.fileKey as string, cmd.url as string);
+				if (src !== cmd.url) this.active.fallbackUrl = cmd.url;
+				stage.videoSrc = src;
 			}
 		}
 		if (placeholder) {
@@ -76,7 +85,9 @@ export class VideoChannel {
 	}
 
 	handleError(): void {
-		if (stage.videoSrc !== null) this.finish('failed');
+		if (stage.videoSrc === null) return;
+		if (this.retryWithFallback((url) => (stage.videoSrc = url))) return;
+		this.finish('failed');
 	}
 
 	/** The claiming website reported its delegated video finished. */
@@ -86,7 +97,30 @@ export class VideoChannel {
 
 	/** The claiming website failed to play the delegated video. */
 	handleDelegatedError(commandId: string): void {
-		if (this.active?.delegated && this.active.commandId === commandId) this.finish('failed');
+		if (!this.active?.delegated || this.active.commandId !== commandId) return;
+		if (
+			this.retryWithFallback((url) => {
+				if (stage.delegatedVideo) stage.delegatedVideo = { ...stage.delegatedVideo, url };
+			})
+		) {
+			return;
+		}
+		this.finish('failed');
+	}
+
+	/**
+	 * One-shot fallback for a failed cached copy (pruned by another window,
+	 * corrupt file): swap in the presigned URL instead of failing the command.
+	 */
+	private retryWithFallback(apply: (url: string) => void): boolean {
+		const active = this.active;
+		if (!active?.fallbackUrl) return false;
+		const url = active.fallbackUrl;
+		active.fallbackUrl = null;
+		if (active.fileKey) cache.invalidate(active.fileKey);
+		console.warn('[player] cached video failed, falling back to presigned url', active.fileKey);
+		apply(url);
+		return true;
 	}
 
 	/**

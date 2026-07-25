@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { VideoFrameSchema } from './assets.js';
 import { JsonValueSchema } from './json.js';
-import { HintErrorSchema, HintShowSchema } from './protocol.js';
+import { HintErrorSchema, HintShowSchema, SessionModeSchema } from './protocol.js';
 
 /**
  * postMessage bridge between the tauri player and `@roomkit/helper` running
@@ -206,6 +206,18 @@ export const PlayerVideoPlaySchema = z.object({
 });
 export type PlayerVideoPlay = z.infer<typeof PlayerVideoPlaySchema>;
 
+/**
+ * The session's mode, posted in reply to every helper `hello` (so a reloaded
+ * page learns it again). In test sessions the helper keeps the context menu
+ * usable so devtools stay reachable; production keeps the kiosk lockdown.
+ */
+export const PlayerModeSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('mode'),
+  mode: SessionModeSchema,
+});
+export type PlayerMode = z.infer<typeof PlayerModeSchema>;
+
 /** Delegated video stopped (server stop, replacement, or skip). */
 export const PlayerVideoStopSchema = z.object({
   source: z.literal(PLAYER_SOURCE),
@@ -223,5 +235,6 @@ export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerHintCodeSchema,
   PlayerVideoPlaySchema,
   PlayerVideoStopSchema,
+  PlayerModeSchema,
 ]);
 export type PlayerToHelper = z.infer<typeof PlayerToHelperSchema>;

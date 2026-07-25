@@ -1,4 +1,5 @@
 import type { RoomKitClient } from '@roomkit/client';
+import { vlog } from '../log';
 import { isTauri } from '../tauri';
 
 type SyncState = 'idle' | 'syncing' | 'ready' | 'error';
@@ -80,12 +81,22 @@ class CacheManager {
 		await this.download(fileKey, url);
 	}
 
+	/**
+	 * A cached src failed to play (pruned by another window, corrupt file):
+	 * stop serving it so playback falls back to the presigned URL.
+	 */
+	invalidate(fileKey: string): void {
+		vlog('cache', 'invalidate', fileKey);
+		this.cached.delete(fileKey);
+	}
+
 	private async syncOnce(client: RoomKitClient): Promise<void> {
 		this.state = 'syncing';
 		try {
 			const manifest = await client.fetchAssetManifest();
 			const wanted = new Map(manifest.entries.map((e) => [e.fileKey, e.url]));
 			const missing = [...wanted].filter(([key]) => !this.cached.has(key));
+			vlog('cache', 'sync:', wanted.size, 'wanted,', missing.length, 'to download');
 			this.progress = { done: 0, total: missing.length };
 
 			const queue = [...missing];
@@ -104,9 +115,11 @@ class CacheManager {
 
 			const { invoke } = await import('@tauri-apps/api/core');
 			await invoke('cache_prune', { keep: [...wanted.keys()] });
-			for (const key of [...this.cached]) {
-				if (!wanted.has(key)) this.cached.delete(key);
-			}
+			// Disk is the truth: another window (same cache dir) may have pruned
+			// keys this window still believed cached — incremental bookkeeping
+			// would keep serving 404s from the media server.
+			this.cached = new Set(await invoke<string[]>('cache_list'));
+			vlog('cache', 'sync complete,', this.cached.size, 'files cached');
 			this.state = 'ready';
 		} catch (err) {
 			console.warn('[player] cache sync failed; streaming from URLs', err);

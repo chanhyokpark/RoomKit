@@ -1,4 +1,7 @@
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -7,8 +10,43 @@ use tokio::io::AsyncWriteExt;
 
 /// Media cache under `<app data>/cache/<fileKey>`. fileKeys are immutable
 /// S3-style keys (`themes/<id>/<uuid>/<name>`), so file presence == fresh.
+///
+/// Several webviews (launcher + one window per device) call these commands
+/// concurrently against ONE cache directory, so downloads are coordinated
+/// process-wide: a per-key active set makes the second window wait instead of
+/// truncating the first one's `.part`, and list/prune leave an active key's
+/// files alone.
 
 const PROGRESS_EMIT_STEP: u64 = 1024 * 1024;
+
+/// Keys with a download in flight (any window).
+fn active_downloads() -> &'static Mutex<HashSet<String>> {
+  static ACTIVE: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+  ACTIVE.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn is_active(key: &str) -> bool {
+  active_downloads().lock().unwrap().contains(key)
+}
+
+/// Removes the key from the active set when the download ends — every exit
+/// path included (errors, early returns).
+struct ActiveGuard(String);
+
+impl Drop for ActiveGuard {
+  fn drop(&mut self) {
+    active_downloads().lock().unwrap().remove(&self.0);
+  }
+}
+
+fn try_claim(key: &str) -> Option<ActiveGuard> {
+  let mut set = active_downloads().lock().unwrap();
+  if set.contains(key) {
+    return None;
+  }
+  set.insert(key.to_string());
+  Some(ActiveGuard(key.to_string()))
+}
 
 pub(crate) fn cache_base(app: &AppHandle) -> Result<PathBuf, String> {
   let dir = app
@@ -48,6 +86,17 @@ pub async fn cache_download(
 ) -> Result<(), String> {
   let root = cache_base(&app)?;
   let dest = safe_join(&root, &file_key)?;
+  // Claim the key or wait for the window that already downloads it — two
+  // windows writing the same `.part` truncate each other into a corrupt file.
+  let _guard = loop {
+    if dest.exists() {
+      return Ok(());
+    }
+    match try_claim(&file_key) {
+      Some(guard) => break guard,
+      None => tokio::time::sleep(Duration::from_millis(250)).await,
+    }
+  };
   if dest.exists() {
     return Ok(());
   }
@@ -119,7 +168,9 @@ pub fn cache_prune(app: AppHandle, keep: Vec<String>) -> Result<u32, String> {
   collect_files(&root, &root, &mut existing)?;
   let mut deleted = 0u32;
   for key in existing {
-    if !keep.contains(key.as_str()) {
+    // Another window may be mid-download for a manifest this window has not
+    // seen (e.g. right after a theme re-import) — leave its file alone.
+    if !keep.contains(key.as_str()) && !is_active(&key) {
       if std::fs::remove_file(root.join(&key)).is_ok() {
         deleted += 1;
       }
@@ -141,8 +192,24 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), S
     if path.is_dir() {
       collect_files(root, &path, out)?;
     } else if path.extension().and_then(|e| e.to_str()) == Some("part") {
-      // Leftover from a crashed download; treat as garbage.
-      let _ = std::fs::remove_file(&path);
+      // Leftover from a crashed download; treat as garbage — unless a window
+      // is writing it right now (deleting a live .part fails its rename).
+      let live = path
+        .with_extension("")
+        .strip_prefix(root)
+        .ok()
+        .and_then(|rel| {
+          let key = rel
+            .components()
+            .filter_map(|c| c.as_os_str().to_str())
+            .collect::<Vec<_>>()
+            .join("/");
+          Some(is_active(&key))
+        })
+        .unwrap_or(false);
+      if !live {
+        let _ = std::fs::remove_file(&path);
+      }
     } else if let Ok(rel) = path.strip_prefix(root) {
       // Cache keys always use forward slashes, also on Windows.
       let key = rel

@@ -1,7 +1,7 @@
 import type { DoneFn } from '@roomkit/client';
 import type { WirePlayBgm } from '@roomkit/shared';
 import { stage } from '../stores/stage.svelte';
-import { resolveSrc } from './resolve';
+import { createAudio } from './resolve';
 import { simulate } from './simulate';
 
 interface ActiveBgm {
@@ -110,7 +110,7 @@ export class BgmChannel {
 			return;
 		}
 
-		const audio = new Audio(resolveSrc(cmd.fileKey, cmd.url));
+		const audio = createAudio(cmd.fileKey, cmd.url);
 		audio.loop = cmd.loop;
 		const entry: ActiveBgm = {
 			audio,

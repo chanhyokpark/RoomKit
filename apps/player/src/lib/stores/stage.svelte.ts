@@ -1,4 +1,5 @@
 import type { HelperRenderClaims, JsonValue, PlayChannel, VideoFrame } from '@roomkit/shared';
+import { vlog } from '../log';
 
 export interface Subtitle {
 	html: string;
@@ -121,11 +122,15 @@ class StageStore {
 		if (this.iframeUrl === url) {
 			if (!force) {
 				// Same URL: the #key'd iframe won't re-create, so no load will fire.
+				vlog('stage', 'navigate to same url, ack immediately', url);
 				done();
 				return;
 			}
 			// Forced reload (website test): re-create the iframe for the same URL.
+			vlog('stage', 'forced reload', url);
 			this.reloadNonce++;
+		} else {
+			vlog('stage', 'navigate', url);
 		}
 		this.navigateDone = done;
 		this.iframeUrl = url;
@@ -133,6 +138,7 @@ class StageStore {
 
 	/** The website iframe finished loading (reported by WebsiteFrame). */
 	siteLoaded(): void {
+		vlog('stage', 'site loaded', this.iframeUrl);
 		this.releaseNavigateAck();
 	}
 
@@ -143,6 +149,7 @@ class StageStore {
 
 	/** Device reset: back to the idle black screen. */
 	clear(): void {
+		vlog('stage', 'reset to idle screen');
 		this.videoSrc = null;
 		this.videoPlaceholder = null;
 		this.videoFrame = null;

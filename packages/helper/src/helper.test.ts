@@ -224,6 +224,17 @@ describe('RoomKitHelper', () => {
     }
   });
 
+  it('tracks the player-reported session mode, ignoring bogus values', () => {
+    const { helper, inject } = env();
+    expect(helper.sessionMode).toBe('production');
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'test' });
+    expect(helper.sessionMode).toBe('test');
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'bogus' });
+    expect(helper.sessionMode).toBe('test');
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'production' });
+    expect(helper.sessionMode).toBe('production');
+  });
+
   it('ignores malformed, wrong-source, and unknown messages', () => {
     const { helper, inject } = env();
     const onAny = vi.fn();

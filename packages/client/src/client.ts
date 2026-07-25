@@ -65,6 +65,13 @@ export interface RoomKitClientOptions {
   retryOnFatalError?: boolean;
   /** Delay between fatal-error retries. Default 5000ms. */
   fatalRetryDelayMs?: number;
+  /**
+   * Log the connection lifecycle, inbound events/commands, and outbound
+   * emits to the console (prefixed `[roomkit]`) so devtools show what the
+   * client is doing. Invalid payloads are warned about regardless.
+   * Default false.
+   */
+  debug?: boolean;
 }
 
 const FATAL_RETRY_DELAY_MS = 5000;
@@ -146,6 +153,11 @@ export class RoomKitClient {
     this.storageKey = testCodeKey(options.serverUrl);
   }
 
+  /** Debug-only console logging; payload objects stay expandable in devtools. */
+  private log(...args: unknown[]): void {
+    if (this.options.debug) console.log('[roomkit]', ...args);
+  }
+
   get status(): ConnectionStatus {
     return this.currentStatus;
   }
@@ -162,6 +174,12 @@ export class RoomKitClient {
         ? null
         : this.storage.getItem(this.storageKey);
     this.usedCode = stored ?? this.options.deviceCode;
+    this.log('connecting', {
+      serverUrl: this.options.serverUrl,
+      deviceCode: this.usedCode,
+      deviceName: this.options.deviceName,
+      usingStoredTestCode: stored !== null,
+    });
     this.setStatus('connecting');
 
     const socket = io(`${this.options.serverUrl}${DEVICE_NAMESPACE}`, {
@@ -182,6 +200,12 @@ export class RoomKitClient {
         if (this.options.retryOnFatalError) {
           // The code may simply not exist *yet* — poll with a fresh socket
           // (and the configured code, now that any stored one is forgotten).
+          this.log(
+            'fatal connect error, retrying in',
+            this.options.fatalRetryDelayMs ?? FATAL_RETRY_DELAY_MS,
+            'ms:',
+            err.message,
+          );
           this.setStatus('connecting', err.message);
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null;
@@ -197,8 +221,12 @@ export class RoomKitClient {
 
     socket.on(DeviceEvents.welcome, (payload: unknown) => {
       const parsed = WelcomeSchema.safeParse(payload);
-      if (!parsed.success) return;
+      if (!parsed.success) {
+        console.warn('[roomkit] invalid welcome dropped', payload, parsed.error);
+        return;
+      }
       const welcome = parsed.data;
+      this.log('welcome', welcome);
       this.rememberSessionState(welcome.session);
       // A test-mode welcome means the code we used is a test code — persist
       // it for auto-rejoin (codes carry no reserved prefix).
@@ -215,7 +243,11 @@ export class RoomKitClient {
 
     socket.on(DeviceEvents.sessionState, (payload: unknown) => {
       const parsed = SessionStateSchema.safeParse(payload);
-      if (!parsed.success) return;
+      if (!parsed.success) {
+        console.warn('[roomkit] invalid session state dropped', payload, parsed.error);
+        return;
+      }
+      this.log('session state', parsed.data);
       this.rememberSessionState(parsed.data);
       if (parsed.data.state === 'ended') this.forgetTestCode();
       this.emitter.emit('sessionState', parsed.data);
@@ -225,17 +257,32 @@ export class RoomKitClient {
 
     socket.on(DeviceEvents.progress, (payload: unknown) => {
       const parsed = PlaybackProgressSchema.safeParse(payload);
-      if (parsed.success) this.emitter.emit('progress', parsed.data);
+      if (!parsed.success) {
+        console.warn('[roomkit] invalid progress dropped', payload, parsed.error);
+        return;
+      }
+      this.log('progress', parsed.data);
+      this.emitter.emit('progress', parsed.data);
     });
 
     socket.on(DeviceEvents.hintShow, (payload: unknown) => {
       const parsed = HintShowSchema.safeParse(payload);
-      if (parsed.success) this.emitter.emit('hint', parsed.data);
+      if (!parsed.success) {
+        console.warn('[roomkit] invalid hint dropped', payload, parsed.error);
+        return;
+      }
+      this.log('hint', parsed.data);
+      this.emitter.emit('hint', parsed.data);
     });
 
     socket.on(DeviceEvents.hintError, (payload: unknown) => {
       const parsed = HintErrorSchema.safeParse(payload);
-      if (parsed.success) this.emitter.emit('hintError', parsed.data);
+      if (!parsed.success) {
+        console.warn('[roomkit] invalid hint error dropped', payload, parsed.error);
+        return;
+      }
+      this.log('hint error', parsed.data);
+      this.emitter.emit('hintError', parsed.data);
     });
   }
 
@@ -248,6 +295,7 @@ export class RoomKitClient {
 
   /** Report a game event (sensor, button, …). */
   trigger(event: string, payload?: JsonValue): void {
+    this.log('trigger', event, payload);
     this.socket?.emit(DeviceEvents.trigger, { event, payload });
   }
 
@@ -259,6 +307,7 @@ export class RoomKitClient {
    * same commandId/lineIndex as the go-ahead.
    */
   sendProgress(commandId: string, lineIndex: number, waiting = false): void {
+    this.log('send progress', { commandId, lineIndex, waiting });
     this.socket?.emit(DeviceEvents.progress, { commandId, lineIndex, waiting });
   }
 
@@ -267,11 +316,13 @@ export class RoomKitClient {
    * as a 'hint' (or 'hintError') event.
    */
   submitHint(code: string): void {
+    this.log('submit hint', code);
     this.socket?.emit(DeviceEvents.hintSubmit, { code });
   }
 
   /** Stateless step advance: request the exact 0-based step to show. */
   requestHintStep(hintId: string, step: number): void {
+    this.log('request hint step', { hintId, step });
     this.socket?.emit(DeviceEvents.hintNext, { hintId, step });
   }
 
@@ -295,6 +346,7 @@ export class RoomKitClient {
             if (!parsed.success) {
               return reject(new Error('no manifest available'));
             }
+            this.log('asset manifest', parsed.data);
             resolve(parsed.data);
           },
         );
@@ -369,10 +421,12 @@ export class RoomKitClient {
       // Redelivery. If we already finished it, repeat the ack; if it is
       // still in flight, the eventual done()/auto-ack covers it.
       const status = this.completed.get(cmd.id);
+      this.log('command redelivered', cmd.type, cmd.id, status ?? 'still in flight');
       if (status) this.ack(cmd.id, status);
       return;
     }
     this.remember(cmd.id);
+    this.log('command', cmd.type, cmd);
 
     switch (cmd.type) {
       case 'play': {
@@ -420,6 +474,7 @@ export class RoomKitClient {
   }
 
   private ack(commandId: string, status: 'done' | 'failed'): void {
+    this.log('ack', status, commandId);
     this.completed.set(commandId, status);
     if (this.completed.size > SEEN_COMMANDS_LIMIT) {
       const oldest = this.completed.keys().next().value;
@@ -456,6 +511,9 @@ export class RoomKitClient {
   }
 
   private setStatus(status: ConnectionStatus, detail?: string): void {
+    if (status !== this.currentStatus || detail !== undefined) {
+      this.log('status', status, detail ?? '');
+    }
     this.currentStatus = status;
     this.emitter.emit('status', status, detail);
   }

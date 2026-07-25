@@ -1,5 +1,6 @@
 import { RoomKitClient, type ConnectionStatus } from '@roomkit/client';
 import type { SessionState, Welcome } from '@roomkit/shared';
+import { verboseLogs } from '../log';
 
 /**
  * Owns this stage window's RoomKitClient (one window = one device) and
@@ -33,7 +34,8 @@ class ConnectionStore {
 			deviceCode,
 			deviceName,
 			retryOnFatalError: true,
-			persistTestCode: false
+			persistTestCode: false,
+			debug: verboseLogs
 		});
 		this.client = client;
 		client.on('status', (status, detail) => {
