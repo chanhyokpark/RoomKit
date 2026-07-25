@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+  namespace: roomkit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: server
+          image: ghcr.io/chanhyokpark/roomkit-server:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: '3000'
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: roomkit-secrets
+                  key: POSTGRES_PASSWORD
+            # $(POSTGRES_PASSWORD) expands because it is declared above.
+            - name: DATABASE_URL
+              value: postgresql://roomkit:$(POSTGRES_PASSWORD)@postgres:5432/roomkit
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: roomkit-secrets
+                  key: JWT_SECRET
+            - name: ADMIN_ID
+              valueFrom:
+                secretKeyRef:
+                  name: roomkit-secrets
+                  key: ADMIN_ID
+            - name: ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: roomkit-secrets
+                  key: ADMIN_PASSWORD_HASH
+            - name: S3_ENDPOINT
+              value: http://minio:9000
+            # Presigned URLs are path-style (https://rk.dshs.app/roomkit/<key>);
+            # the ingress routes the /roomkit prefix to minio.
+            - name: S3_PUBLIC_ENDPOINT
+              value: https://rk.dshs.app
+            - name: S3_REGION
+              value: us-east-1
+            - name: S3_BUCKET
+              value: roomkit
+            - name: S3_FORCE_PATH_STYLE
+              value: 'true'
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: roomkit-secrets
+                  key: S3_ACCESS_KEY_ID
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: roomkit-secrets
+                  key: S3_SECRET_ACCESS_KEY
+            - name: PUBLIC_SERVER_URL
+              value: https://rk.dshs.app
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          # The container runs `prisma migrate deploy` before booting, so give
+          # startup some headroom before readiness kicks in.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+  namespace: roomkit
+spec:
+  ports:
+    - port: 3000
+  selector:
+    app: server

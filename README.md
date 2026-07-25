@@ -15,4 +15,4 @@
 - `pnpm infra`로 데이터베이스, 스토리지, 서버, 스튜디오 실행(스튜디오 url: localhost:5173)
 - 기본 로그인 계정: admin/roomkit
 
-자세한 내용은 [매뉴얼](./docs/MANUAL.md) 참조
+자세한 내용은 [매뉴얼](./docs/MANUAL_KO.gd) 참조
