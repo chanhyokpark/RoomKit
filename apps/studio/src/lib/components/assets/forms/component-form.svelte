@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ComponentSlot, MessageField } from '@roomkit/shared';
+	import { Button } from '$lib/components/ui/button';
 	import * as Field from '$lib/components/ui/field';
 	import * as Select from '$lib/components/ui/select';
 	import { Switch } from '$lib/components/ui/switch';
@@ -8,11 +9,13 @@
 	import FieldDefsEditor from './field-defs-editor.svelte';
 
 	let {
+		themeId,
 		slot = $bindable(),
 		html = $bindable(),
 		interactive = $bindable(),
 		params = $bindable()
 	}: {
+		themeId: string;
 		slot: ComponentSlot;
 		html: string;
 		interactive: boolean;
@@ -24,11 +27,77 @@
 		subtitle: '자막',
 		hintCode: '힌트 코드'
 	};
-	const SLOT_EVENTS: Record<ComponentSlot, string> = {
-		video: "RoomKit.on('video', ({currentTimeMs, durationMs}) => …)",
-		subtitle: "RoomKit.on('subtitle', ({html, lineIndex, lineCount}) => …)",
-		hintCode: "RoomKit.on('hintCode', ({code}) => …)"
+	const SLOT_PLACEHOLDERS: Record<ComponentSlot, string> = {
+		video:
+			'<div class="time">{{video.currentTime}} / {{video.duration}}</div>\n<style>.time { … }</style>',
+		subtitle: '<div class="sub" data-rk-html="subtitle.html"></div>\n<style>.sub { … }</style>',
+		hintCode: '<div class="code">{{hintCode.code}}</div>\n<style>.code { … }</style>'
 	};
+	/** Template-only starters — no JS needed for the common cases. */
+	const SLOT_EXAMPLES: Record<ComponentSlot, string> = {
+		subtitle: `<div class="sub" data-rk-html="subtitle.html"></div>
+<style>
+  .sub {
+    position: absolute;
+    left: 50%;
+    bottom: 8%;
+    transform: translateX(-50%);
+    max-width: 80%;
+    padding: 0.4em 1.2em;
+    border-radius: 0.6em;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 2.4vw;
+    line-height: 1.5;
+    text-align: center;
+  }
+  .sub:empty { display: none; }
+</style>`,
+		hintCode: `<div class="code">{{hintCode.code}}</div>
+<style>
+  .code {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-family: ui-monospace, monospace;
+    font-size: 14vw;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-shadow: 0 0 0.3em rgba(255, 255, 255, 0.45);
+  }
+</style>`,
+		video: `<div class="panel">
+  <p class="title">{{props.title}}</p>
+  <p class="time">{{video.currentTime}} / {{video.duration}}</p>
+  <div class="bar"><div class="fill" style="width: {{video.progressPercent}}%"></div></div>
+</div>
+<style>
+  .panel {
+    position: absolute;
+    right: 3%;
+    bottom: 5%;
+    min-width: 24%;
+    padding: 1em 1.2em;
+    border-radius: 0.8em;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-family: system-ui, sans-serif;
+  }
+  .title { margin: 0 0 0.4em; font-size: 1.4vw; font-weight: 600; }
+  .time { margin: 0 0 0.6em; font-size: 1.1vw; opacity: 0.8; }
+  .bar { height: 0.4em; border-radius: 0.2em; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
+  .fill { height: 100%; background: #fff; }
+</style>`
+	};
+
+	function fillExample(): void {
+		if (html.trim() !== '' && !confirm('현재 HTML을 예시 코드로 바꿀까요?')) return;
+		html = SLOT_EXAMPLES[slot];
+	}
 </script>
 
 <Field.Field>
@@ -60,30 +129,33 @@
 </Field.Field>
 
 <Field.Field>
-	<Field.FieldLabel for="component-html">HTML</Field.FieldLabel>
+	<div class="flex items-center justify-between">
+		<Field.FieldLabel for="component-html">HTML</Field.FieldLabel>
+		<Button type="button" variant="outline" size="sm" onclick={fillExample}>예시 채우기</Button>
+	</div>
 	<Textarea
 		id="component-html"
 		bind:value={html}
 		rows={16}
 		class="font-mono text-xs"
 		spellcheck={false}
-		placeholder={'<div id="chat"></div>\n<style>#chat { … }</style>\n<script>\n  ' +
-			SLOT_EVENTS[slot] +
-			'\n<' +
-			'/script>'}
+		placeholder={SLOT_PLACEHOLDERS[slot]}
 	/>
 	<Field.FieldDescription>
-		인라인 &lt;style&gt;/&lt;script&gt;를 포함한 마크업입니다. window.RoomKit으로 재생
-		상태·속성(props)·메시지를 받습니다. 이미지 등은 RoomKit.mediaUrl(애셋 ID)로 참조하세요.
+		자바스크립트 없이 {'{{ … }}'} 템플릿으로 재생 상태·속성을 표시할 수 있습니다 — 예:
+		{'{{props.키}}'}, {'{{hintCode.code}}'}, {'{{video.currentTime}}'}, 자막 HTML은
+		data-rk-html="subtitle.html". 이미지 등은 {'{{media:애셋 이름}}'} 또는 RoomKit.mediaUrl('애셋 이름')로
+		참조하세요. 더 세밀한 제어가 필요하면 인라인 &lt;script&gt;에서 window.RoomKit 브리지를 사용합니다.
 	</Field.FieldDescription>
 </Field.Field>
 
 <Field.Field>
 	<Field.FieldLabel>속성 (props) 정의</Field.FieldLabel>
 	<Field.FieldDescription>
-		애셋에 붙일 때마다 값을 바꿔 끼울 수 있는 속성입니다. 컴포넌트에서는 RoomKit.props로 읽습니다.
+		애셋에 붙일 때마다 값을 바꿔 끼울 수 있는 속성입니다. 컴포넌트에서는 {'{{props.키}}'} 템플릿이나 RoomKit.props로
+		읽습니다.
 	</Field.FieldDescription>
 	<FieldDefsEditor bind:fields={params} idPrefix="component" />
 </Field.Field>
 
-<ComponentPreview {html} {slot} {interactive} {params} />
+<ComponentPreview {themeId} {html} {slot} {interactive} {params} />

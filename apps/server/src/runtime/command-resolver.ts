@@ -534,6 +534,7 @@ export class CommandResolver {
     if (!parsed.success || parsed.data.slot !== slot) return null;
     return {
       componentId: asset.id,
+      themeId,
       slot,
       html: parsed.data.html,
       props: ref.props,

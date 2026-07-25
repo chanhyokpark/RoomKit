@@ -27,6 +27,8 @@ export type PlayChannel = z.infer<typeof PlayChannelSchema>;
  */
 export const WireComponentSchema = z.object({
   componentId: z.uuid(),
+  /** Theme scope for name-based media lookups; '' on pre-field wires. */
+  themeId: z.string().default(''),
   slot: ComponentSlotSchema,
   html: z.string(),
   props: z.record(z.string(), JsonValueSchema).default({}),

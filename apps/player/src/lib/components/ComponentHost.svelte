@@ -24,7 +24,8 @@
 	const bridge = new ComponentBridge(() => iframe?.contentWindow ?? null, {
 		props: component.props,
 		serverUrl: config.serverUrl,
-		slot: component.slot
+		slot: component.slot,
+		themeId: component.themeId
 	});
 
 	export function post(event: string, payload: JsonValue): void {

@@ -294,16 +294,44 @@ Form fields:
 
 - **슬롯** — changing it later reverts any attachment in the old slot to the default rendering (a broken/mismatched attachment never breaks playback — the device just falls back).
 - **터치/클릭 받기** — the iframe covers the whole screen; leave this **off** (default) so touches pass through to the website below, turn it **on** only for components with their own UI.
-- **HTML** — the document body. Reference image/file assets via `RoomKit.mediaUrl('<애셋 ID>')`.
+- **HTML** — the document body. Most components need no JS at all: `{{ … }}` templates render runtime values (see below), and **예시 채우기** inserts a template-only starter for the current slot. Reference image/file assets by name or id — `{{media:로고}}` in templates, `RoomKit.mediaUrl('로고')` in JS.
 - **속성 (props) 정의** — typed fields (same editor as message schemas). Each attachment provides values, so e.g. one chat-skin component can show a different contact name per video.
 - **미리보기** — live preview rendered exactly as the Player renders it (same iframe host), with aspect-ratio presets (16:9/4:3/9:16), **새로고침**, test prop values, and **테스트 이벤트** controls per slot: a video timeline scrubber, a subtitle sender, a hint-code sender, and a **메시지 전송** tester.
+
+#### Templates — no JS for the common cases
+
+`{{ path }}` placeholders in text and attribute values are re-rendered on every bridge event, and `data-rk-html="path"` keeps an element's HTML content in sync. Paths resolve against the attachment props and the latest payload of each event; missing values render as an empty string:
+
+| Path | Value |
+|---|---|
+| `props.<key>` | this attachment's prop values |
+| `hintCode.code` | the current hint code (hintCode slot) |
+| `subtitle.html` · `subtitle.lineIndex` · `subtitle.lineCount` | current subtitle line — use `data-rk-html="subtitle.html"` for the HTML |
+| `video.status` · `video.currentTimeMs` · `video.durationMs` | raw video progress (video slot) |
+| `video.currentTime` · `video.duration` · `video.progressPercent` | template-friendly derived fields: `m:ss` labels and 0–100 |
+| `message.payload.<key>` | payload of the last 메시지 전송 |
+| `media:<asset name or id>` | public URL of an 이미지/파일 asset — e.g. `<img src="{{media:로고}}">` |
+
+A complete subtitle renderer is just markup and CSS:
+
+```html
+<div class="sub" data-rk-html="subtitle.html"></div>
+<style>
+  .sub { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%);
+         padding: 0.4em 1.2em; border-radius: 0.6em; background: rgba(0, 0, 0, 0.65);
+         color: #fff; font-size: 2.4vw; }
+  .sub:empty { display: none; }
+</style>
+```
+
+— and a hint-code badge is `<div class="code">{{hintCode.code}}</div>` plus CSS. For logic beyond display (timed reveals, appending chat bubbles), drop into the JS bridge below; templates and JS coexist in one component.
 
 Inside the iframe the bridge SDK is preloaded as `window.RoomKit`:
 
 ```js
 RoomKit.props                      // this attachment's prop values
 RoomKit.slot                       // 'video' | 'subtitle' | 'hintCode'
-RoomKit.mediaUrl(assetId)          // public URL of an 이미지/파일 asset
+RoomKit.mediaUrl(ref)              // public URL of an 이미지/파일 asset, by name or id
 RoomKit.on('init', (props) => {})  // props are available (fires immediately if already)
 
 // slot events

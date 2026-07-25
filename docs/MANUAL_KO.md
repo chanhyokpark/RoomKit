@@ -294,16 +294,44 @@ ctx.notify("모든 열쇠 발견!");
 
 - **슬롯** — 나중에 바꾸면 이전 슬롯에 붙어 있던 곳은 기본 렌더링으로 되돌아갑니다(깨졌거나 슬롯이 맞지 않는 참조가 재생을 중단시키는 일은 없습니다 — 장치는 그냥 기본으로 폴백합니다).
 - **터치/클릭 받기** — iframe이 화면 전체를 덮으므로, 기본은 **꺼짐**(터치가 아래 웹사이트로 통과)입니다. 컴포넌트 자체에 조작 UI가 있을 때만 켜세요.
-- **HTML** — 문서 본문입니다. 이미지/파일 애셋은 `RoomKit.mediaUrl('<애셋 ID>')`로 참조합니다.
+- **HTML** — 문서 본문입니다. 대부분의 컴포넌트는 JS 없이 만들 수 있습니다: `{{ … }}` 템플릿이 런타임 값으로 치환되고(아래 참조), **예시 채우기** 버튼이 현재 슬롯에 맞는 템플릿 예시를 넣어 줍니다. 이미지/파일 애셋은 이름이나 ID로 참조합니다 — 템플릿에서는 `{{media:로고}}`, JS에서는 `RoomKit.mediaUrl('로고')`.
 - **속성 (props) 정의** — 타입이 지정된 필드(메시지 스키마와 같은 에디터)입니다. 붙일 때마다 값을 따로 넣을 수 있어, 예를 들어 하나의 채팅 스킨 컴포넌트로 비디오마다 다른 상대방 이름을 보여줄 수 있습니다.
 - **미리보기** — Player와 동일한 방식(동일한 iframe 호스트)으로 렌더링되는 라이브 미리보기입니다. 화면비 프리셋(16:9/4:3/9:16), **새로고침**, 테스트 속성 값, 그리고 슬롯별 **테스트 이벤트** 컨트롤(비디오 타임라인 스크러버, 자막 표시, 힌트 코드 표시, **메시지 전송** 테스터)을 제공합니다.
+
+#### 템플릿 — 일반적인 경우엔 JS가 필요 없습니다
+
+텍스트와 속성(attribute) 값 안의 `{{ 경로 }}` 플레이스홀더는 브리지 이벤트가 올 때마다 다시 렌더링되고, `data-rk-html="경로"`는 요소의 HTML 내용을 동기화합니다. 경로는 부착 속성(props)과 이벤트별 최신 페이로드에서 값을 찾으며, 값이 없으면 빈 문자열로 렌더링됩니다:
+
+| 경로 | 값 |
+|---|---|
+| `props.<키>` | 이 부착 지점의 속성 값 |
+| `hintCode.code` | 현재 힌트 코드 (힌트 코드 슬롯) |
+| `subtitle.html` · `subtitle.lineIndex` · `subtitle.lineCount` | 현재 자막 줄 — HTML은 `data-rk-html="subtitle.html"`로 |
+| `video.status` · `video.currentTimeMs` · `video.durationMs` | 비디오 진행 상태 원본 (비디오 슬롯) |
+| `video.currentTime` · `video.duration` · `video.progressPercent` | 템플릿용 파생 값: `분:초` 라벨과 0–100 |
+| `message.payload.<키>` | 마지막 메시지 전송의 페이로드 |
+| `media:<애셋 이름 또는 ID>` | 이미지/파일 애셋의 공개 URL — 예: `<img src="{{media:로고}}">` |
+
+완전한 자막 렌더러가 마크업과 CSS만으로 끝납니다:
+
+```html
+<div class="sub" data-rk-html="subtitle.html"></div>
+<style>
+  .sub { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%);
+         padding: 0.4em 1.2em; border-radius: 0.6em; background: rgba(0, 0, 0, 0.65);
+         color: #fff; font-size: 2.4vw; }
+  .sub:empty { display: none; }
+</style>
+```
+
+— 힌트 코드 배지도 `<div class="code">{{hintCode.code}}</div>` + CSS면 충분합니다. 표시 이상의 로직(시간에 맞춘 등장, 채팅 말풍선 추가 등)이 필요하면 아래 JS 브리지를 쓰세요. 템플릿과 JS는 한 컴포넌트 안에서 함께 쓸 수 있습니다.
 
 iframe 내부에는 브리지 SDK가 `window.RoomKit`으로 미리 로드되어 있습니다:
 
 ```js
 RoomKit.props                      // 이 부착 지점의 속성 값
 RoomKit.slot                       // 'video' | 'subtitle' | 'hintCode'
-RoomKit.mediaUrl(assetId)          // 이미지/파일 애셋의 공개 URL
+RoomKit.mediaUrl(ref)              // 이미지/파일 애셋의 공개 URL — 이름 또는 ID
 RoomKit.on('init', (props) => {})  // 속성 준비 완료 (이미 준비됐으면 즉시 발생)
 
 // 슬롯 이벤트

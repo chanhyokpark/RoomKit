@@ -22,7 +22,8 @@ type ServableKind = (typeof SERVABLE_KINDS)[number];
  * websites can lay out against the URL before real artwork exists.
  *
  * Public for the same reason as SitesController: webview subresources can't
- * attach the admin JWT; the unguessable asset uuid is the capability.
+ * attach the admin JWT; the unguessable asset uuid (or theme uuid for the
+ * by-name route) is the capability.
  */
 @Controller('media')
 export class MediaController {
@@ -30,6 +31,27 @@ export class MediaController {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
   ) {}
+
+  /**
+   * Name-based variant used by component templates ({{media:이름}}) and
+   * RoomKit.mediaUrl('이름'). Names are not unique per theme, so ties break
+   * on creation order (oldest wins) for a stable URL.
+   */
+  @Public()
+  @Get('by-name/:themeId/:name')
+  async serveByName(
+    @Param('themeId') themeId: string,
+    @Param('name') name: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const asset = await this.prisma.asset.findFirst({
+      where: { themeId, name, kind: { in: [...SERVABLE_KINDS] } },
+      orderBy: { createdAt: 'asc' },
+      select: { kind: true, data: true },
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
+    await this.serveAsset(asset, res);
+  }
 
   @Public()
   @Get(':assetId')
@@ -42,7 +64,13 @@ export class MediaController {
       select: { kind: true, data: true },
     });
     if (!asset) throw new NotFoundException('Asset not found');
+    await this.serveAsset(asset, res);
+  }
 
+  private async serveAsset(
+    asset: { kind: string; data: unknown },
+    res: Response,
+  ): Promise<void> {
     const parsed = assetDataSchemas[asset.kind as ServableKind].safeParse(
       asset.data,
     );

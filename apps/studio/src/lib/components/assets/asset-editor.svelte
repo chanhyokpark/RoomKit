@@ -576,6 +576,7 @@
 			<MessageForm bind:displayName={draft.displayName} bind:fields={draft.fields} />
 		{:else if draft.kind === 'component'}
 			<ComponentForm
+				{themeId}
 				bind:slot={draft.slot}
 				bind:html={draft.html}
 				bind:interactive={draft.interactive}
