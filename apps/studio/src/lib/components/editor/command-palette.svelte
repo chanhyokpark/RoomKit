@@ -6,20 +6,32 @@
 	let {
 		open = $bindable(false),
 		inline = false,
+		allowedTypes,
 		onselect
 	}: {
 		open?: boolean;
 		/** Render as an always-visible pane instead of a dialog. */
 		inline?: boolean;
+		/** Restrict the palette to these types (e.g. the website-test console). */
+		allowedTypes?: CommandType[];
 		onselect: (type: CommandType) => void;
 	} = $props();
+
+	const groups = $derived(
+		allowedTypes === undefined
+			? COMMAND_GROUPS
+			: COMMAND_GROUPS.map((group) => ({
+					...group,
+					types: group.types.filter((type) => allowedTypes.includes(type))
+				})).filter((group) => group.types.length > 0)
+	);
 </script>
 
 {#snippet palette()}
 	<Command.Input placeholder="커맨드 검색..." />
 	<Command.List class={inline ? 'max-h-none flex-1' : undefined}>
 		<Command.Empty>커맨드를 찾을 수 없습니다.</Command.Empty>
-		{#each COMMAND_GROUPS as group (group.label)}
+		{#each groups as group (group.label)}
 			<Command.Group heading={group.label}>
 				{#each group.types as type (type)}
 					{@const meta = COMMAND_META[type]}

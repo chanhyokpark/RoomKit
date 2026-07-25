@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import BoxesIcon from '@lucide/svelte/icons/boxes';
+	import FlaskConicalIcon from '@lucide/svelte/icons/flask-conical';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import MonitorPlayIcon from '@lucide/svelte/icons/monitor-play';
 	import WorkflowIcon from '@lucide/svelte/icons/workflow';
@@ -14,6 +15,7 @@
 	const activeThemeId = $derived(page.params.themeId ?? themesStore.themes[0]?.id);
 	const inEditor = $derived(page.url.pathname.endsWith('/editor'));
 	const inOperation = $derived(page.url.pathname.endsWith('/operation'));
+	const inWebsiteTest = $derived(page.url.pathname.endsWith('/website-test'));
 
 	function handleLogout() {
 		auth.logout();
@@ -33,7 +35,10 @@
 					<Sidebar.MenuItem>
 						{#if activeThemeId}
 							<Sidebar.MenuButton
-								isActive={page.params.themeId !== undefined && !inEditor && !inOperation}
+								isActive={page.params.themeId !== undefined &&
+									!inEditor &&
+									!inOperation &&
+									!inWebsiteTest}
 							>
 								{#snippet child({ props })}
 									<a
@@ -89,6 +94,28 @@
 							<Sidebar.MenuButton aria-disabled="true" class="pointer-events-none opacity-50">
 								<MonitorPlayIcon />
 								<span>운영</span>
+							</Sidebar.MenuButton>
+						{/if}
+					</Sidebar.MenuItem>
+					<Sidebar.MenuItem>
+						{#if activeThemeId}
+							<Sidebar.MenuButton isActive={inWebsiteTest}>
+								{#snippet child({ props })}
+									<a
+										href={resolve('/(app)/themes/[themeId]/website-test', {
+											themeId: activeThemeId
+										})}
+										{...props}
+									>
+										<FlaskConicalIcon />
+										<span>웹 테스트</span>
+									</a>
+								{/snippet}
+							</Sidebar.MenuButton>
+						{:else}
+							<Sidebar.MenuButton aria-disabled="true" class="pointer-events-none opacity-50">
+								<FlaskConicalIcon />
+								<span>웹 테스트</span>
 							</Sidebar.MenuButton>
 						{/if}
 					</Sidebar.MenuItem>

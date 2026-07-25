@@ -353,6 +353,8 @@ Build the package (`pnpm --filter @roomkit/helper build`) and copy `packages/hel
 
 On construction the helper posts a `hello` to the parent; the Player buffers any outbound messages until then, so you never miss a message by loading late.
 
+The constructor also applies the Player's kiosk defaults inside the iframe: the context menu and text selection are disabled document-wide (`input`/`textarea` stay selectable). Pass `new RoomKitHelper({ lockdown: false })` to skip this while developing the site in a normal browser; `destroy()` reverts it.
+
 ### 6.2 API
 
 ```js

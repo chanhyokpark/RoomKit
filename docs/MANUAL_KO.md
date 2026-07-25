@@ -353,6 +353,8 @@ Player(RoomKit Player)는 항상 **런처** 창을 먼저 엽니다:
 
 객체가 생성될 때 헬퍼는 부모 창(Player)에 `hello`를 보냅니다. Player는 이 `hello`를 받을 때까지 발신 메시지들을 버퍼링하므로, 스크립트가 늦게 로드되더라도 메시지를 놓치지 않습니다.
 
+또한 생성자는 iframe 안에 Player의 키오스크 기본값을 적용합니다: 문서 전체에서 우클릭 메뉴와 텍스트 선택이 비활성화됩니다(`input`/`textarea`는 선택 가능하게 유지). 일반 브라우저에서 사이트를 개발할 때는 `new RoomKitHelper({ lockdown: false })`로 건너뛸 수 있으며, `destroy()`가 원래대로 되돌립니다.
+
 ### 6.2 API
 
 ```js

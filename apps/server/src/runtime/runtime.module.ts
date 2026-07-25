@@ -7,6 +7,6 @@ import { SessionRuntimeService } from './session-runtime.service';
 @Module({
   imports: [LogsModule],
   providers: [SessionRuntimeService, CommandResolver, HintService],
-  exports: [SessionRuntimeService],
+  exports: [SessionRuntimeService, CommandResolver],
 })
 export class RuntimeModule {}

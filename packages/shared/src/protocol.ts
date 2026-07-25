@@ -60,6 +60,10 @@ export const AdminEvents = {
   playerStatus: 'player:status',
   /** Operator notification pushed by the `notify` sequence command. */
   notification: 'notification',
+  /** Website-test run snapshot (`WebsiteTestRun`). */
+  websiteTestState: 'websiteTest:state',
+  /** Website-test activity log entry (`WebsiteTestActivity`). */
+  websiteTestActivity: 'websiteTest:activity',
 } as const;
 
 /** Events on the /player namespace (player launcher, not device windows). */
@@ -69,6 +73,14 @@ export const PlayerEvents = {
    * window per device with the generated codes (`PlayerTestStart`).
    */
   testStart: 'test:start',
+  /**
+   * S→C: a website test targets this player — open one stage window with the
+   * generated code (`PlayerWebsiteTestStart`); the URL arrives as a navigate
+   * wire once the window attaches.
+   */
+  websiteTestStart: 'websiteTest:start',
+  /** S→C: a website test ended — close its window (`PlayerWebsiteTestStop`). */
+  websiteTestStop: 'websiteTest:stop',
 } as const;
 
 /**

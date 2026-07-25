@@ -15,6 +15,8 @@ import {
   type SessionNotification,
   type SessionRuns,
   type SessionState,
+  type WebsiteTestActivity,
+  type WebsiteTestRun,
 } from '@roomkit/shared';
 import type { Namespace, Socket } from 'socket.io';
 import { PlayerRegistry } from '../players/player-registry';
@@ -111,5 +113,13 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
 
   broadcastNotification(notification: SessionNotification): void {
     this.server.to(ADMINS_ROOM).emit(AdminEvents.notification, notification);
+  }
+
+  broadcastWebsiteTestState(run: WebsiteTestRun): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.websiteTestState, run);
+  }
+
+  broadcastWebsiteTestActivity(entry: WebsiteTestActivity): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.websiteTestActivity, entry);
   }
 }

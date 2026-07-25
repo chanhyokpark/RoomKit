@@ -47,6 +47,39 @@ export async function openTestDeviceWindow(
 	sessionId: string,
 	device: TestWindowDevice
 ): Promise<void> {
+	return openCodedWindow('test', sessionId, device);
+}
+
+/**
+ * Auto-opened stage window for a studio website test (`websiteTest:start`).
+ * Identical to a test-session window — the URL under test arrives as a
+ * navigate wire once the device socket attaches, so it survives reconnects
+ * and can be re-pointed/reloaded live from studio.
+ */
+export async function openWebsiteTestWindow(
+	runId: string,
+	device: TestWindowDevice
+): Promise<void> {
+	return openCodedWindow('wtest', runId, device);
+}
+
+/** Close a website test's window(s); no-op in the browser harness. */
+export async function closeWebsiteTestWindows(runId: string): Promise<void> {
+	if (!isTauri()) return;
+	const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+	const suffix = `-${runId.slice(0, 8)}`;
+	for (const w of await WebviewWindow.getAll()) {
+		if (w.label.startsWith('wtest-') && w.label.endsWith(suffix)) {
+			await w.destroy().catch(() => {});
+		}
+	}
+}
+
+async function openCodedWindow(
+	prefix: 'test' | 'wtest',
+	scopeId: string,
+	device: TestWindowDevice
+): Promise<void> {
 	const label = device.displayName || device.deviceName;
 	const query =
 		`device=${encodeURIComponent(device.deviceId)}` +
@@ -55,13 +88,13 @@ export async function openTestDeviceWindow(
 	if (!isTauri()) {
 		// Browser dev harness: a named tab per device — reused across sessions,
 		// reloading picks up the new code.
-		window.open(`/?${query}`, `test-${device.deviceId}`);
+		window.open(`/?${query}`, `${prefix}-${device.deviceId}`);
 		return;
 	}
 	const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-	const windowLabel = `test-${device.deviceId}-${sessionId.slice(0, 8)}`;
+	const windowLabel = `${prefix}-${device.deviceId}-${scopeId.slice(0, 8)}`;
 	for (const w of await WebviewWindow.getAll()) {
-		if (w.label.startsWith(`test-${device.deviceId}-`) && w.label !== windowLabel) {
+		if (w.label.startsWith(`${prefix}-${device.deviceId}-`) && w.label !== windowLabel) {
 			await w.destroy().catch(() => {});
 		}
 	}

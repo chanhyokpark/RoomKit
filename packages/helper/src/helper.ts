@@ -38,6 +38,12 @@ export interface RoomKitHelperOptions {
   parentWindow?: Pick<Window, 'postMessage'>;
   /** Test seam; defaults to `window`. */
   selfWindow?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
+  /**
+   * Disable the context menu and text selection document-wide, matching the
+   * player's kiosk defaults (inputs/textareas stay selectable). Default true;
+   * set false while developing the site in a normal browser.
+   */
+  lockdown?: boolean;
 }
 
 export interface GetRemainingTimeOptions {
@@ -69,6 +75,9 @@ export class RoomKitHelper {
   private readonly parent: Pick<Window, 'postMessage'>;
   private readonly self: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   private readonly onMessage = (event: MessageEvent) => this.receive(event.data);
+  private readonly onContextMenu = (event: Event) => event.preventDefault();
+  /** Injected lockdown stylesheet, kept for removal in destroy(). */
+  private lockdownStyle: HTMLStyleElement | null = null;
   /** In-flight timer:get requests, keyed by requestId. */
   private readonly pendingTimers = new Map<
     string,
@@ -79,8 +88,25 @@ export class RoomKitHelper {
     this.parent = options.parentWindow ?? window.parent;
     this.self = options.selfWindow ?? window;
     this.self.addEventListener('message', this.onMessage as EventListener);
+    if (options.lockdown !== false) this.lockdown();
     // Tells the player this frame is ready; it flushes buffered messages.
     this.post({ source: HELPER_SOURCE, type: 'hello' } satisfies HelperHello);
+  }
+
+  /**
+   * The iframe is its own document, so the player's kiosk defaults do not
+   * reach it — re-apply them here: no context menu, no text selection
+   * (inputs/textareas excepted so puzzle forms keep working).
+   */
+  private lockdown(): void {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('contextmenu', this.onContextMenu, true);
+    const style = document.createElement('style');
+    style.textContent =
+      'body{user-select:none;-webkit-user-select:none}' +
+      'input,textarea{user-select:text;-webkit-user-select:text}';
+    (document.head ?? document.documentElement).appendChild(style);
+    this.lockdownStyle = style;
   }
 
   /** Report a game event through the player's device connection. */
@@ -153,6 +179,11 @@ export class RoomKitHelper {
   /** Unregisters the message listener; the instance is dead afterwards. */
   destroy(): void {
     this.self.removeEventListener('message', this.onMessage as EventListener);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('contextmenu', this.onContextMenu, true);
+    }
+    this.lockdownStyle?.remove();
+    this.lockdownStyle = null;
     for (const pending of this.pendingTimers.values()) {
       clearTimeout(pending.timeout);
       pending.resolve(null);

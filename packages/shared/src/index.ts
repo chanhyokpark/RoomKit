@@ -11,4 +11,5 @@ export * from './sessions.js';
 export * from './session-summary.js';
 export * from './logs.js';
 export * from './uploads.js';
+export * from './website-test.js';
 export * from './theme-export.js';

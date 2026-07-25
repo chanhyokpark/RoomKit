@@ -3,6 +3,8 @@ import {
   PlayerEvents,
   type PlayerStatus,
   type PlayerTestStart,
+  type PlayerWebsiteTestStart,
+  type PlayerWebsiteTestStop,
 } from '@roomkit/shared';
 import type { Socket } from 'socket.io';
 
@@ -63,6 +65,32 @@ export class PlayerRegistry {
     if (!entry || entry.sockets.size === 0) return false;
     for (const socket of entry.sockets) {
       socket.emit(PlayerEvents.testStart, payload);
+    }
+    return true;
+  }
+
+  /** Push a websiteTest:start; false when offline. */
+  sendWebsiteTestStart(
+    playerId: string,
+    payload: PlayerWebsiteTestStart,
+  ): boolean {
+    const entry = this.players.get(playerId);
+    if (!entry || entry.sockets.size === 0) return false;
+    for (const socket of entry.sockets) {
+      socket.emit(PlayerEvents.websiteTestStart, payload);
+    }
+    return true;
+  }
+
+  /** Push a websiteTest:stop; false when offline. */
+  sendWebsiteTestStop(
+    playerId: string,
+    payload: PlayerWebsiteTestStop,
+  ): boolean {
+    const entry = this.players.get(playerId);
+    if (!entry || entry.sockets.size === 0) return false;
+    for (const socket of entry.sockets) {
+      socket.emit(PlayerEvents.websiteTestStop, payload);
     }
     return true;
   }

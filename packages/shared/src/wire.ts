@@ -134,6 +134,8 @@ export const WireNavigateSchema = z.object({
   type: z.literal('navigate'),
   websiteId: z.uuid(),
   url: z.url(),
+  /** Recreate the iframe even when the URL is unchanged (website-test reload). */
+  force: z.boolean().default(false),
 });
 export type WireNavigate = z.infer<typeof WireNavigateSchema>;
 

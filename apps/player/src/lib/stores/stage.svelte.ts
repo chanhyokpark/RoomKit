@@ -38,6 +38,8 @@ class StageStore {
 	/** One code per device window; a newer show replaces the previous. */
 	hintCode = $state<HintCode | null>(null);
 	iframeUrl = $state<string | null>(null);
+	/** Bumped by forced same-URL navigates so the #key'd iframe re-creates. */
+	reloadNonce = $state(0);
 	/** Ack of the in-flight navigate — resolved when the iframe finishes loading. */
 	private navigateDone: (() => void) | null = null;
 	/** Running skippable playbacks — the test overlay renders one button each. */
@@ -67,12 +69,16 @@ class StageStore {
 	 * superseded (new navigate / reset) is released immediately so the older
 	 * sequence never stalls on a site that will no longer load.
 	 */
-	navigate(url: string, done: () => void): void {
+	navigate(url: string, done: () => void, force = false): void {
 		this.releaseNavigateAck();
 		if (this.iframeUrl === url) {
-			// Same URL: the #key'd iframe won't re-create, so no load will fire.
-			done();
-			return;
+			if (!force) {
+				// Same URL: the #key'd iframe won't re-create, so no load will fire.
+				done();
+				return;
+			}
+			// Forced reload (website test): re-create the iframe for the same URL.
+			this.reloadNonce++;
 		}
 		this.navigateDone = done;
 		this.iframeUrl = url;

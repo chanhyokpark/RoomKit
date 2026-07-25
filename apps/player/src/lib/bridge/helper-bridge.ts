@@ -33,6 +33,16 @@ export class HelperBridge {
 		window.addEventListener('message', onWindowMessage);
 		this.cleanups.push(() => window.removeEventListener('message', onWindowMessage));
 
+		// A full reload inside the iframe (e.g. vite HMR during a website test)
+		// swaps the document without re-creating the iframe: the new page must
+		// `hello` again before it can receive, so buffer until then — otherwise
+		// messages posted mid-reload land on a page that isn't listening yet.
+		const onLoad = () => {
+			this.ready = false;
+		};
+		iframe.addEventListener('load', onLoad);
+		this.cleanups.push(() => iframe.removeEventListener('load', onLoad));
+
 		const onMessage = (payload: Record<string, JsonValue>, envelope: WireMessage) =>
 			this.send({
 				source: PLAYER_SOURCE,

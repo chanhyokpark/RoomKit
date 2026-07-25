@@ -12,6 +12,8 @@ export interface AttachedDevice {
 export interface DeviceSocketData {
   attach?: AttachedDevice;
   lobby?: Omit<LobbyEntry, 'socket'>;
+  /** Attach belongs to a website-test run, not a session (attach.sessionId = runId). */
+  websiteTest?: boolean;
 }
 
 export type DeviceSocket = Socket<

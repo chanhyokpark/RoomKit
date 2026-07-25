@@ -31,6 +31,16 @@ export interface Delivery {
   wire: WireCommand;
 }
 
+export interface ResolveOptions {
+  /**
+   * Website test: every target collapses onto this device — player assets
+   * resolve with speaker/screen overridden (dialogue becomes role 'both'),
+   * device refs are ignored in favor of this device, and "all devices/players"
+   * variants shrink to just it.
+   */
+  forceDeviceId?: string;
+}
+
 export interface Resolution {
   deliveries: Delivery[];
   /** Set when the authoring command has waitUntilEnd: whose ack ends the wait. */
@@ -73,10 +83,14 @@ export class CommandResolver {
    * commands come through here; wait/eval/switchPhase/callEvent/adjustTimer
    * are interpreted by the engine itself.
    */
-  async resolve(themeId: string, cmd: Command): Promise<Resolution> {
+  async resolve(
+    themeId: string,
+    cmd: Command,
+    opts: ResolveOptions = {},
+  ): Promise<Resolution> {
     switch (cmd.type) {
       case 'resetDevice': {
-        const device = await this.getAsset(themeId, cmd.deviceId, 'device');
+        const device = await this.getDevice(themeId, cmd.deviceId, opts);
         return {
           deliveries: [
             { deviceId: device.id, wire: { id: randomUUID(), type: 'reset' } },
@@ -84,10 +98,12 @@ export class CommandResolver {
         };
       }
       case 'resetAllDevices': {
-        const devices = await this.prisma.asset.findMany({
-          where: { themeId, kind: 'device' },
-          select: { id: true },
-        });
+        const devices = opts.forceDeviceId
+          ? [{ id: opts.forceDeviceId }]
+          : await this.prisma.asset.findMany({
+              where: { themeId, kind: 'device' },
+              select: { id: true },
+            });
         return {
           deliveries: devices.map((d) => ({
             deviceId: d.id,
@@ -96,7 +112,7 @@ export class CommandResolver {
         };
       }
       case 'playBgm': {
-        const player = await this.getPlayer(themeId, cmd.playerId);
+        const player = await this.getPlayer(themeId, cmd.playerId, opts);
         const bgm = await this.getAsset(themeId, cmd.bgmId, 'bgm');
         return {
           deliveries: [
@@ -118,7 +134,7 @@ export class CommandResolver {
         };
       }
       case 'playSfx': {
-        const player = await this.getPlayer(themeId, cmd.playerId);
+        const player = await this.getPlayer(themeId, cmd.playerId, opts);
         const sfx = await this.getAsset(themeId, cmd.sfxId, 'sfx');
         return {
           deliveries: [
@@ -137,7 +153,7 @@ export class CommandResolver {
         };
       }
       case 'playVideo': {
-        const player = await this.getPlayer(themeId, cmd.playerId);
+        const player = await this.getPlayer(themeId, cmd.playerId, opts);
         const video = await this.getAsset(themeId, cmd.videoId, 'video');
         const wire = {
           id: randomUUID(),
@@ -155,13 +171,13 @@ export class CommandResolver {
         };
       }
       case 'playDialogue':
-        return this.resolvePlayDialogue(themeId, cmd);
+        return this.resolvePlayDialogue(themeId, cmd, opts);
       case 'stopBgm':
       case 'stopSfx': {
         const channel =
           cmd.type === 'stopBgm' ? ('bgm' as const) : ('sfx' as const);
-        if (cmd.allPlayers) return this.resolveStopAll(themeId, channel);
-        const player = await this.getPlayer(themeId, cmd.playerId);
+        if (cmd.allPlayers) return this.resolveStopAll(themeId, channel, opts);
+        const player = await this.getPlayer(themeId, cmd.playerId, opts);
         return {
           deliveries: [
             {
@@ -177,8 +193,8 @@ export class CommandResolver {
         };
       }
       case 'stopVideo': {
-        if (cmd.allPlayers) return this.resolveStopAll(themeId, 'video');
-        const player = await this.getPlayer(themeId, cmd.playerId);
+        if (cmd.allPlayers) return this.resolveStopAll(themeId, 'video', opts);
+        const player = await this.getPlayer(themeId, cmd.playerId, opts);
         return {
           deliveries: [
             {
@@ -194,8 +210,9 @@ export class CommandResolver {
         };
       }
       case 'stopDialogue': {
-        if (cmd.allPlayers) return this.resolveStopAll(themeId, 'dialogue');
-        const player = await this.getPlayer(themeId, cmd.playerId);
+        if (cmd.allPlayers)
+          return this.resolveStopAll(themeId, 'dialogue', opts);
+        const player = await this.getPlayer(themeId, cmd.playerId, opts);
         const targets = [
           ...new Set([player.data.speakerDeviceId, player.data.screenDeviceId]),
         ];
@@ -224,7 +241,7 @@ export class CommandResolver {
           );
         if (hint.code === null)
           throw new ResolutionError(`hint asset ${cmd.hintId} has no code`);
-        const device = await this.getAsset(themeId, cmd.deviceId, 'device');
+        const device = await this.getDevice(themeId, cmd.deviceId, opts);
         return {
           deliveries: [
             {
@@ -240,14 +257,16 @@ export class CommandResolver {
         };
       }
       case 'hideHintCode': {
-        const targets = cmd.allDevices
-          ? (
-              await this.prisma.asset.findMany({
-                where: { themeId, kind: 'device' },
-                select: { id: true },
-              })
-            ).map((d) => d.id)
-          : [(await this.getAsset(themeId, cmd.deviceId, 'device')).id];
+        const targets = opts.forceDeviceId
+          ? [opts.forceDeviceId]
+          : cmd.allDevices
+            ? (
+                await this.prisma.asset.findMany({
+                  where: { themeId, kind: 'device' },
+                  select: { id: true },
+                })
+              ).map((d) => d.id)
+            : [(await this.getAsset(themeId, cmd.deviceId, 'device')).id];
         return {
           deliveries: targets.map((deviceId) => ({
             deviceId,
@@ -261,7 +280,7 @@ export class CommandResolver {
         };
       }
       case 'navigate': {
-        const device = await this.getAsset(themeId, cmd.deviceId, 'device');
+        const device = await this.getDevice(themeId, cmd.deviceId, opts);
         const website = await this.getAsset(themeId, cmd.websiteId, 'website');
         const url =
           website.data.mode === 'hosted'
@@ -272,6 +291,7 @@ export class CommandResolver {
           type: 'navigate' as const,
           websiteId: website.id,
           url,
+          force: false,
         };
         return {
           deliveries: [{ deviceId: device.id, wire }],
@@ -281,7 +301,7 @@ export class CommandResolver {
         };
       }
       case 'sendMessage': {
-        const device = await this.getAsset(themeId, cmd.deviceId, 'device');
+        const device = await this.getDevice(themeId, cmd.deviceId, opts);
         const message = await this.getAsset(themeId, cmd.messageId, 'message');
         return {
           deliveries: [
@@ -308,8 +328,9 @@ export class CommandResolver {
   private async resolvePlayDialogue(
     themeId: string,
     cmd: Extract<Command, { type: 'playDialogue' }>,
+    opts: ResolveOptions = {},
   ): Promise<Resolution> {
-    const player = await this.getPlayer(themeId, cmd.playerId);
+    const player = await this.getPlayer(themeId, cmd.playerId, opts);
     const dialogue = await this.getAsset(themeId, cmd.dialogueId, 'dialogue');
     const lines: WireDialogueLine[] = await Promise.all(
       dialogue.data.lines.map(async (line) => ({
@@ -373,21 +394,27 @@ export class CommandResolver {
   private async resolveStopAll(
     themeId: string,
     channel: PlayChannel,
+    opts: ResolveOptions = {},
   ): Promise<Resolution> {
-    const players = await this.prisma.asset.findMany({
-      where: { themeId, kind: 'player' },
-      select: { data: true },
-    });
     const targets = new Set<string>();
-    for (const player of players) {
-      const parsed = PlayerDataSchema.safeParse(player.data);
-      if (!parsed.success) continue;
-      const { speakerDeviceId, screenDeviceId } = parsed.data;
-      if (channel === 'bgm' || channel === 'sfx') targets.add(speakerDeviceId);
-      else if (channel === 'video') targets.add(screenDeviceId);
-      else {
-        targets.add(speakerDeviceId);
-        targets.add(screenDeviceId);
+    if (opts.forceDeviceId) {
+      targets.add(opts.forceDeviceId);
+    } else {
+      const players = await this.prisma.asset.findMany({
+        where: { themeId, kind: 'player' },
+        select: { data: true },
+      });
+      for (const player of players) {
+        const parsed = PlayerDataSchema.safeParse(player.data);
+        if (!parsed.success) continue;
+        const { speakerDeviceId, screenDeviceId } = parsed.data;
+        if (channel === 'bgm' || channel === 'sfx')
+          targets.add(speakerDeviceId);
+        else if (channel === 'video') targets.add(screenDeviceId);
+        else {
+          targets.add(speakerDeviceId);
+          targets.add(screenDeviceId);
+        }
       }
     }
     return {
@@ -403,10 +430,38 @@ export class CommandResolver {
     };
   }
 
-  private async getPlayer(themeId: string, id: string | null) {
-    return this.getAsset(themeId, id, 'player') as Promise<
-      ParsedAsset<'player'> & { data: PlayerData }
-    >;
+  private async getPlayer(
+    themeId: string,
+    id: string | null,
+    opts: ResolveOptions = {},
+  ) {
+    const player = (await this.getAsset(
+      themeId,
+      id,
+      'player',
+    )) as ParsedAsset<'player'> & { data: PlayerData };
+    if (!opts.forceDeviceId) return player;
+    return {
+      ...player,
+      data: {
+        ...player.data,
+        speakerDeviceId: opts.forceDeviceId,
+        screenDeviceId: opts.forceDeviceId,
+      },
+    };
+  }
+
+  /**
+   * Device target resolution. With forceDeviceId the command's device ref is
+   * ignored entirely and the forced device's own asset is loaded, so wire
+   * fields derived from device data (hintCodeCss) match the actual target.
+   */
+  private async getDevice(
+    themeId: string,
+    id: string | null,
+    opts: ResolveOptions = {},
+  ): Promise<ParsedAsset<'device'>> {
+    return this.getAsset(themeId, opts.forceDeviceId ?? id, 'device');
   }
 
   private async getAsset<K extends AssetKind>(

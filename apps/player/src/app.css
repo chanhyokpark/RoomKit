@@ -11,12 +11,26 @@ body,
 	overflow: hidden;
 }
 
-body[data-mode='stage'] {
+/* Text selection is off everywhere (main.ts also blocks the context menu);
+   launcher form fields stay selectable. */
+body {
 	user-select: none;
 	-webkit-user-select: none;
+}
+
+input,
+textarea {
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+body[data-mode='stage'] {
 	cursor: default;
 }
 
-body[data-mode='stage'].kiosk {
+/* Cursor hides while a real video plays; test sessions keep it for the
+   overlay's skip buttons (Stage.svelte toggles the class). */
+body[data-mode='stage'].video-playing,
+body[data-mode='stage'].video-playing * {
 	cursor: none;
 }

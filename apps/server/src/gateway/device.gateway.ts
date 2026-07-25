@@ -29,6 +29,7 @@ import type { DefaultEventsMap, Namespace } from 'socket.io';
 import { DeviceAssetsService } from '../assets/device-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
+import { WebsiteTestService } from '../website-test/website-test.service';
 import {
   ConnectionRegistry,
   type AttachedDevice,
@@ -73,6 +74,7 @@ export class DeviceGateway
     private readonly runtime: SessionRuntimeService,
     private readonly registry: ConnectionRegistry,
     private readonly deviceAssets: DeviceAssetsService,
+    private readonly websiteTest: WebsiteTestService,
   ) {}
 
   afterInit(): void {
@@ -88,6 +90,20 @@ export class DeviceGateway
     const parsed = DeviceAuthSchema.safeParse(socket.handshake.auth);
     if (!parsed.success) throw new Error('invalid_code');
     const code = parsed.data.deviceCode;
+
+    // Website-test codes are in-memory only and checked before everything
+    // else; generation guarantees they collide with no session or device code.
+    const websiteTestRun = this.websiteTest.matchCode(code);
+    if (websiteTestRun) {
+      socket.data.websiteTest = true;
+      socket.data.attach = {
+        sessionId: websiteTestRun.runId,
+        deviceId: websiteTestRun.deviceId,
+        deviceName: websiteTestRun.deviceName,
+        displayName: websiteTestRun.displayName,
+      };
+      return;
+    }
 
     // Test codes are operator-entered (no reserved prefix); they are checked
     // first and shadow an identical production device code while the test
@@ -166,12 +182,16 @@ export class DeviceGateway
         socket,
       );
       if (wentOffline) {
-        this.runtime.deviceStatusChanged(
-          attach.sessionId,
-          attach.deviceId,
-          attach.deviceName,
-          false,
-        );
+        if (socket.data.websiteTest) {
+          this.websiteTest.deviceStatusChanged(attach.sessionId, false);
+        } else {
+          this.runtime.deviceStatusChanged(
+            attach.sessionId,
+            attach.deviceId,
+            attach.deviceName,
+            false,
+          );
+        }
       }
     } else {
       this.registry.removeFromLobby(socket.id);
@@ -179,6 +199,7 @@ export class DeviceGateway
   }
 
   private attachSocket(socket: DeviceSocket, attach: AttachedDevice): void {
+    const websiteTest = socket.data.websiteTest === true;
     socket.data.attach = attach;
     void socket.join([
       sessionRoom(attach.sessionId),
@@ -189,7 +210,9 @@ export class DeviceGateway
       attach.deviceId,
       socket,
     );
-    const session = this.runtime.getSessionState(attach.sessionId);
+    const session = websiteTest
+      ? this.websiteTest.getSessionState(attach.sessionId)
+      : this.runtime.getSessionState(attach.sessionId);
     if (session) {
       socket.emit(DeviceEvents.welcome, {
         device: {
@@ -201,15 +224,23 @@ export class DeviceGateway
       });
     }
     if (wentOnline) {
-      this.runtime.deviceStatusChanged(
-        attach.sessionId,
-        attach.deviceId,
-        attach.deviceName,
-        true,
-      );
+      if (websiteTest) {
+        this.websiteTest.deviceStatusChanged(attach.sessionId, true);
+      } else {
+        this.runtime.deviceStatusChanged(
+          attach.sessionId,
+          attach.deviceId,
+          attach.deviceName,
+          true,
+        );
+      }
     }
     // Redeliver unacked commands (same ids — the client dedupes).
-    this.runtime.onDeviceConnected(attach.sessionId, attach.deviceId);
+    if (websiteTest) {
+      this.websiteTest.onDeviceConnected(attach.sessionId);
+    } else {
+      this.runtime.onDeviceConnected(attach.sessionId, attach.deviceId);
+    }
   }
 
   /** Production session started: pull matching lobby sockets in. */
@@ -279,6 +310,10 @@ export class DeviceGateway
     if (!attach) return;
     const parsed = AckSchema.safeParse(body);
     if (!parsed.success) return;
+    if (socket.data.websiteTest) {
+      this.websiteTest.handleAck(attach.sessionId, parsed.data);
+      return;
+    }
     this.runtime.handleAck(attach.sessionId, attach.deviceId, parsed.data);
   }
 
@@ -291,6 +326,11 @@ export class DeviceGateway
     if (!attach) return;
     const parsed = TriggerSchema.safeParse(body);
     if (!parsed.success) return;
+    if (socket.data.websiteTest) {
+      // Website-test triggers are reported to studio, never executed.
+      void this.websiteTest.handleTrigger(attach.sessionId, parsed.data);
+      return;
+    }
     this.runtime.handleDeviceTrigger(
       attach.sessionId,
       attach.deviceId,
@@ -307,6 +347,8 @@ export class DeviceGateway
     if (!attach) return;
     const parsed = PlaybackProgressSchema.safeParse(body);
     if (!parsed.success) return;
+    // Website-test dialogue is single-window (role 'both') — nothing to relay.
+    if (socket.data.websiteTest) return;
     this.runtime.handleProgress(attach.sessionId, attach.deviceId, parsed.data);
   }
 
@@ -316,6 +358,11 @@ export class DeviceGateway
     @ConnectedSocket() socket: DeviceSocket,
   ): Promise<DeviceAssetManifest | null> {
     const attach = socket.data.attach;
+    if (attach && socket.data.websiteTest) {
+      const themeId = this.websiteTest.getThemeId(attach.sessionId);
+      if (!themeId) return null;
+      return this.deviceAssets.buildManifest(themeId, attach.deviceId);
+    }
     if (attach) {
       const themeId =
         this.runtime.getSessionState(attach.sessionId)?.themeId ??
@@ -344,6 +391,9 @@ export class DeviceGateway
   onSessionSync(@ConnectedSocket() socket: DeviceSocket): SessionState | null {
     const attach = socket.data.attach;
     if (!attach) return null;
+    if (socket.data.websiteTest) {
+      return this.websiteTest.getSessionState(attach.sessionId);
+    }
     return this.runtime.getSessionState(attach.sessionId);
   }
 
@@ -356,6 +406,15 @@ export class DeviceGateway
     if (!attach) return;
     const parsed = HintSubmitSchema.safeParse(body);
     if (!parsed.success) return;
+    if (socket.data.websiteTest) {
+      // Reported to studio; the website gets a well-formed hint:error.
+      const result = this.websiteTest.handleHintSubmit(
+        attach.sessionId,
+        parsed.data.code,
+      );
+      this.emitHintResult(socket, attach, result);
+      return;
+    }
     try {
       const result = await this.runtime.handleHintSubmit(
         attach.sessionId,
@@ -377,6 +436,11 @@ export class DeviceGateway
     if (!attach) return;
     const parsed = HintNextSchema.safeParse(body);
     if (!parsed.success) return;
+    if (socket.data.websiteTest) {
+      const result = this.websiteTest.handleHintNext(attach.sessionId);
+      this.emitHintResult(socket, attach, result);
+      return;
+    }
     try {
       const result = await this.runtime.handleHintNext(
         attach.sessionId,

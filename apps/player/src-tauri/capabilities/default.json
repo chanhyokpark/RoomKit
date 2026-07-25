@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "launcher (main), per-device stage windows, auto-started test windows",
+  "description": "launcher (main), per-device stage windows, auto-started test and website-test windows",
   "windows": [
     "main",
     "device-*",
-    "test-*"
+    "test-*",
+    "wtest-*"
   ],
   "permissions": [
     "core:default",

@@ -34,6 +34,13 @@
 
 	let engine = $state<PlaybackEngine | null>(null);
 
+	// Hide the cursor while a real video plays; test sessions keep it so the
+	// overlay's skip buttons stay clickable.
+	$effect(() => {
+		document.body.classList.toggle('video-playing', !!stage.videoSrc && !connection.isTest);
+		return () => document.body.classList.remove('video-playing');
+	});
+
 	onMount(() => {
 		if (!device) return;
 		const client = connection.start(config.serverUrl, device.deviceCode, device.label);

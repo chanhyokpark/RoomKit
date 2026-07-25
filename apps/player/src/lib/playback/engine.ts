@@ -26,7 +26,7 @@ export class PlaybackEngine {
 		client.on('stop', (cmd) => this.onStop(cmd));
 		client.on('progress', (progress) => this.dialogue.onProgress(progress));
 		client.on('reset', () => this.resetAll());
-		client.on('navigate', (url, _cmd, done) => stage.navigate(url, done));
+		client.on('navigate', (url, cmd, done) => stage.navigate(url, done, cmd.force));
 		client.on('hintCode', (cmd) => {
 			stage.hintCode = cmd.code === null ? null : { code: cmd.code, css: cmd.css };
 		});

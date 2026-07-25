@@ -3,9 +3,15 @@ import {
 	PLAYER_NAMESPACE,
 	PlayerEvents,
 	PlayerTestStartSchema,
+	PlayerWebsiteTestStartSchema,
+	PlayerWebsiteTestStopSchema,
 	type PlayerTestStart
 } from '@roomkit/shared';
-import { openTestDeviceWindow } from '../windows';
+import {
+	closeWebsiteTestWindows,
+	openTestDeviceWindow,
+	openWebsiteTestWindow
+} from '../windows';
 import { config } from './config.svelte';
 
 export type PlayerStatus = 'idle' | 'connecting' | 'connected';
@@ -46,6 +52,16 @@ class PlayerStore {
 			if (!parsed.success) return;
 			this.lastTestStart = parsed.data;
 			void this.openWindows(parsed.data);
+		});
+		socket.on(PlayerEvents.websiteTestStart, (payload: unknown) => {
+			const parsed = PlayerWebsiteTestStartSchema.safeParse(payload);
+			if (!parsed.success) return;
+			void openWebsiteTestWindow(parsed.data.runId, parsed.data.device);
+		});
+		socket.on(PlayerEvents.websiteTestStop, (payload: unknown) => {
+			const parsed = PlayerWebsiteTestStopSchema.safeParse(payload);
+			if (!parsed.success) return;
+			void closeWebsiteTestWindows(parsed.data.runId);
 		});
 	}
 
