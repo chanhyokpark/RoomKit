@@ -6,8 +6,13 @@ import { simulate } from './simulate';
 
 interface ActiveBgm {
 	audio: HTMLAudioElement | null;
+	/** Fade-in/out position (0..1); the audible volume is base × duck. */
+	baseVolume: number;
+	/** Duck factor (0..1) from the engine's duck coordinator; 1 = no duck. */
+	duckFactor: number;
 	cancelSimulation: (() => void) | null;
 	cancelFade: (() => void) | null;
+	cancelDuck: (() => void) | null;
 	/** From the play wire (the BGM asset's setting); applied on stop/replace. */
 	fadeOutMs: number;
 	commandId: string;
@@ -15,25 +20,37 @@ interface ActiveBgm {
 }
 
 const FADE_TICK_MS = 50;
+export const DUCK_RAMP_MS = 250;
 
-/** Linearly ramps audio.volume to `target` over `durationMs`; returns a cancel fn. */
-function fadeVolume(
-	audio: HTMLAudioElement,
+/** Linearly ramps a value to `target` over `durationMs`; returns a cancel fn. */
+function fadeValue(
+	start: number,
 	target: number,
 	durationMs: number,
+	apply: (value: number) => void,
 	onDone?: () => void
 ): () => void {
-	const start = audio.volume;
+	if (durationMs <= 0) {
+		apply(target);
+		onDone?.();
+		return () => {};
+	}
 	const startAt = performance.now();
 	const timer = setInterval(() => {
 		const progress = Math.min(1, (performance.now() - startAt) / durationMs);
-		audio.volume = start + (target - start) * progress;
+		apply(start + (target - start) * progress);
 		if (progress >= 1) {
 			clearInterval(timer);
 			onDone?.();
 		}
 	}, FADE_TICK_MS);
 	return () => clearInterval(timer);
+}
+
+function applyVolume(entry: ActiveBgm): void {
+	if (entry.audio) {
+		entry.audio.volume = Math.max(0, Math.min(1, entry.baseVolume * entry.duckFactor));
+	}
 }
 
 /**
@@ -49,9 +66,15 @@ function fadeVolume(
  * (replacement = crossfade — the old track ramps down detached while the new
  * one starts). A stop with fade acks immediately (apply semantics) and
  * releases the audio element after the ramp.
+ *
+ * Ducking: the engine calls setDuck while dialogue/SFX with a duck config is
+ * active on the player; the factor multiplies onto the fade volume and also
+ * applies to a BGM that starts mid-duck.
  */
 export class BgmChannel {
 	private readonly active = new Map<string, ActiveBgm>();
+	/** Current duck factor per player; kept so a new track starts ducked. */
+	private readonly duckFactors = new Map<string, number>();
 	/** Detached fade-outs still ramping; killed instantly by stopAll (reset). */
 	private readonly fadingOut = new Set<{
 		audio: HTMLAudioElement;
@@ -65,8 +88,11 @@ export class BgmChannel {
 			stage.addPlaceholder({ id: cmd.id, channel: 'bgm', name: cmd.assetName });
 			const entry: ActiveBgm = {
 				audio: null,
+				baseVolume: 1,
+				duckFactor: 1,
 				cancelSimulation: null,
 				cancelFade: null,
+				cancelDuck: null,
 				fadeOutMs: cmd.fadeOutMs,
 				commandId: cmd.id,
 				done
@@ -88,18 +114,30 @@ export class BgmChannel {
 		audio.loop = cmd.loop;
 		const entry: ActiveBgm = {
 			audio,
+			baseVolume: cmd.fadeInMs > 0 ? 0 : 1,
+			duckFactor: this.duckFactors.get(cmd.playerId) ?? 1,
 			cancelSimulation: null,
 			cancelFade: null,
+			cancelDuck: null,
 			fadeOutMs: cmd.fadeOutMs,
 			commandId: cmd.id,
 			done
 		};
 		this.active.set(cmd.playerId, entry);
+		applyVolume(entry);
 		if (cmd.fadeInMs > 0) {
-			audio.volume = 0;
-			entry.cancelFade = fadeVolume(audio, 1, cmd.fadeInMs, () => {
-				entry.cancelFade = null;
-			});
+			entry.cancelFade = fadeValue(
+				0,
+				1,
+				cmd.fadeInMs,
+				(value) => {
+					entry.baseVolume = value;
+					applyVolume(entry);
+				},
+				() => {
+					entry.cancelFade = null;
+				}
+			);
 		}
 		if (cmd.loop) {
 			audio.addEventListener('playing', () => done(), { once: true });
@@ -116,12 +154,37 @@ export class BgmChannel {
 		void audio.play().catch(() => done('failed'));
 	}
 
+	/**
+	 * Ramps the player's duck factor (1 = no duck). Remembered per player so a
+	 * track that starts while dialogue/SFX still plays comes in already ducked.
+	 */
+	setDuck(playerId: string, factor: number): void {
+		if (factor >= 1) this.duckFactors.delete(playerId);
+		else this.duckFactors.set(playerId, factor);
+		const entry = this.active.get(playerId);
+		if (!entry?.audio) return;
+		entry.cancelDuck?.();
+		entry.cancelDuck = fadeValue(
+			entry.duckFactor,
+			factor,
+			DUCK_RAMP_MS,
+			(value) => {
+				entry.duckFactor = value;
+				applyVolume(entry);
+			},
+			() => {
+				entry.cancelDuck = null;
+			}
+		);
+	}
+
 	stop(playerId: string, opts: { instant?: boolean } = {}): void {
 		const entry = this.active.get(playerId);
 		if (!entry) return;
 		this.active.delete(playerId);
 		entry.cancelSimulation?.();
 		entry.cancelFade?.();
+		entry.cancelDuck?.();
 		stage.removePlaceholder(entry.commandId);
 		const { audio } = entry;
 		if (audio) {
@@ -131,11 +194,21 @@ export class BgmChannel {
 					audio,
 					cancel: () => {}
 				};
-				detached.cancel = fadeVolume(audio, 0, fadeOutMs, () => {
-					this.fadingOut.delete(detached);
-					audio.pause();
-					audio.removeAttribute('src');
-				});
+				// Detached ramp works on the audible volume directly — the duck
+				// factor is frozen at its detach-time value.
+				detached.cancel = fadeValue(
+					audio.volume,
+					0,
+					fadeOutMs,
+					(value) => {
+						audio.volume = value;
+					},
+					() => {
+						this.fadingOut.delete(detached);
+						audio.pause();
+						audio.removeAttribute('src');
+					}
+				);
 				this.fadingOut.add(detached);
 			} else {
 				audio.pause();
@@ -160,5 +233,6 @@ export class BgmChannel {
 			detached.audio.removeAttribute('src');
 		}
 		this.fadingOut.clear();
+		this.duckFactors.clear();
 	}
 }

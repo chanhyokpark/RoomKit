@@ -70,5 +70,8 @@
 		{#if event.data.allowReentry}
 			<Badge variant="outline">재진입</Badge>
 		{/if}
+		{#if event.data.once}
+			<Badge variant="outline">1회 실행</Badge>
+		{/if}
 	</div>
 </div>

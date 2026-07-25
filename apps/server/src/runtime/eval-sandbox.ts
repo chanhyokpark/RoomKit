@@ -10,6 +10,12 @@ import type { JsonValue } from '@roomkit/shared';
 export interface EvalContext {
   /** Session variables — mutations are visible to parallel runs immediately. */
   vars: Record<string, JsonValue>;
+  /**
+   * Payload of the device trigger that started this run (null when there is
+   * none — manual/system triggers, or the device sent no payload). A clone:
+   * mutations don't leak into other commands of the run.
+   */
+  payload: JsonValue | null;
   /** Current phase name (null when the session has no phase). */
   phase: string | null;
   /** Fires an event through the same admission path as a device trigger. */

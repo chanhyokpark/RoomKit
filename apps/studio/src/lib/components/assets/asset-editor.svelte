@@ -165,6 +165,7 @@
 						triggerName: asset.data.triggerName ?? '',
 						manualTriggerable: asset.data.manualTriggerable,
 						allowReentry: asset.data.allowReentry,
+						once: asset.data.once,
 						sequence: asset.data.sequence
 					};
 			}
@@ -217,7 +218,9 @@
 					kind: 'player',
 					speakerDeviceId: '',
 					screenDeviceId: '',
-					subtitleCss: ''
+					subtitleCss: '',
+					dialogueDuckPercent: null,
+					sfxDuckPercent: null
 				};
 			case 'website':
 				return { kind: 'website', mode: 'external', url: '', sitePrefix: null };
@@ -233,6 +236,7 @@
 					triggerName: '',
 					manualTriggerable: false,
 					allowReentry: false,
+					once: false,
 					sequence: []
 				};
 		}
@@ -292,10 +296,14 @@
 				return parseParamsText(draft.paramsText) === null
 					? '파라미터는 올바른 JSON 객체여야 합니다.'
 					: null;
-			case 'player':
-				return draft.speakerDeviceId && draft.screenDeviceId
+			case 'player': {
+				if (!draft.speakerDeviceId || !draft.screenDeviceId)
+					return '스피커 장치와 스크린 장치를 선택해 주세요.';
+				const validPercent = (p: number | null) => p === null || (p >= 0 && p <= 100);
+				return validPercent(draft.dialogueDuckPercent) && validPercent(draft.sfxDuckPercent)
 					? null
-					: '스피커 장치와 스크린 장치를 선택해 주세요.';
+					: 'BGM 덕킹 볼륨은 0~100 사이여야 합니다.';
+			}
 			case 'website':
 				if (draft.mode === 'hosted') {
 					return draft.sitePrefix ? null : 'ZIP 파일을 업로드해 주세요.';
@@ -378,7 +386,9 @@
 				return {
 					speakerDeviceId: draft.speakerDeviceId,
 					screenDeviceId: draft.screenDeviceId,
-					subtitleCss: draft.subtitleCss
+					subtitleCss: draft.subtitleCss,
+					dialogueDuckPercent: draft.dialogueDuckPercent,
+					sfxDuckPercent: draft.sfxDuckPercent
 				};
 			case 'website':
 				return draft.mode === 'hosted'
@@ -398,6 +408,7 @@
 					triggerName: draft.triggerKind === 'manual' ? null : draft.triggerName.trim(),
 					manualTriggerable: draft.manualTriggerable,
 					allowReentry: draft.allowReentry,
+					once: draft.once,
 					sequence: $state.snapshot(draft.sequence) as unknown as JsonValue
 				} as JsonValue;
 		}
@@ -539,6 +550,8 @@
 			<PlayerForm
 				{themeId}
 				bind:speakerDeviceId={draft.speakerDeviceId}
+				bind:dialogueDuckPercent={draft.dialogueDuckPercent}
+				bind:sfxDuckPercent={draft.sfxDuckPercent}
 				bind:screenDeviceId={draft.screenDeviceId}
 				bind:subtitleCss={draft.subtitleCss}
 			/>
@@ -562,6 +575,7 @@
 				bind:triggerName={draft.triggerName}
 				bind:manualTriggerable={draft.manualTriggerable}
 				bind:allowReentry={draft.allowReentry}
+				bind:once={draft.once}
 				sequenceLength={draft.sequence.length}
 			/>
 		{/if}

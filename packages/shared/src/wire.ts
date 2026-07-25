@@ -63,6 +63,11 @@ export const WirePlaySfxSchema = z.object({
   playerId: z.uuid(),
   assetId: z.uuid(),
   ...wireMediaFields,
+  /**
+   * BGM volume factor (0..1) applied on this player while the SFX plays.
+   * From the player asset's sfxDuckPercent; absent = no ducking.
+   */
+  bgmDuck: z.number().min(0).max(1).optional(),
 });
 export type WirePlaySfx = z.infer<typeof WirePlaySfxSchema>;
 
@@ -103,6 +108,12 @@ export const WirePlayDialogueSchema = z.object({
   keepSubtitleAfterEnd: z.boolean(),
   /** Dialogue asset's free-form params, forwarded for website-side rendering. */
   params: z.record(z.string(), JsonValueSchema).default({}),
+  /**
+   * BGM volume factor (0..1) applied on this player while the dialogue plays.
+   * From the player asset's dialogueDuckPercent; absent = no ducking. Only
+   * meaningful on the speaker role (where BGM audio also plays).
+   */
+  bgmDuck: z.number().min(0).max(1).optional(),
 });
 export type WirePlayDialogue = z.infer<typeof WirePlayDialogueSchema>;
 

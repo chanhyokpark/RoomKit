@@ -60,6 +60,8 @@ interface DialogueCueState {
   byLine: Map<number, DialogueCueEntry[]>;
   /** callEvent depth of the sequence that started the dialogue. */
   depth: number;
+  /** Trigger payload of the run that started the dialogue (cues inherit it). */
+  payload: JsonValue | null;
   /** Line indexes whose cue is currently executing (dedupes re-announces). */
   running: Set<number>;
   /** Line indexes whose cue already ran (re-announce → immediate go-ahead). */
@@ -118,6 +120,8 @@ export class SessionEngine {
   private gateRelease: (() => void) | null = null;
 
   private readonly runCounts = new Map<string, number>();
+  /** Event ids whose once-flagged run already happened; persisted with the row. */
+  private readonly onceRun: Set<string>;
   /** In-flight event runs, keyed by run id — mirrored to /admin on every step. */
   private readonly activeRuns = new Map<string, RunningEvent>();
   private readonly pendingAcks = new Map<
@@ -148,6 +152,9 @@ export class SessionEngine {
     this.phaseId = row.phaseId;
     this.state = row.state === 'ended' ? 'ended' : row.state;
     this.vars = (row.vars ?? {}) as Record<string, JsonValue>;
+    this.onceRun = new Set(
+      Array.isArray(row.onceRun) ? (row.onceRun as string[]) : [],
+    );
     this.verdict = row.verdict;
     this.timeLimitMs = timeLimitMs;
     this.emitter.setMaxListeners(0);
@@ -349,12 +356,16 @@ export class SessionEngine {
   // ── triggers & events ────────────────────────────────────────────────────
 
   /** Device (or eval) trigger by name; fire-and-forget for all matching events. */
-  async handleTrigger(name: string, source: string): Promise<void> {
+  async handleTrigger(
+    name: string,
+    source: string,
+    payload: JsonValue | null = null,
+  ): Promise<void> {
     // Callers void this promise, so a rejection (e.g. a transient DB error in
     // findEvents) would otherwise become an unhandled rejection and can kill
     // the process mid-game.
     try {
-      await this.handleTriggerInner(name, source);
+      await this.handleTriggerInner(name, source, payload);
     } catch (err) {
       void this.log(
         'error',
@@ -367,6 +378,7 @@ export class SessionEngine {
   private async handleTriggerInner(
     name: string,
     source: string,
+    payload: JsonValue | null,
   ): Promise<void> {
     if (this.state === 'ended') return;
     if (this.state === 'created') {
@@ -395,7 +407,7 @@ export class SessionEngine {
         );
         continue;
       }
-      void this.executeRun(event, 0);
+      void this.executeRun(event, 0, payload);
     }
   }
 
@@ -436,6 +448,17 @@ export class SessionEngine {
       where: { id: phaseId, themeId: this.themeId, kind: 'phase' },
       select: { name: true },
     });
+    // Restart resets once-tracking for this phase's events (common events —
+    // phaseId null — keep theirs), so the restarted phase runs them afresh,
+    // leave/enter hooks included.
+    const onceEvents = await this.findEvents(
+      (e) => e.data.once && e.data.phaseId === phaseId,
+    );
+    let onceCleared = false;
+    for (const event of onceEvents) {
+      if (this.onceRun.delete(event.id)) onceCleared = true;
+    }
+    if (onceCleared) this.queuePersist({ onceRun: [...this.onceRun] });
     await this.fireSystemEvents('phase:leave', phaseId);
     this.checkAborted();
     void this.log(
@@ -606,10 +629,21 @@ export class SessionEngine {
     if ((this.runCounts.get(event.id) ?? 0) > 0 && !event.data.allowReentry) {
       return 'already running (re-entry not allowed)';
     }
+    if (event.data.once && this.onceRun.has(event.id)) {
+      return 'already ran (once)';
+    }
     return null;
   }
 
-  private async executeRun(event: ParsedEvent, depth: number): Promise<void> {
+  private async executeRun(
+    event: ParsedEvent,
+    depth: number,
+    payload: JsonValue | null = null,
+  ): Promise<void> {
+    if (event.data.once) {
+      this.onceRun.add(event.id);
+      this.queuePersist({ onceRun: [...this.onceRun] });
+    }
     this.runCounts.set(event.id, (this.runCounts.get(event.id) ?? 0) + 1);
     const run: RunningEvent = {
       runId: randomUUID(),
@@ -626,7 +660,7 @@ export class SessionEngine {
       eventId: event.id,
     });
     try {
-      await this.runSequence(event, depth, run);
+      await this.runSequence(event, depth, run, payload);
       void this.log('info', 'event', `Event "${event.name}" finished`, {
         eventId: event.id,
       });
@@ -662,13 +696,14 @@ export class SessionEngine {
     event: ParsedEvent,
     depth: number,
     run: RunningEvent,
+    payload: JsonValue | null,
   ): Promise<void> {
     for (const [index, entry] of event.data.sequence.entries()) {
       run.entryIndex = index;
       run.commandType = entry.type;
       this.broadcastRuns();
       await this.awaitGate();
-      const stop = await this.runCommand(entry, depth);
+      const stop = await this.runCommand(entry, depth, payload);
       if (stop) return;
     }
   }
@@ -677,13 +712,14 @@ export class SessionEngine {
   private async runCommand(
     entry: SequenceEntry,
     depth: number,
+    payload: JsonValue | null = null,
   ): Promise<boolean> {
     switch (entry.type) {
       case 'wait':
         await this.pausableSleep(entry.durationMs);
         return false;
       case 'eval':
-        return this.runEvalCommand(entry.code);
+        return this.runEvalCommand(entry.code, payload);
       case 'switchPhase':
         if (entry.phaseId === null) {
           void this.log(
@@ -704,7 +740,12 @@ export class SessionEngine {
           );
           return false;
         }
-        await this.callEvent(entry.eventId, depth, entry.waitUntilFinish);
+        await this.callEvent(
+          entry.eventId,
+          depth,
+          entry.waitUntilFinish,
+          payload,
+        );
         return false;
       case 'adjustTimer':
         try {
@@ -729,15 +770,22 @@ export class SessionEngine {
         return false;
       }
       default:
-        await this.dispatchCommand(entry, depth);
+        await this.dispatchCommand(entry, depth, payload);
         return false;
     }
   }
 
-  private async dispatchCommand(cmd: Command, depth = 0): Promise<void> {
+  private async dispatchCommand(
+    cmd: Command,
+    depth = 0,
+    payload: JsonValue | null = null,
+  ): Promise<void> {
     let resolution: Resolution;
     try {
-      resolution = await this.deps.resolver.resolve(this.themeId, cmd);
+      resolution = await this.deps.resolver.resolve(this.themeId, cmd, {
+        vars: this.vars,
+        payload,
+      });
     } catch (err) {
       if (err instanceof ResolutionError) {
         void this.log(
@@ -770,6 +818,7 @@ export class SessionEngine {
           deviceId,
           byLine,
           depth,
+          payload,
           running: new Set(),
           completed: new Set(),
           lastContinue: null,
@@ -849,6 +898,7 @@ export class SessionEngine {
     eventId: string,
     depth: number,
     waitUntilFinish: boolean,
+    payload: JsonValue | null,
   ): Promise<void> {
     if (depth + 1 > CALL_EVENT_DEPTH_LIMIT) {
       throw new Error(
@@ -869,8 +919,9 @@ export class SessionEngine {
     }
     // executeRun never rejects (it catches internally), so fire-and-forget
     // needs no .catch — same as handleTriggerInner. Depth still applies.
-    if (waitUntilFinish) await this.executeRun(event, depth + 1);
-    else void this.executeRun(event, depth + 1);
+    // The callee inherits the caller's trigger payload (subroutine semantics).
+    if (waitUntilFinish) await this.executeRun(event, depth + 1, payload);
+    else void this.executeRun(event, depth + 1, payload);
   }
 
   /**
@@ -921,7 +972,10 @@ export class SessionEngine {
     this.fireSystemEvents('phase:enter', phaseId).catch(() => {});
   }
 
-  private async runEvalCommand(code: string): Promise<boolean> {
+  private async runEvalCommand(
+    code: string,
+    payload: JsonValue | null = null,
+  ): Promise<boolean> {
     let phaseName: string | null = null;
     if (this.phaseId !== null) {
       const phase = await this.deps.prisma.asset.findUnique({
@@ -938,6 +992,8 @@ export class SessionEngine {
     try {
       result = runEval(code, {
         vars: this.vars,
+        // Cloned so script mutations don't leak into later commands' scope.
+        payload: payload === null ? null : structuredClone(payload),
         phase: phaseName,
         trigger: (name) => void this.handleTrigger(String(name), 'eval'),
         log: (message) => void this.log('info', 'eval', String(message)),
@@ -1114,7 +1170,7 @@ export class SessionEngine {
         await this.awaitGate();
         // Same stop semantics as a sequence (eval false / endTheme); a stopped
         // cue still releases the dialogue — only its remaining commands die.
-        const stop = await this.runCommand(entry, state.depth);
+        const stop = await this.runCommand(entry, state.depth, state.payload);
         if (stop) break;
       }
       void this.log(

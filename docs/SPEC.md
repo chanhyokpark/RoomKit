@@ -64,12 +64,12 @@ Every kind — including Phase and Event — is stored as an `Asset` row (`kind`
 | Image | one image file. Not played by the studio runtime — a static resource for websites, served publicly at `/api/media/{assetId}` (stable URL; re-upload swaps the file behind it). Fileless images serve a generated SVG placeholder in a customizable `placeholderRatio` ("W:H", default 16:9), so sites can lay out before artwork exists |
 | File | arbitrary file counterpart of Image, same public serving |
 | Hint | `code` (auto-generated, unique within theme — 4 digits by default, manually editable), array of steps. Each step is text (HTML) + optional image. Free-form `params` JSON object, forwarded on the hint-code wire for website-side rendering |
-| Player | logical output group. `speakerDeviceId`, `screenDeviceId` (device that renders subtitles/video), `subtitleCss` (styles the default `.rk-subtitle` overlay). Dialogue/video playback commands target a player, not a raw device |
+| Player | logical output group. `speakerDeviceId`, `screenDeviceId` (device that renders subtitles/video), `subtitleCss` (styles the default `.rk-subtitle` overlay), `dialogueDuckPercent` / `sfxDuckPercent` (BGM volume in percent while dialogue / any SFX plays on this player; null = no ducking; the lowest active factor wins, ~250ms ramp). Dialogue/video playback commands target a player, not a raw device |
 | Website | `mode: external \| hosted`. External: only a `url` is registered. Hosted: a zip (with `index.html` at its root; a single wrapping folder is auto-stripped) is extracted to an immutable S3 prefix (`sitePrefix`) and served by the server at `/api/sites/{assetId}/`; re-upload swaps the prefix. If the site is shown inside the player's iframe, it must have the helper script embedded; a standalone site connects with `@roomkit/client` instead |
 | Message | payload **schema** delivered to a device. `displayName` + `fields[]` (`key`, `label`, `type`: string/number/boolean/json, `required`). The asset only defines the shape; concrete values are entered dynamically in the editor when authoring a "send message to device" command |
 | Tag | `name`, `color`. Many-to-many with assets, organization only (no runtime meaning) |
 | Phase | `name`, `order`. Game progression stage. A session is always in exactly one phase |
-| Event | `phaseId` (null = common), `triggerKind`, `triggerName`, `manualTriggerable`, `allowReentry`, `sequence`. See below |
+| Event | `phaseId` (null = common), `triggerKind`, `triggerName`, `manualTriggerable`, `allowReentry`, `once`, `sequence`. See below |
 
 ### Events and Sequences
 
@@ -82,6 +82,8 @@ All logic starts from an event.
   - **System trigger**: run automatically on session start, phase enter/leave (per-phase hooks), and timer expiry. Starting a session also fires `phase:enter` for the initial phase
 - Guard: only events belonging to the current phase (or common) can run. Out-of-phase triggers are ignored and only logged
 - Concurrency: event sequences may run in parallel within a session (e.g. another event while BGM plays). Re-entry of the same event is blocked by default (optionally allowed)
+- Once: with `once` set, the event runs at most once per session (tracked in `Session.onceRun`, survives server restarts). Restarting a phase clears the tracking for that phase's events — common (`phaseId: null`) once-events are not reset. Switching phases does not reset
+- Trigger payload: a device `trigger` may carry a JSON `payload`. It rides the run — exposed as `ctx.payload` in eval and as `{{payload.x}}` in interpolated command fields; `callEvent` passes it through to the callee. Manual/system triggers have a null payload
 
 A sequence is stored as an array of commands (JSON). The runtime lives on the server.
 
@@ -91,12 +93,12 @@ A sequence is stored as an array of commands (JSON). The runtime lives on the se
 |---|---|---|
 | Reset device | device | sends `reset` to the device (device returns to initial state) |
 | Play/stop dialogue | dialogue, player, `waitUntilEnd`, `lineCues` | voice to the speaker device, subtitles to the screen device. With `waitUntilEnd`, the sequence waits for the playback-finished ack. `lineCues` wedges commands (any except another play-dialogue) into the gaps between lines, anchored to the preceding line's id: the speaker pauses at the gap (previous subtitle stays up), the server runs the cue commands in order, then playback resumes; skip/stop cancels un-run cues. A cue whose line vanished or is last is skipped with a warning |
-| Play/stop SFX | sfx, player | |
+| Play/stop SFX | sfx, player, `waitUntilEnd` | with `waitUntilEnd`, the sequence waits for the playback-finished ack |
 | Play/stop video | video, player, `waitUntilEnd` | plays on the screen device |
-| Play/stop BGM | bgm, player, `loop`, `fadeInMs` / `fadeOutMs` | infinite loop toggle; optional volume fade on play (fade-in) and stop (fade-out) |
+| Play/stop BGM | bgm, player, `loop`, `waitUntilEnd`, `fadeInMs` / `fadeOutMs` | infinite loop toggle; optional volume fade on play (fade-in) and stop (fade-out). `waitUntilEnd` waits for the playback-finished ack; only meaningful when `loop` is off (looping BGM acks on start) |
 | Wait | duration (ms) | server timer. Pauses together with session pause |
-| Navigate device to website | device, website | sends `navigate(url)` to the device |
-| Send message to device | device, message, values | builds the payload from the message asset's field schema + values entered in the editor, then sends it to the device. Tauri relays it to the iframe via postMessage |
+| Navigate device to website | device, website, `query` | sends `navigate(url)` to the device. `query` is an array of `{key, value}` pairs appended to the URL as query params; values support `{{vars.x}}` / `{{payload.x}}` interpolation |
+| Send message to device | device, message, values | builds the payload from the message asset's field schema + values entered in the editor, then sends it to the device. Tauri relays it to the iframe via postMessage. String values support `{{vars.x}}` / `{{payload.x}}` interpolation; a value that is exactly one template substitutes the variable's raw JSON value (type-preserving), mixed strings stringify, unresolved exact templates become null |
 | Switch phase | phase | changes the session phase + runs phase hooks *(not a command in the original plan, but added so "jump to a specific phase" is usable from sequences too)* |
 | Call event | event | runs another event's sequence (for reuse; proposed addition) |
 | Reset all devices | — | sends `reset` to every device in the session (bulk version of "reset device") |
@@ -108,6 +110,7 @@ A sequence is stored as an array of commands (JSON). The runtime lives on the se
 
 ```ts
 ctx.vars            // session variables (get/set)
+ctx.payload         // device trigger payload of this run (read; null when absent)
 ctx.phase           // current phase name (read)
 ctx.trigger(name)   // trigger an event
 ctx.log(msg)        // write to the session log
@@ -119,8 +122,9 @@ If the return value is `false`, the sequence stops → guard logic works without
 
 ```
 Session: id, themeId, mode(test|production), phaseId, state(created|running|paused|ended),
-         verdict(success|fail, null until endTheme runs), vars(json), startedAt, endedAt,
-         timerEndsAt, timerRemainingMs (while paused)
+         verdict(success|fail, null until endTheme runs), vars(json),
+         onceRun(json array of event ids whose once-flagged run happened),
+         startedAt, endedAt, timerEndsAt, timerRemainingMs (while paused)
 ```
 
 - **Lifecycle**: sessions are created **idle** (`created`) and started explicitly from the dashboard (start button; warns when devices are offline). Devices may connect to an idle session so the operator can check online status before starting. The timer arms and `session:start` fires only on start
@@ -227,7 +231,8 @@ const manifest = await rk.fetchAssetManifest();
 - Stage windows connect with `retryOnFatalError`: an `invalid_code` / `session_ended` doesn't stop the client — it keeps polling (5s), so devices can be powered on **before** the session or their test code exists and attach on their own once the operator creates it
 - On connect, fetches `assets:manifest` and downloads the files to a local cache (fileKey-based refresh — upload keys are immutable, so presence = fresh). Cache miss streams the wire command's presigned URL and backfills in the background
 - Fullscreen kiosk lock per device (window-level: fullscreen, always-on-top, hidden cursor, close prevention, browser-shortcut suppression; escape chord Ctrl+Shift+Alt+F12). OS chords (Win key, Alt+Tab) cannot be blocked from an app — use Windows Assigned Access for a hard lock
-- Implements audio (dialogue/BGM/SFX mixed simultaneously), video (fullscreen or placed by the video asset's `frame`), and subtitle overlay (applies the player's `subtitleCss`, renders subtitle HTML) directly. A website embedded via the helper may claim subtitle / hint-code / video rendering per slot (declared in its `hello`): the player then suppresses its own overlay for that slot and forwards the data + CSS + asset `params` to the site instead. A claimed video slot is fully delegated — the player renders no video element; the site plays the presigned media URL itself (audio included) and reports `video:ended`/`video:error` (that report acks the play command). Claims reset whenever the iframe navigates or reloads
+- Implements audio (dialogue/BGM/SFX mixed simultaneously, with per-player BGM ducking while dialogue/SFX with a duck config plays), video (fullscreen or placed by the video asset's `frame`), and subtitle overlay (applies the player's `subtitleCss`, renders subtitle HTML) directly. A website embedded via the helper may claim subtitle / hint-code / video rendering per slot (declared in its `hello`): the player then suppresses its own overlay for that slot and forwards the data + CSS + asset `params` to the site instead. A claimed video slot is fully delegated — the player renders no video element; the site plays the media URL itself (audio included) and reports `video:ended`/`video:error` (that report acks the play command). Claims reset whenever the iframe navigates or reloads
+- Runs a loopback HTTP media server (Rust, `127.0.0.1:<ephemeral port>`, Range support, permissive CORS) over the download cache. Delegated video sends the loopback URL for cached files — `asset://` URLs are unreachable from the cross-origin iframe — and falls back to the raw presigned URL when uncached or the server failed to start
 - Websites are shown in an embedded webview (iframe) — communicates with the helper script via postMessage (`@roomkit/shared` `helper.ts` envelopes; the player buffers until the helper's `hello`)
 - No hint UI in the player: hint UIs are built by client/helper consumers
 - Test mode: skip button overlay (dialogue/video) + status bar (connection, session state, timer)

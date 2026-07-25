@@ -103,6 +103,8 @@ model Session {
   // Asset id (kind = phase). No FK: asset deletion must not cascade into live sessions.
   phaseId String?
   vars    Json         @default("{}")
+  // Event asset ids whose once-flagged runs already happened (JSON string array).
+  onceRun Json         @default("[]")
   // Game outcome recorded by the endTheme command; null until it runs.
   verdict Verdict?
 

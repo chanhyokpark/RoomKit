@@ -1,5 +1,6 @@
 import type { DoneFn } from '@roomkit/client';
 import type { WirePlayVideo } from '@roomkit/shared';
+import { cache } from '../cache/manager.svelte';
 import { stage } from '../stores/stage.svelte';
 import { resolveSrc } from './resolve';
 import { simulate } from './simulate';
@@ -13,10 +14,11 @@ import { simulate } from './simulate';
  * simulates for durationMs; the skip button routes through finish() as usual.
  *
  * When the embedded website has claimed the video slot, playback is delegated:
- * no <video> element renders (videoSrc stays null); the site receives the raw
- * presigned URL (a cached tauri-protocol src would be unreachable cross-origin)
- * and its video:ended/video:error report drives finish(). Placeholder videos
- * keep the local simulation for the ack even while delegated.
+ * no <video> element renders (videoSrc stays null); the site receives a
+ * loopback media-server URL for cached video (a tauri-protocol src would be
+ * unreachable cross-origin), falling back to the raw presigned URL, and its
+ * video:ended/video:error report drives finish(). Placeholder videos keep the
+ * local simulation for the ack even while delegated.
  */
 export class VideoChannel {
 	private active: {
@@ -42,7 +44,7 @@ export class VideoChannel {
 			stage.delegatedVideo = {
 				commandId: cmd.id,
 				assetName: cmd.assetName,
-				url: placeholder ? null : cmd.url,
+				url: placeholder ? null : (cache.httpSrc(cmd.fileKey as string) ?? cmd.url),
 				durationMs: placeholder ? cmd.durationMs : null,
 				frame: cmd.frame,
 				params: cmd.params

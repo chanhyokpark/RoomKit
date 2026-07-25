@@ -30,13 +30,25 @@ class CacheManager {
 		return this.convert!(`${this.root}/${fileKey}`);
 	}
 
+	/**
+	 * Loopback media-server URL when cached, else null. Unlike localSrc, this
+	 * URL is reachable from cross-origin helper iframes (delegated video).
+	 */
+	httpSrc(fileKey: string): string | null {
+		if (this.mediaPort === null || !this.cached.has(fileKey)) return null;
+		const path = fileKey.split('/').map(encodeURIComponent).join('/');
+		return `http://127.0.0.1:${this.mediaPort}/${path}`;
+	}
+
 	private convert: ((path: string) => string) | null = null;
+	private mediaPort: number | null = null;
 
 	async init(): Promise<void> {
 		if (!isTauri()) return;
 		const [{ invoke, convertFileSrc }] = await Promise.all([import('@tauri-apps/api/core')]);
 		this.convert = convertFileSrc;
 		this.root = await invoke<string>('cache_root');
+		this.mediaPort = await invoke<number | null>('media_server_port').catch(() => null);
 		for (const key of await invoke<string[]>('cache_list')) this.cached.add(key);
 	}
 

@@ -18,6 +18,7 @@ import type { DialogueCueEntry } from '@roomkit/shared';
 import type { Env } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { interpolate, interpolateString, type TemplateScope } from './template';
 
 /**
  * Media URLs are redelivered to reconnecting devices, so they are signed for
@@ -41,6 +42,10 @@ export interface ResolveOptions {
    * variants shrink to just it.
    */
   forceDeviceId?: string;
+  /** Session variables for {{vars.x}} interpolation; absent = none resolve. */
+  vars?: Record<string, JsonValue>;
+  /** Trigger payload of the run, for {{payload.x}} interpolation. */
+  payload?: JsonValue | null;
 }
 
 export interface Resolution {
@@ -131,42 +136,44 @@ export class CommandResolver {
       case 'playBgm': {
         const player = await this.getPlayer(themeId, cmd.playerId, opts);
         const bgm = await this.getAsset(themeId, cmd.bgmId, 'bgm');
+        const wire = {
+          id: randomUUID(),
+          type: 'play' as const,
+          channel: 'bgm' as const,
+          playerId: player.id,
+          assetId: bgm.id,
+          ...(await this.mediaFields(bgm.name, bgm.data)),
+          loop: cmd.loop,
+          fadeInMs: bgm.data.fadeInMs,
+          fadeOutMs: bgm.data.fadeOutMs,
+        };
         return {
-          deliveries: [
-            {
-              deviceId: player.data.speakerDeviceId,
-              wire: {
-                id: randomUUID(),
-                type: 'play',
-                channel: 'bgm',
-                playerId: player.id,
-                assetId: bgm.id,
-                ...(await this.mediaFields(bgm.name, bgm.data)),
-                loop: cmd.loop,
-                fadeInMs: bgm.data.fadeInMs,
-                fadeOutMs: bgm.data.fadeOutMs,
-              },
-            },
-          ],
+          deliveries: [{ deviceId: player.data.speakerDeviceId, wire }],
+          // Looping playback never "ends" (its ack fires on start), so
+          // waitUntilEnd only applies to one-shot BGM.
+          awaitAckOf:
+            cmd.waitUntilEnd && !cmd.loop
+              ? { deviceId: player.data.speakerDeviceId, commandId: wire.id }
+              : undefined,
         };
       }
       case 'playSfx': {
         const player = await this.getPlayer(themeId, cmd.playerId, opts);
         const sfx = await this.getAsset(themeId, cmd.sfxId, 'sfx');
+        const wire = {
+          id: randomUUID(),
+          type: 'play' as const,
+          channel: 'sfx' as const,
+          playerId: player.id,
+          assetId: sfx.id,
+          ...(await this.mediaFields(sfx.name, sfx.data)),
+          ...duckField(player.data.sfxDuckPercent),
+        };
         return {
-          deliveries: [
-            {
-              deviceId: player.data.speakerDeviceId,
-              wire: {
-                id: randomUUID(),
-                type: 'play',
-                channel: 'sfx',
-                playerId: player.id,
-                assetId: sfx.id,
-                ...(await this.mediaFields(sfx.name, sfx.data)),
-              },
-            },
-          ],
+          deliveries: [{ deviceId: player.data.speakerDeviceId, wire }],
+          awaitAckOf: cmd.waitUntilEnd
+            ? { deviceId: player.data.speakerDeviceId, commandId: wire.id }
+            : undefined,
         };
       }
       case 'playVideo': {
@@ -305,10 +312,17 @@ export class CommandResolver {
       case 'navigate': {
         const device = await this.getDevice(themeId, cmd.deviceId, opts);
         const website = await this.getAsset(themeId, cmd.websiteId, 'website');
-        const url =
+        let url =
           website.data.mode === 'hosted'
             ? `${this.publicServerUrl}/api/sites/${website.id}/`
             : website.data.url;
+        const params = new URLSearchParams();
+        for (const { key, value } of cmd.query) {
+          if (key === '') continue;
+          params.append(key, interpolateString(value, scopeOf(opts)));
+        }
+        const qs = params.toString();
+        if (qs !== '') url += (url.includes('?') ? '&' : '?') + qs;
         const wire = {
           id: randomUUID(),
           type: 'navigate' as const,
@@ -335,7 +349,11 @@ export class CommandResolver {
                 type: 'message',
                 messageId: message.id,
                 messageName: message.name,
-                payload: buildMessagePayload(message.data, cmd.values),
+                payload: buildMessagePayload(
+                  message.data,
+                  cmd.values,
+                  scopeOf(opts),
+                ),
               },
             },
           ],
@@ -398,6 +416,7 @@ export class CommandResolver {
       subtitleCss: player.data.subtitleCss,
       keepSubtitleAfterEnd: dialogue.data.keepSubtitleAfterEnd,
       params: dialogue.data.params,
+      ...duckField(player.data.dialogueDuckPercent),
     };
     const { speakerDeviceId, screenDeviceId } = player.data;
 
@@ -572,13 +591,28 @@ export class CommandResolver {
   }
 }
 
+function scopeOf(opts: ResolveOptions): TemplateScope {
+  return { vars: opts.vars, payload: opts.payload };
+}
+
+/** Wire duck factor from a player asset's duck percent; null = field absent. */
+function duckField(percent: number | null): { bgmDuck?: number } {
+  return percent === null ? {} : { bgmDuck: percent / 100 };
+}
+
 function buildMessagePayload(
   message: MessageData,
   values: Record<string, JsonValue>,
+  scope: TemplateScope,
 ): Record<string, JsonValue> {
   const payload: Record<string, JsonValue> = {};
   for (const field of message.fields) {
-    const value = values[field.key];
+    // Interpolated before the type check, so an exact "{{vars.x}}" template
+    // can satisfy number/boolean/json fields with the variable's own type.
+    const value =
+      values[field.key] === undefined
+        ? undefined
+        : interpolate(values[field.key], scope);
     if (value === undefined) {
       if (field.required) {
         throw new ResolutionError(

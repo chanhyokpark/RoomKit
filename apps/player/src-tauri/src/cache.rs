@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 
 const PROGRESS_EMIT_STEP: u64 = 1024 * 1024;
 
-fn cache_base(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn cache_base(app: &AppHandle) -> Result<PathBuf, String> {
   let dir = app
     .path()
     .app_data_dir()

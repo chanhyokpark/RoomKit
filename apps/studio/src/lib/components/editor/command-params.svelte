@@ -1,5 +1,8 @@
 <script lang="ts">
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import XIcon from '@lucide/svelte/icons/x';
 	import type { SequenceEntry } from '@roomkit/shared';
+	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import { Switch } from '$lib/components/ui/switch';
@@ -57,6 +60,16 @@
 	{:else if entry.type === 'playSfx'}
 		<AssetSelect kind="sfx" label="효과음" bind:id={entry.sfxId} {onchanged} />
 		<AssetSelect kind="player" label="플레이어" bind:id={entry.playerId} {onchanged} />
+		<label class="flex h-8 items-center gap-2 text-xs">
+			<Switch
+				checked={entry.waitUntilEnd}
+				onCheckedChange={(checked) => {
+					if (entry.type === 'playSfx') entry.waitUntilEnd = checked;
+					onchanged();
+				}}
+			/>
+			끝날 때까지 대기
+		</label>
 	{:else if entry.type === 'playVideo'}
 		<AssetSelect kind="video" label="비디오" bind:id={entry.videoId} {onchanged} />
 		<AssetSelect kind="player" label="플레이어" bind:id={entry.playerId} {onchanged} />
@@ -77,12 +90,28 @@
 			<Switch
 				checked={entry.loop}
 				onCheckedChange={(checked) => {
-					if (entry.type === 'playBgm') entry.loop = checked;
+					if (entry.type === 'playBgm') {
+						entry.loop = checked;
+						// Looping playback never "ends" — the wait option is moot.
+						if (checked) entry.waitUntilEnd = false;
+					}
 					onchanged();
 				}}
 			/>
 			반복 재생
 		</label>
+		{#if !entry.loop}
+			<label class="flex h-8 items-center gap-2 text-xs">
+				<Switch
+					checked={entry.waitUntilEnd}
+					onCheckedChange={(checked) => {
+						if (entry.type === 'playBgm') entry.waitUntilEnd = checked;
+						onchanged();
+					}}
+				/>
+				끝날 때까지 대기
+			</label>
+		{/if}
 		<p class="w-full text-xs text-muted-foreground">페이드 인/아웃은 BGM 애셋 설정을 따릅니다.</p>
 	{:else if entry.type === 'stopDialogue' || entry.type === 'stopSfx' || entry.type === 'stopVideo' || entry.type === 'stopBgm'}
 		<AssetSelect
@@ -128,11 +157,73 @@
 	{:else if entry.type === 'navigate'}
 		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
 		<AssetSelect kind="website" label="웹사이트" bind:id={entry.websiteId} {onchanged} />
+		<div class="flex w-full flex-col gap-1.5">
+			{#each entry.query as pair, index (index)}
+				<div class="flex items-center gap-2">
+					<Input
+						class="h-8 w-40"
+						placeholder="키"
+						value={pair.key}
+						aria-label="쿼리 파라미터 키"
+						oninput={(inputEvent) => {
+							pair.key = inputEvent.currentTarget.value;
+							onchanged();
+						}}
+					/>
+					<Input
+						class="h-8 flex-1"
+						placeholder="값"
+						value={pair.value}
+						aria-label="쿼리 파라미터 값"
+						oninput={(inputEvent) => {
+							pair.value = inputEvent.currentTarget.value;
+							onchanged();
+						}}
+					/>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-8 shrink-0"
+						aria-label="쿼리 파라미터 삭제"
+						onclick={() => {
+							if (entry.type === 'navigate') entry.query.splice(index, 1);
+							onchanged();
+						}}
+					>
+						<XIcon class="size-4" />
+					</Button>
+				</div>
+			{/each}
+			<div>
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-7 text-xs"
+					onclick={() => {
+						if (entry.type === 'navigate') entry.query.push({ key: '', value: '' });
+						onchanged();
+					}}
+				>
+					<PlusIcon class="size-3.5" />
+					쿼리 파라미터 추가
+				</Button>
+			</div>
+			{#if entry.query.length > 0}
+				<p class="text-xs text-muted-foreground">
+					URL에 쿼리 파라미터로 추가됩니다. 값에는 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환을 쓸
+					수 있습니다.
+				</p>
+			{/if}
+		</div>
 	{:else if entry.type === 'sendMessage'}
 		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
 		<AssetSelect kind="message" label="메시지" bind:id={entry.messageId} {onchanged} />
 		<div class="w-full">
 			<MessageValuesFields messageId={entry.messageId} values={entry.values} {onchanged} />
+			<p class="mt-1 text-xs text-muted-foreground">
+				값에는 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환을 쓸 수 있습니다. 값 전체가 하나의 치환이면
+				변수의 타입(숫자·불리언 등)이 그대로 전달됩니다.
+			</p>
 		</div>
 	{:else if entry.type === 'switchPhase'}
 		<AssetSelect kind="phase" label="페이즈" bind:id={entry.phaseId} {onchanged} />
@@ -253,10 +344,11 @@
 				}}
 			/>
 			<p class="text-xs text-muted-foreground">
-				ctx.vars(세션 변수) · ctx.phase(현재 페이즈) · ctx.trigger(이름) · ctx.log(메시지) ·
-				ctx.switchPhase(페이즈 이름) · ctx.notify(메시지) · ctx.adjustTimer(ms | 'pause' | 'resume')
-				· ctx.endTheme('success' | 'fail') 사용 가능. false를 반환하면 시퀀스가 중단되며,
-				switchPhase 등의 동작은 스크립트 종료 후 호출 순서대로 실행됩니다.
+				ctx.vars(세션 변수) · ctx.payload(트리거 페이로드, 없으면 null) · ctx.phase(현재 페이즈) ·
+				ctx.trigger(이름) · ctx.log(메시지) · ctx.switchPhase(페이즈 이름) · ctx.notify(메시지) ·
+				ctx.adjustTimer(ms | 'pause' | 'resume') · ctx.endTheme('success' | 'fail') 사용 가능.
+				false를 반환하면 시퀀스가 중단되며, switchPhase 등의 동작은 스크립트 종료 후 호출 순서대로
+				실행됩니다.
 			</p>
 		</div>
 	{:else if entry.type === 'showHintCode'}

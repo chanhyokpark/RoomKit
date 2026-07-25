@@ -15,6 +15,7 @@
 		triggerName = $bindable(),
 		manualTriggerable = $bindable(),
 		allowReentry = $bindable(),
+		once = $bindable(),
 		sequenceLength
 	}: {
 		themeId: string;
@@ -24,6 +25,7 @@
 		triggerName: string;
 		manualTriggerable: boolean;
 		allowReentry: boolean;
+		once: boolean;
 		sequenceLength: number;
 	} = $props();
 
@@ -129,6 +131,17 @@
 		<Field.FieldDescription>실행 중인 이벤트를 다시 트리거할 수 있습니다.</Field.FieldDescription>
 	</Field.FieldContent>
 	<Switch id="event-reentry" bind:checked={allowReentry} />
+</Field.Field>
+
+<Field.Field orientation="horizontal">
+	<Field.FieldContent>
+		<Field.FieldLabel for="event-once">1회만 실행</Field.FieldLabel>
+		<Field.FieldDescription>
+			세션에서 한 번 실행되면 다시 실행되지 않습니다. 페이즈를 다시 시작하면 해당 페이즈 이벤트의
+			실행 기록이 초기화됩니다.
+		</Field.FieldDescription>
+	</Field.FieldContent>
+	<Switch id="event-once" bind:checked={once} />
 </Field.Field>
 
 <p class="text-xs text-muted-foreground">

@@ -152,6 +152,13 @@ export const PlayerDataSchema = z.object({
   /** Device that renders subtitles and video. */
   screenDeviceId: z.uuid(),
   subtitleCss: z.string(),
+  /**
+   * BGM volume (percent of normal) while this player's dialogue audio plays.
+   * Null = no ducking. E.g. 30 ducks BGM to 30% for the dialogue's duration.
+   */
+  dialogueDuckPercent: z.number().min(0).max(100).nullable().default(null),
+  /** Same as dialogueDuckPercent, but applied while any SFX is playing. */
+  sfxDuckPercent: z.number().min(0).max(100).nullable().default(null),
 });
 export type PlayerData = z.infer<typeof PlayerDataSchema>;
 
@@ -216,6 +223,11 @@ export const EventDataSchema = z.object({
   manualTriggerable: z.boolean(),
   /** Re-entry of a running event is blocked by default. */
   allowReentry: z.boolean(),
+  /**
+   * Run at most once per session. Tracking resets when the event's phase is
+   * restarted (common events with null phaseId never reset).
+   */
+  once: z.boolean().default(false),
   /** Authored in the M3 editor; kept verbatim by the asset manager. */
   sequence: SequenceSchema,
 });

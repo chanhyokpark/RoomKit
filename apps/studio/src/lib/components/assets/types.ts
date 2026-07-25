@@ -55,6 +55,10 @@ export type Draft =
 			speakerDeviceId: string;
 			screenDeviceId: string;
 			subtitleCss: string;
+			/** BGM volume (%) while dialogue plays; null = no ducking. */
+			dialogueDuckPercent: number | null;
+			/** BGM volume (%) while any SFX plays; null = no ducking. */
+			sfxDuckPercent: number | null;
 	  }
 	| { kind: 'website'; mode: 'external' | 'hosted'; url: string; sitePrefix: string | null }
 	| { kind: 'message'; displayName: string; fields: MessageField[] }
@@ -67,6 +71,8 @@ export type Draft =
 			triggerName: string;
 			manualTriggerable: boolean;
 			allowReentry: boolean;
+			/** Run at most once; resets when the event's phase restarts. */
+			once: boolean;
 			/** Authored in the M3 editor; carried through untouched. */
 			sequence: SequenceEntry[];
 	  };

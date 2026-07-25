@@ -155,7 +155,11 @@ export class SessionRuntimeService
   ): void {
     const engine = this.engines.get(sessionId);
     if (!engine) return;
-    void engine.handleTrigger(trigger.event, `device ${deviceId}`);
+    void engine.handleTrigger(
+      trigger.event,
+      `device ${deviceId}`,
+      trigger.payload ?? null,
+    );
   }
 
   handleAck(sessionId: string, deviceId: string, ack: Ack): void {

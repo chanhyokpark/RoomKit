@@ -46,7 +46,7 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	playSfx: {
 		label: '효과음 재생',
 		icon: Volume2Icon,
-		create: () => ({ type: 'playSfx', sfxId: null, playerId: null })
+		create: () => ({ type: 'playSfx', sfxId: null, playerId: null, waitUntilEnd: false })
 	},
 	stopSfx: {
 		label: '효과음 정지',
@@ -66,7 +66,13 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	playBgm: {
 		label: 'BGM 재생',
 		icon: MusicIcon,
-		create: () => ({ type: 'playBgm', bgmId: null, playerId: null, loop: true })
+		create: () => ({
+			type: 'playBgm',
+			bgmId: null,
+			playerId: null,
+			loop: true,
+			waitUntilEnd: false
+		})
 	},
 	stopBgm: {
 		label: 'BGM 정지',
@@ -86,7 +92,7 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	navigate: {
 		label: '웹사이트 이동',
 		icon: GlobeIcon,
-		create: () => ({ type: 'navigate', deviceId: null, websiteId: null })
+		create: () => ({ type: 'navigate', deviceId: null, websiteId: null, query: [] })
 	},
 	sendMessage: {
 		label: '메시지 전송',

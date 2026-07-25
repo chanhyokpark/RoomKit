@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Asset } from '@roomkit/shared';
 	import * as Field from '$lib/components/ui/field';
+	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { listAssets } from '$lib/api/assets';
@@ -10,13 +11,27 @@
 		themeId,
 		speakerDeviceId = $bindable(),
 		screenDeviceId = $bindable(),
-		subtitleCss = $bindable()
+		subtitleCss = $bindable(),
+		dialogueDuckPercent = $bindable(),
+		sfxDuckPercent = $bindable()
 	}: {
 		themeId: string;
 		speakerDeviceId: string;
 		screenDeviceId: string;
 		subtitleCss: string;
+		/** BGM volume (%) while dialogue plays; null = no ducking. */
+		dialogueDuckPercent: number | null;
+		/** BGM volume (%) while any SFX plays; null = no ducking. */
+		sfxDuckPercent: number | null;
 	} = $props();
+
+	/** Empty input = no ducking (null); otherwise clamp to 0..100. */
+	function parseDuckPercent(text: string): number | null {
+		if (text.trim() === '') return null;
+		const num = Number(text);
+		if (!Number.isFinite(num)) return null;
+		return Math.max(0, Math.min(100, Math.round(num)));
+	}
 
 	let devices = $state<Asset[]>([]);
 	let devicesLoaded = $state(false);
@@ -77,6 +92,43 @@
 	</Select.Root>
 	<Field.FieldDescription>자막과 비디오가 표시되는 장치입니다.</Field.FieldDescription>
 </Field.Field>
+
+<div class="grid grid-cols-2 gap-3">
+	<Field.Field>
+		<Field.FieldLabel for="player-dialogue-duck">대사 중 BGM 볼륨 (%)</Field.FieldLabel>
+		<Input
+			id="player-dialogue-duck"
+			type="number"
+			min="0"
+			max="100"
+			placeholder="덕킹 없음"
+			value={dialogueDuckPercent ?? ''}
+			onchange={(changeEvent) => {
+				dialogueDuckPercent = parseDuckPercent(changeEvent.currentTarget.value);
+			}}
+		/>
+		<Field.FieldDescription>
+			대사 재생 중 BGM을 이 볼륨으로 낮춥니다. 비우면 낮추지 않습니다.
+		</Field.FieldDescription>
+	</Field.Field>
+	<Field.Field>
+		<Field.FieldLabel for="player-sfx-duck">효과음 중 BGM 볼륨 (%)</Field.FieldLabel>
+		<Input
+			id="player-sfx-duck"
+			type="number"
+			min="0"
+			max="100"
+			placeholder="덕킹 없음"
+			value={sfxDuckPercent ?? ''}
+			onchange={(changeEvent) => {
+				sfxDuckPercent = parseDuckPercent(changeEvent.currentTarget.value);
+			}}
+		/>
+		<Field.FieldDescription>
+			효과음 재생 중 BGM을 이 볼륨으로 낮춥니다. 비우면 낮추지 않습니다.
+		</Field.FieldDescription>
+	</Field.Field>
+</div>
 
 <Field.Field>
 	<Field.FieldLabel for="player-subtitle-css">자막 CSS</Field.FieldLabel>

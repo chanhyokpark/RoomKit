@@ -27,7 +27,12 @@ const nonDialogueOptions = [
     /** Stop on every player; playerId is ignored when set. */
     allPlayers: z.boolean().default(false),
   }),
-  z.object({ type: z.literal('playSfx'), sfxId: assetRef, playerId: assetRef }),
+  z.object({
+    type: z.literal('playSfx'),
+    sfxId: assetRef,
+    playerId: assetRef,
+    waitUntilEnd: z.boolean().default(false),
+  }),
   z.object({
     type: z.literal('stopSfx'),
     playerId: assetRef,
@@ -52,6 +57,8 @@ const nonDialogueOptions = [
     bgmId: assetRef,
     playerId: assetRef,
     loop: z.boolean(),
+    /** Ignored when loop is on (looping playback never "ends"). */
+    waitUntilEnd: z.boolean().default(false),
   }),
   z.object({
     type: z.literal('stopBgm'),
@@ -60,12 +67,26 @@ const nonDialogueOptions = [
     allPlayers: z.boolean().default(false),
   }),
   z.object({ type: z.literal('wait'), durationMs: z.number().int().positive() }),
-  z.object({ type: z.literal('navigate'), deviceId: assetRef, websiteId: assetRef }),
+  z.object({
+    type: z.literal('navigate'),
+    deviceId: assetRef,
+    websiteId: assetRef,
+    /**
+     * Query params appended to the website URL. Array of pairs (not a record)
+     * so the editor tolerates in-progress duplicate keys. Values support
+     * {{vars.x}} / {{payload.x}} interpolation at resolve time.
+     */
+    query: z.array(z.object({ key: z.string(), value: z.string() })).default([]),
+  }),
   z.object({
     type: z.literal('sendMessage'),
     deviceId: assetRef,
     messageId: assetRef,
-    /** Concrete values for the message asset's field schema, entered in the editor. */
+    /**
+     * Concrete values for the message asset's field schema, entered in the
+     * editor. String values support {{vars.x}} / {{payload.x}} interpolation
+     * at resolve time; an exact-match template keeps the variable's JSON type.
+     */
     values: z.record(z.string(), JsonValueSchema),
   }),
   z.object({ type: z.literal('switchPhase'), phaseId: assetRef }),

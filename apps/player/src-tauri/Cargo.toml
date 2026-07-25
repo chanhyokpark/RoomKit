@@ -23,5 +23,8 @@ tauri-plugin-store = "2"
 tauri-plugin-os = "2"
 # Streaming cache downloads (rustls: no system openssl dependency).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
-tokio = { version = "1", features = ["fs", "io-util"] }
+tokio = { version = "1", features = ["fs", "io-util", "net"] }
 futures-util = "0.3"
+# Loopback media server: serves the cache to helper iframes with Range support.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tower-http = { version = "0.6", features = ["fs", "cors"] }
