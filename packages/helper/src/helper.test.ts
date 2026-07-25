@@ -5,15 +5,16 @@ import {
   type HintShow,
   type PlayerMessage,
 } from '@roomkit/shared';
-import { RoomKitHelper } from './helper.js';
+import { RoomKitHelper, type RoomKitHelperOptions } from './helper.js';
 
 type Listener = (event: { data: unknown }) => void;
 
 /** Fake iframe environment: capture outbound posts, allow injecting inbound. */
-function env() {
+function env(options: Pick<RoomKitHelperOptions, 'renders'> = {}) {
   const posted: unknown[] = [];
   const listeners = new Set<Listener>();
   const helper = new RoomKitHelper({
+    ...options,
     parentWindow: {
       postMessage: ((message: unknown) => void posted.push(message)) as Window['postMessage'],
     },
@@ -38,9 +39,25 @@ const HINT: HintShow = {
 };
 
 describe('RoomKitHelper', () => {
-  it('posts hello on construction, with the helper source', () => {
+  it('posts hello on construction, with the helper source and no claims by default', () => {
     const { posted } = env();
-    expect(posted).toEqual([{ source: 'roomkit-helper', type: 'hello' }]);
+    expect(posted).toEqual([
+      {
+        source: 'roomkit-helper',
+        type: 'hello',
+        renders: { subtitle: false, hintCode: false, video: false },
+      },
+    ]);
+    expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({ type: 'hello' });
+  });
+
+  it('hello carries partial render claims, schema-valid', () => {
+    const { posted } = env({ renders: { subtitle: true, video: true } });
+    expect(HelperToPlayerSchema.parse(posted[0])).toEqual({
+      source: 'roomkit-helper',
+      type: 'hello',
+      renders: { subtitle: true, hintCode: false, video: true },
+    });
   });
 
   it('posts trigger envelopes that parse against the shared schema', () => {
@@ -108,6 +125,67 @@ describe('RoomKitHelper', () => {
     inject({ source: 'roomkit-player', type: 'hint:error', error });
     expect(onHint).toHaveBeenCalledExactlyOnceWith(HINT);
     expect(onError).toHaveBeenCalledExactlyOnceWith(error);
+  });
+
+  it('posts video ended/error envelopes that parse against the shared schema', () => {
+    const { helper, posted } = env();
+    const commandId = '44444444-4444-4444-8444-444444444444';
+    helper.videoEnded(commandId);
+    helper.videoError(commandId);
+    expect(HelperToPlayerSchema.parse(posted[1])).toEqual({
+      source: 'roomkit-helper',
+      type: 'video:ended',
+      commandId,
+    });
+    expect(HelperToPlayerSchema.parse(posted[2])).toEqual({
+      source: 'roomkit-helper',
+      type: 'video:error',
+      commandId,
+    });
+  });
+
+  it('dispatches subtitle and hintCode payloads, including null clears', () => {
+    const { helper, inject } = env({ renders: { subtitle: true, hintCode: true } });
+    const onSubtitle = vi.fn();
+    const onHintCode = vi.fn();
+    helper.on('subtitle', onSubtitle).on('hintCode', onHintCode);
+    const subtitle = {
+      html: '<em>hi</em>',
+      css: '.rk-subtitle{color:red}',
+      params: { speaker: 'captain' },
+      lineIndex: 0,
+      lineCount: 2,
+    };
+    inject({ source: 'roomkit-player', type: 'subtitle', subtitle });
+    inject({ source: 'roomkit-player', type: 'subtitle', subtitle: null });
+    const hintCode = { code: '4242', css: '', params: {} };
+    inject({ source: 'roomkit-player', type: 'hintCode', hintCode });
+    inject({ source: 'roomkit-player', type: 'hintCode', hintCode: null });
+    expect(onSubtitle.mock.calls).toEqual([[subtitle], [null]]);
+    expect(onHintCode.mock.calls).toEqual([[hintCode], [null]]);
+  });
+
+  it('dispatches videoPlay and videoStop', () => {
+    const { helper, inject } = env({ renders: { video: true } });
+    const onPlay = vi.fn();
+    const onStop = vi.fn();
+    helper.on('videoPlay', onPlay).on('videoStop', onStop);
+    const commandId = '55555555-5555-4555-8555-555555555555';
+    inject({
+      source: 'roomkit-player',
+      type: 'video:play',
+      commandId,
+      assetName: 'clip',
+      url: 'https://media.example/clip.mp4',
+      durationMs: null,
+      frame: null,
+      params: { overlay: 'chat' },
+    });
+    inject({ source: 'roomkit-player', type: 'video:stop', commandId });
+    expect(onPlay).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ commandId, url: 'https://media.example/clip.mp4' }),
+    );
+    expect(onStop).toHaveBeenCalledExactlyOnceWith({ commandId });
   });
 
   it('getRemainingTime posts a schema-valid request and resolves on the reply', async () => {

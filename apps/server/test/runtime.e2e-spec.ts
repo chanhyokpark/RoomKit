@@ -755,7 +755,10 @@ describe('Runtime (e2e)', () => {
       kind: 'hint',
       name: 'clue',
       code: '4242',
-      data: { steps: [{ textHtml: 'step', imageKey: null }] },
+      data: {
+        steps: [{ textHtml: 'step', imageKey: null }],
+        params: { theme: 'dark' },
+      },
     });
     const eventId = await createEvent(themeId, 'hint-code', {
       sequence: [
@@ -772,6 +775,7 @@ describe('Runtime (e2e)', () => {
     expect(show.wire).toMatchObject({
       code: '4242',
       css: '.rk-hint-code { color: red; }',
+      params: { theme: 'dark' },
     });
     expect(hides.map((h) => h.deviceId).sort()).toEqual(
       [screenId, otherId].sort(),
@@ -781,20 +785,9 @@ describe('Runtime (e2e)', () => {
     ).toBe(true);
   });
 
-  it('component attachments resolve into wire payloads; dangling refs degrade to null', async () => {
+  it('video and dialogue asset params ride their play wires', async () => {
     const themeId = await createTheme();
     const deviceId = await createDevice(themeId, 'screen');
-    const componentId = await createAsset(themeId, {
-      kind: 'component',
-      name: 'chat',
-      data: {
-        slot: 'video',
-        html: '<div id="chat"></div>',
-        params: [
-          { key: 'title', label: 'Title', type: 'string', required: false },
-        ],
-      },
-    });
     const playerId = await createAsset(themeId, {
       kind: 'player',
       name: 'main',
@@ -810,23 +803,31 @@ describe('Runtime (e2e)', () => {
       data: {
         fileKey: 'themes/test/clip.mp4',
         frame: { x: 10, y: 20, width: 50, height: 40 },
-        component: { componentId, props: { title: 'Chat' } },
+        params: { overlay: 'chat', volume: 0.5 },
       },
     });
-    const brokenVideoId = await createAsset(themeId, {
-      kind: 'video',
-      name: 'broken',
+    const dialogueId = await createAsset(themeId, {
+      kind: 'dialogue',
+      name: 'intro',
       data: {
-        fileKey: 'themes/test/broken.mp4',
-        component: { componentId: randomUUID(), props: {} },
+        keepSubtitleAfterEnd: false,
+        lines: [
+          {
+            id: randomUUID(),
+            fileKey: null,
+            durationMs: 1000,
+            subtitleHtml: 'hello',
+          },
+        ],
+        params: { speaker: '함장' },
       },
     });
     const eventId = await createEvent(themeId, 'play-both', {
       sequence: [
         entry({ type: 'playVideo', videoId, playerId, waitUntilEnd: false }),
         entry({
-          type: 'playVideo',
-          videoId: brokenVideoId,
+          type: 'playDialogue',
+          dialogueId,
           playerId,
           waitUntilEnd: false,
         }),
@@ -837,24 +838,17 @@ describe('Runtime (e2e)', () => {
 
     await waitFor(() => transport.ofType('play').length === 2);
     const wires = transport.ofType('play').map((p) => p.wire);
-    const withComponent = wires.find(
+    const video = wires.find(
       (w) => (w as { assetId: string }).assetId === videoId,
     );
-    const withDangling = wires.find(
-      (w) => (w as { assetId: string }).assetId === brokenVideoId,
+    const dialogue = wires.find(
+      (w) => (w as { assetId: string }).assetId === dialogueId,
     );
-    expect(withComponent).toMatchObject({
+    expect(video).toMatchObject({
       frame: { x: 10, y: 20, width: 50, height: 40 },
-      component: {
-        componentId,
-        slot: 'video',
-        html: '<div id="chat"></div>',
-        props: { title: 'Chat' },
-        interactive: false,
-      },
+      params: { overlay: 'chat', volume: 0.5 },
     });
-    // A broken skin never cancels playback — it degrades to default rendering.
-    expect(withDangling).toMatchObject({ frame: null, component: null });
+    expect(dialogue).toMatchObject({ params: { speaker: '함장' } });
   });
 
   it('waitUntilEnd blocks until the ack and offline devices do not block', async () => {

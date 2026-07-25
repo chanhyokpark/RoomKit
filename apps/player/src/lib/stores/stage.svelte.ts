@@ -1,10 +1,10 @@
-import type { PlayChannel, VideoFrame, WireComponent, WireMessage } from '@roomkit/shared';
+import type { HelperRenderClaims, JsonValue, PlayChannel, VideoFrame } from '@roomkit/shared';
 
 export interface Subtitle {
 	html: string;
 	css: string;
-	/** Renders the subtitle instead of the default overlay when set. */
-	component: WireComponent | null;
+	/** Dialogue asset's free-form params, forwarded to a claiming website. */
+	params: Record<string, JsonValue>;
 	lineIndex: number;
 	lineCount: number;
 }
@@ -13,8 +13,29 @@ export interface Subtitle {
 export interface HintCode {
 	code: string;
 	css: string;
-	/** Renders the code instead of the default overlay when set. */
-	component: WireComponent | null;
+	/** Hint asset's free-form params, forwarded to a claiming website. */
+	params: Record<string, JsonValue>;
+}
+
+/** A video playback delegated to the claiming website instead of the stage. */
+export interface DelegatedVideo {
+	/** Wire command id — the site's video:ended/video:error must echo it. */
+	commandId: string;
+	assetName: string;
+	/** Presigned media URL; null = placeholder (fileless) asset. */
+	url: string | null;
+	/** Simulated playback length; set exactly when url is null. */
+	durationMs: number | null;
+	frame: VideoFrame | null;
+	params: Record<string, JsonValue>;
+}
+
+/** Playback-side handlers for delegated-video reports from the website. */
+export interface VideoDelegate {
+	ended(commandId: string): void;
+	error(commandId: string): void;
+	/** The claiming site went away (navigation/teardown) mid-playback. */
+	detach(): void;
 }
 
 export interface Skippable {
@@ -32,6 +53,8 @@ export interface PlaceholderChip {
 	name: string;
 }
 
+const NO_CLAIMS: HelperRenderClaims = { subtitle: false, hintCode: false, video: false };
+
 /**
  * What the stage window currently shows. Playback channels write here; the
  * DOM (Stage.svelte and friends) only reads.
@@ -42,17 +65,19 @@ class StageStore {
 	videoPlaceholder = $state<string | null>(null);
 	/** Video surface placement (percent of stage); null = fullscreen. */
 	videoFrame = $state<VideoFrame | null>(null);
-	/** Component overlaid on the stage while a video plays. */
-	videoComponent = $state<WireComponent | null>(null);
-	/** Playback position of the current video, mirrored to its component. */
-	videoTimeMs = $state(0);
-	/** Known duration of the current video; null until metadata loads. */
-	videoDurationMs = $state<number | null>(null);
-	/** Component iframes subscribed to sendMessage wires. */
-	private messageSubs = new Set<(msg: WireMessage) => void>();
 	subtitle = $state<Subtitle | null>(null);
 	/** One code per device window; a newer show replaces the previous. */
 	hintCode = $state<HintCode | null>(null);
+	/**
+	 * Slots the embedded website claimed via the helper's hello. While claimed
+	 * the player suppresses its own rendering and forwards the data instead;
+	 * claims reset whenever the iframe (re)loads or goes away.
+	 */
+	helperRenders = $state<HelperRenderClaims>(NO_CLAIMS);
+	/** Video playback handed to the claiming website; null = none. */
+	delegatedVideo = $state<DelegatedVideo | null>(null);
+	/** Registered by the playback engine; the helper bridge reports into it. */
+	videoDelegate: VideoDelegate | null = null;
 	iframeUrl = $state<string | null>(null);
 	/** Bumped by forced same-URL navigates so the #key'd iframe re-creates. */
 	reloadNonce = $state(0);
@@ -77,6 +102,12 @@ class StageStore {
 
 	removePlaceholder(id: string): void {
 		this.placeholders = this.placeholders.filter((p) => p.id !== id);
+	}
+
+	/** The claiming website is gone: restore player rendering, unstick playback. */
+	dropHelperClaims(): void {
+		this.helperRenders = NO_CLAIMS;
+		this.videoDelegate?.detach();
 	}
 
 	/**
@@ -110,26 +141,15 @@ class StageStore {
 		this.navigateDone = null;
 	}
 
-	/** Mounted component iframes call this to receive sendMessage wires. */
-	subscribeMessages(fn: (msg: WireMessage) => void): () => void {
-		this.messageSubs.add(fn);
-		return () => this.messageSubs.delete(fn);
-	}
-
-	broadcastMessage(msg: WireMessage): void {
-		for (const fn of this.messageSubs) fn(msg);
-	}
-
 	/** Device reset: back to the idle black screen. */
 	clear(): void {
 		this.videoSrc = null;
 		this.videoPlaceholder = null;
 		this.videoFrame = null;
-		this.videoComponent = null;
-		this.videoTimeMs = 0;
-		this.videoDurationMs = null;
 		this.subtitle = null;
 		this.hintCode = null;
+		this.helperRenders = NO_CLAIMS;
+		this.delegatedVideo = null;
 		this.iframeUrl = null;
 		this.skippables = [];
 		this.placeholders = [];

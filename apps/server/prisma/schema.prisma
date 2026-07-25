@@ -33,7 +33,6 @@ enum AssetKind {
   player
   website
   message
-  component
   phase
   event
 }

@@ -2,14 +2,11 @@ import { randomUUID } from 'node:crypto';
 import {
   assetDataSchemas,
   COMMAND_ASSET_REFS,
-  type ComponentRef,
-  type DeviceData,
   type DialogueData,
   type EventData,
   type HintData,
   type PlayerData,
   type SequenceEntry,
-  type VideoData,
   type WebsiteData,
 } from '@roomkit/shared';
 import type { Prisma } from '@prisma/client';
@@ -23,31 +20,11 @@ import { z } from 'zod';
  */
 
 /** Kinds whose `data` carries cross-asset id references. */
-const REF_CARRYING_KINDS = [
-  'player',
-  'event',
-  'video',
-  'dialogue',
-  'device',
-] as const;
+const REF_CARRYING_KINDS = ['player', 'event'] as const;
 type RefCarryingKind = (typeof REF_CARRYING_KINDS)[number];
 
-/**
- * Nullable component attachment: a ref outside the map drops to null —
- * default overlay rendering, same tolerance as event phaseId.
- */
-function remapComponentRef(
-  ref: ComponentRef | null,
-  idMap: Map<string, string>,
-): ComponentRef | null {
-  if (ref === null) return null;
-  const componentId = idMap.get(ref.componentId);
-  return componentId ? { ...ref, componentId } : null;
-}
-
-/** Cross-asset id references, remapped through `idMap`: player (device ids +
- * subtitle component), event (phaseId + sequence command refs), and the
- * component attachments on video/dialogue/device. */
+/** Cross-asset id references, remapped through `idMap`: player (device ids)
+ * and event (phaseId + sequence command refs). */
 export function remapAssetData(
   kind: string,
   data: Prisma.JsonValue,
@@ -70,25 +47,6 @@ export function remapAssetData(
           idMap.get(player.speakerDeviceId) ?? player.speakerDeviceId,
         screenDeviceId:
           idMap.get(player.screenDeviceId) ?? player.screenDeviceId,
-        subtitleComponent: remapComponentRef(player.subtitleComponent, idMap),
-      };
-    }
-    case 'video': {
-      const video = parsed.data as VideoData;
-      return { ...video, component: remapComponentRef(video.component, idMap) };
-    }
-    case 'dialogue': {
-      const dialogue = parsed.data as DialogueData;
-      return {
-        ...dialogue,
-        subtitleComponent: remapComponentRef(dialogue.subtitleComponent, idMap),
-      };
-    }
-    case 'device': {
-      const device = parsed.data as DeviceData;
-      return {
-        ...device,
-        hintCodeComponent: remapComponentRef(device.hintCodeComponent, idMap),
       };
     }
     case 'event': {
@@ -159,17 +117,6 @@ function mapNullableRef(ref: unknown, idMap: Map<string, string>): unknown {
 const ensureUuid = (id: unknown): unknown =>
   typeof id === 'string' && isUuid(id) ? id : randomUUID();
 
-/** Component attachment in a manifest: dangling componentId → whole ref null. */
-function remapManifestComponentRef(
-  ref: unknown,
-  idMap: Map<string, string>,
-): unknown {
-  if (!isRecord(ref)) return ref;
-  const componentId =
-    ref.componentId == null ? null : mapNullableRef(ref.componentId, idMap);
-  return componentId === null ? null : { ...ref, componentId };
-}
-
 /**
  * Rewrites manifest-id references inside raw (pre-validation) asset data to
  * the importer's fresh uuids, so the strict per-kind schemas validate the
@@ -188,26 +135,6 @@ export function remapManifestData(
         ...data,
         speakerDeviceId: mapRequiredRef(data.speakerDeviceId, idMap),
         screenDeviceId: mapRequiredRef(data.screenDeviceId, idMap),
-        subtitleComponent:
-          data.subtitleComponent == null
-            ? null
-            : remapManifestComponentRef(data.subtitleComponent, idMap),
-      };
-    case 'video':
-      return {
-        ...data,
-        component:
-          data.component == null
-            ? null
-            : remapManifestComponentRef(data.component, idMap),
-      };
-    case 'device':
-      return {
-        ...data,
-        hintCodeComponent:
-          data.hintCodeComponent == null
-            ? null
-            : remapManifestComponentRef(data.hintCodeComponent, idMap),
       };
     case 'event': {
       const out: Record<string, unknown> = {
@@ -223,13 +150,7 @@ export function remapManifestData(
       return out;
     }
     case 'dialogue': {
-      const out: Record<string, unknown> = {
-        ...data,
-        subtitleComponent:
-          data.subtitleComponent == null
-            ? null
-            : remapManifestComponentRef(data.subtitleComponent, idMap),
-      };
+      const out: Record<string, unknown> = { ...data };
       if (Array.isArray(data.lines)) {
         out.lines = data.lines.map((line: unknown) =>
           isRecord(line) ? { ...line, id: ensureUuid(line.id) } : line,

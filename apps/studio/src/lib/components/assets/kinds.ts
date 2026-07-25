@@ -1,5 +1,4 @@
 import type { Icon as IconType } from '@lucide/svelte';
-import CodeXmlIcon from '@lucide/svelte/icons/code-xml';
 import CpuIcon from '@lucide/svelte/icons/cpu';
 import FileIcon from '@lucide/svelte/icons/file';
 import FilmIcon from '@lucide/svelte/icons/film';
@@ -24,7 +23,7 @@ export interface AssetKindGroup {
 export const ASSET_KIND_GROUPS: AssetKindGroup[] = [
 	{ label: '장치', kinds: ['device', 'player'] },
 	{ label: '미디어', kinds: ['bgm', 'sfx', 'dialogue', 'video', 'image', 'file'] },
-	{ label: '콘텐츠', kinds: ['website', 'message', 'hint', 'component'] },
+	{ label: '콘텐츠', kinds: ['website', 'message', 'hint'] },
 	{ label: '진행', kinds: ['phase', 'event'] }
 ];
 
@@ -56,7 +55,6 @@ export const KIND_META: Record<AssetKind, KindMeta> = {
 	player: { label: '플레이어', icon: SpeakerIcon, layout: 'grid' },
 	website: { label: '웹사이트', icon: GlobeIcon, layout: 'table' },
 	message: { label: '메시지', icon: MailIcon, layout: 'table' },
-	component: { label: '컴포넌트', icon: CodeXmlIcon, layout: 'table' },
 	phase: { label: '페이즈', icon: MilestoneIcon, layout: 'table' },
 	event: { label: '이벤트', icon: ZapIcon, layout: 'table' }
 };

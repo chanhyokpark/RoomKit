@@ -16,30 +16,10 @@ export const AssetKindSchema = z.enum([
   'player',
   'website',
   'message',
-  'component',
   'phase',
   'event',
 ]);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
-
-/**
- * Where a component asset can be mounted. Components render in a sandboxed
- * iframe layered on the stage and receive runtime data via the RoomKit bridge
- * (see component-host.ts).
- */
-export const ComponentSlotSchema = z.enum(['video', 'subtitle', 'hintCode']);
-export type ComponentSlot = z.infer<typeof ComponentSlotSchema>;
-
-/**
- * A media asset's attachment of a component: which component to mount plus
- * per-use prop values (keyed by the component's `params` definitions), so one
- * component is reusable across assets with different content.
- */
-export const ComponentRefSchema = z.object({
-  componentId: z.uuid(),
-  props: z.record(z.string(), JsonValueSchema).default({}),
-});
-export type ComponentRef = z.infer<typeof ComponentRefSchema>;
 
 /**
  * Where the video surface sits on the stage, in percent of the stage size.
@@ -55,24 +35,17 @@ export type VideoFrame = z.infer<typeof VideoFrameSchema>;
 
 // Per-kind `data` payloads. Device/Hint `code` is a top-level asset field, not in data.
 
-export const DeviceDataSchema = z
-  .object({
-    /** Human-friendly label shown in UIs; `name` stays the logical identifier. */
-    displayName: z.string(),
-    /** This device runs the hint code-entry UI; hint:submit/next and admin pushes target it. */
-    isHintDevice: z.boolean().default(false),
-    /**
-     * CSS applied to the on-screen hint code overlay (`.rk-hint-code`) shown by
-     * the showHintCode command. Trusted admin input, injected raw.
-     */
-    hintCodeCss: z.string().default(''),
-    /**
-     * Component rendering the hint code overlay instead of the default
-     * `.rk-hint-code` box; hintCodeCss is ignored while set.
-     */
-    hintCodeComponent: ComponentRefSchema.nullable().default(null),
-  })
-  .strict();
+export const DeviceDataSchema = z.object({
+  /** Human-friendly label shown in UIs; `name` stays the logical identifier. */
+  displayName: z.string(),
+  /** This device runs the hint code-entry UI; hint:submit/next and admin pushes target it. */
+  isHintDevice: z.boolean().default(false),
+  /**
+   * CSS applied to the on-screen hint code overlay (`.rk-hint-code`) shown by
+   * the showHintCode command. Trusted admin input, injected raw.
+   */
+  hintCodeCss: z.string().default(''),
+});
 export type DeviceData = z.infer<typeof DeviceDataSchema>;
 
 /**
@@ -113,8 +86,8 @@ export const VideoDataSchema = z.object({
   durationMs: z.number().int().positive().default(PLACEHOLDER_DURATION_DEFAULTS.video),
   /** Video surface placement on the stage; null = fullscreen. */
   frame: VideoFrameSchema.nullable().default(null),
-  /** Component overlaid on the stage while this video plays (e.g. a chat UI). */
-  component: ComponentRefSchema.nullable().default(null),
+  /** Free-form JSON forwarded with the play wire for website-side rendering. */
+  params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type VideoData = z.infer<typeof VideoDataSchema>;
 
@@ -155,11 +128,8 @@ export const DialogueDataSchema = z.object({
   keepSubtitleAfterEnd: z.boolean(),
   /** Array order = playback order. */
   lines: z.array(DialogueLineSchema),
-  /**
-   * Subtitle component for this dialogue; null falls back to the player's
-   * subtitleComponent, then to the default `.rk-subtitle` overlay.
-   */
-  subtitleComponent: ComponentRefSchema.nullable().default(null),
+  /** Free-form JSON forwarded with subtitle wires for website-side rendering. */
+  params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type DialogueData = z.infer<typeof DialogueDataSchema>;
 
@@ -172,6 +142,8 @@ export type HintStep = z.infer<typeof HintStepSchema>;
 
 export const HintDataSchema = z.object({
   steps: z.array(HintStepSchema).min(1),
+  /** Free-form JSON forwarded with the hint code wire for website-side rendering. */
+  params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type HintData = z.infer<typeof HintDataSchema>;
 
@@ -180,11 +152,6 @@ export const PlayerDataSchema = z.object({
   /** Device that renders subtitles and video. */
   screenDeviceId: z.uuid(),
   subtitleCss: z.string(),
-  /**
-   * Default subtitle component for dialogues on this player; a dialogue's own
-   * subtitleComponent wins. Null = default `.rk-subtitle` overlay + subtitleCss.
-   */
-  subtitleComponent: ComponentRefSchema.nullable().default(null),
 });
 export type PlayerData = z.infer<typeof PlayerDataSchema>;
 
@@ -234,31 +201,6 @@ export const MessageDataSchema = z.object({
 });
 export type MessageData = z.infer<typeof MessageDataSchema>;
 
-/**
- * Reusable HTML component (with JS) mounted on the stage for a slot. Trusted
- * admin input: the document runs in a sandboxed iframe purely for fault/style
- * isolation, and talks to the host via the `window.RoomKit` bridge.
- */
-export const ComponentDataSchema = z.object({
-  slot: ComponentSlotSchema,
-  /**
-   * Body markup; inline `<style>`/`<script>` allowed. Wrapped into a full
-   * document with the bridge SDK by buildComponentSrcdoc().
-   */
-  html: z.string(),
-  /**
-   * Prop definitions filled per attachment (ComponentRef.props) — reuses the
-   * message field shape so one component serves many assets.
-   */
-  params: z.array(MessageFieldSchema).default([]),
-  /**
-   * Whether the iframe receives pointer events. Off by default so a
-   * full-stage overlay doesn't swallow clicks meant for the website below.
-   */
-  interactive: z.boolean().default(false),
-});
-export type ComponentData = z.infer<typeof ComponentDataSchema>;
-
 export const PhaseDataSchema = z.object({
   /** Progression order (ascending). */
   order: z.number().int(),
@@ -292,7 +234,6 @@ export const assetDataSchemas = {
   player: PlayerDataSchema,
   website: WebsiteDataSchema,
   message: MessageDataSchema,
-  component: ComponentDataSchema,
   phase: PhaseDataSchema,
   event: EventDataSchema,
 } as const;
@@ -330,7 +271,6 @@ export const CreateAssetInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player'), ...baseCreateFields, data: PlayerDataSchema }),
   z.object({ kind: z.literal('website'), ...baseCreateFields, data: WebsiteDataSchema }),
   z.object({ kind: z.literal('message'), ...baseCreateFields, data: MessageDataSchema }),
-  z.object({ kind: z.literal('component'), ...baseCreateFields, data: ComponentDataSchema }),
   z.object({ kind: z.literal('phase'), ...baseCreateFields, data: PhaseDataSchema }),
   z.object({ kind: z.literal('event'), ...baseCreateFields, data: EventDataSchema }),
 ]);
@@ -373,7 +313,6 @@ export const AssetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player'), ...assetEnvelopeFields, data: PlayerDataSchema }),
   z.object({ kind: z.literal('website'), ...assetEnvelopeFields, data: WebsiteDataSchema }),
   z.object({ kind: z.literal('message'), ...assetEnvelopeFields, data: MessageDataSchema }),
-  z.object({ kind: z.literal('component'), ...assetEnvelopeFields, data: ComponentDataSchema }),
   z.object({ kind: z.literal('phase'), ...assetEnvelopeFields, data: PhaseDataSchema }),
   z.object({ kind: z.literal('event'), ...assetEnvelopeFields, data: EventDataSchema }),
 ]);

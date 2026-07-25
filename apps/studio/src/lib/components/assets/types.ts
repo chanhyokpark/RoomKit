@@ -1,8 +1,6 @@
 import type {
 	Asset,
 	AssetKind,
-	ComponentRef,
-	ComponentSlot,
 	HintStep,
 	MessageField,
 	SequenceEntry,
@@ -24,6 +22,7 @@ export interface DraftDialogueLine {
 /**
  * In-editor draft of asset `data`. Differs from the wire shape where editing
  * needs it (nullable file keys before upload, numbers as raw input text).
+ * `paramsText` is the raw JSON text of the asset's free-form params.
  */
 export type Draft =
 	| {
@@ -31,7 +30,6 @@ export type Draft =
 			displayName: string;
 			isHintDevice: boolean;
 			hintCodeCss: string;
-			hintCodeComponent: ComponentRef | null;
 	  }
 	| { kind: 'bgm'; fileKey: string | null; durationMs: number; fadeInMs: number; fadeOutMs: number }
 	| { kind: 'sfx'; fileKey: string | null; durationMs: number }
@@ -41,7 +39,7 @@ export type Draft =
 			durationMs: number;
 			/** Placement on the stage in percent; null = fullscreen. */
 			frame: VideoFrame | null;
-			component: ComponentRef | null;
+			paramsText: string;
 	  }
 	| { kind: 'image'; fileKey: string | null; placeholderRatio: string }
 	| { kind: 'file'; fileKey: string | null }
@@ -49,26 +47,17 @@ export type Draft =
 			kind: 'dialogue';
 			keepSubtitleAfterEnd: boolean;
 			lines: DraftDialogueLine[];
-			/** Per-dialogue subtitle component; null = player default. */
-			subtitleComponent: ComponentRef | null;
+			paramsText: string;
 	  }
-	| { kind: 'hint'; steps: HintStep[] }
+	| { kind: 'hint'; steps: HintStep[]; paramsText: string }
 	| {
 			kind: 'player';
 			speakerDeviceId: string;
 			screenDeviceId: string;
 			subtitleCss: string;
-			subtitleComponent: ComponentRef | null;
 	  }
 	| { kind: 'website'; mode: 'external' | 'hosted'; url: string; sitePrefix: string | null }
 	| { kind: 'message'; displayName: string; fields: MessageField[] }
-	| {
-			kind: 'component';
-			slot: ComponentSlot;
-			html: string;
-			interactive: boolean;
-			params: MessageField[];
-	  }
 	| { kind: 'phase'; orderText: string }
 	| {
 			kind: 'event';

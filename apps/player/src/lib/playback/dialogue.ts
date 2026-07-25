@@ -141,7 +141,7 @@ export class DialogueChannel {
 		stage.subtitle = {
 			html: line.subtitleHtml,
 			css: cmd.subtitleCss,
-			component: cmd.subtitleComponent,
+			params: cmd.params,
 			lineIndex,
 			lineCount: cmd.lines.length
 		};

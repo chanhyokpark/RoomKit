@@ -6,15 +6,22 @@ import {
 	type HintError,
 	type HintShow,
 	type JsonValue,
+	type PlayerHintCode,
+	type PlayerSubtitle,
 	type PlayerToHelper,
+	type PlayerVideoPlay,
 	type WireMessage
 } from '@roomkit/shared';
+import { stage } from '../stores/stage.svelte';
 
 /**
  * Player side of the @roomkit/helper postMessage bridge (contract in
  * packages/shared/src/helper.ts): inbound envelopes are zod-validated and
  * must come from our iframe's contentWindow; outbound messages target the
  * navigated website's origin and are buffered until the helper's `hello`.
+ *
+ * Render claims arrive with `hello` and are dropped whenever the page goes
+ * away (reload or destroy) — a non-claiming page restores player rendering.
  */
 export class HelperBridge {
 	private ready = false;
@@ -37,8 +44,10 @@ export class HelperBridge {
 		// swaps the document without re-creating the iframe: the new page must
 		// `hello` again before it can receive, so buffer until then — otherwise
 		// messages posted mid-reload land on a page that isn't listening yet.
+		// Render claims die with the old page; the new page re-claims in hello.
 		const onLoad = () => {
 			this.ready = false;
+			stage.dropHelperClaims();
 		};
 		iframe.addEventListener('load', onLoad);
 		this.cleanups.push(() => iframe.removeEventListener('load', onLoad));
@@ -63,6 +72,25 @@ export class HelperBridge {
 	destroy(): void {
 		for (const cleanup of this.cleanups.splice(0)) cleanup();
 		this.buffered = [];
+		stage.dropHelperClaims();
+	}
+
+	/** Current subtitle for a claimed subtitle slot; null clears. */
+	postSubtitle(subtitle: PlayerSubtitle['subtitle']): void {
+		this.send({ source: PLAYER_SOURCE, type: 'subtitle', subtitle });
+	}
+
+	/** Current hint entry code for a claimed hintCode slot; null hides. */
+	postHintCode(hintCode: PlayerHintCode['hintCode']): void {
+		this.send({ source: PLAYER_SOURCE, type: 'hintCode', hintCode });
+	}
+
+	postVideoPlay(video: Omit<PlayerVideoPlay, 'source' | 'type'>): void {
+		this.send({ source: PLAYER_SOURCE, type: 'video:play', ...video });
+	}
+
+	postVideoStop(commandId: string): void {
+		this.send({ source: PLAYER_SOURCE, type: 'video:stop', commandId });
 	}
 
 	private receive(event: MessageEvent): void {
@@ -73,6 +101,7 @@ export class HelperBridge {
 		switch (msg.type) {
 			case 'hello': {
 				this.ready = true;
+				stage.helperRenders = { ...msg.renders };
 				for (const queued of this.buffered.splice(0)) this.post(queued);
 				return;
 			}
@@ -87,6 +116,12 @@ export class HelperBridge {
 				return;
 			case 'timer:get':
 				void this.answerTimer(msg);
+				return;
+			case 'video:ended':
+				stage.videoDelegate?.ended(msg.commandId);
+				return;
+			case 'video:error':
+				stage.videoDelegate?.error(msg.commandId);
 				return;
 		}
 	}

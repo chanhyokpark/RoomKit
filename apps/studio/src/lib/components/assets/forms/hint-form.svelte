@@ -11,13 +11,16 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import FileUpload from '../file-upload.svelte';
 	import MediaPreview from '../media-preview.svelte';
+	import JsonParamsField from './json-params-field.svelte';
 
 	let {
 		themeId,
-		steps = $bindable()
+		steps = $bindable(),
+		paramsText = $bindable()
 	}: {
 		themeId: string;
 		steps: HintStep[];
+		paramsText: string;
 	} = $props();
 
 	function addStep() {
@@ -99,3 +102,5 @@
 		단계 추가
 	</Button>
 </Field.Field>
+
+<JsonParamsField id="hint-params" bind:paramsText />

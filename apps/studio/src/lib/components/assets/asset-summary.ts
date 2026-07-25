@@ -52,12 +52,6 @@ export function summarizeAsset(asset: Asset): string {
 			]
 				.filter(Boolean)
 				.join(' · ');
-		case 'component': {
-			const slot = { video: '비디오', subtitle: '자막', hintCode: '힌트 코드' }[asset.data.slot];
-			return [`${slot} 슬롯`, asset.data.params.length > 0 && `속성 ${asset.data.params.length}개`]
-				.filter(Boolean)
-				.join(' · ');
-		}
 		case 'phase':
 			return `순서 ${asset.data.order}`;
 		case 'event': {

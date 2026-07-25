@@ -48,7 +48,7 @@ This manual covers the whole system: concepts, setup, authoring, operation, and 
 | Term | Meaning |
 |---|---|
 | **Theme (테마)** | One escape room game. Every asset, phase, event, and session belongs to exactly one theme. Themes can be duplicated (deep copy) for multi-room operation or season backups, and exported/imported as zip. |
-| **Asset (애셋)** | Any authored object in a theme. Kinds: 장치(device), 플레이어(player), BGM, 효과음(SFX), 대사(dialogue), 비디오(video), 이미지(image), 파일(file), 웹사이트(website), 메시지(message), 힌트(hint), 컴포넌트(component), 페이즈(phase), 이벤트(event). All share `이름`, `설명`, `태그`; devices and hints also carry a theme-unique `코드`. |
+| **Asset (애셋)** | Any authored object in a theme. Kinds: 장치(device), 플레이어(player), BGM, 효과음(SFX), 대사(dialogue), 비디오(video), 이미지(image), 파일(file), 웹사이트(website), 메시지(message), 힌트(hint), 페이즈(phase), 이벤트(event). All share `이름`, `설명`, `태그`; devices and hints also carry a theme-unique `코드`. |
 | **Device (장치)** | A logical endpoint in the room — a screen, speaker, kiosk, sensor bridge. Identified by a `코드` used to connect. A device can be flagged **힌트 장치** to run the hint code-entry flow. |
 | **Player asset (플레이어)** | A logical *output group*: a 스피커 장치 (plays audio) + a 스크린 장치 (renders subtitles/video) + 자막 CSS. Playback commands target a player asset, not a raw device. Not to be confused with the Player *app*. |
 | **Phase (페이즈)** | A game progression stage (ordered). A running session is always in exactly one phase (or none, if the theme only uses common events). |
@@ -58,7 +58,6 @@ This manual covers the whole system: concepts, setup, authoring, operation, and 
 | **Session (세션)** | One live run of a theme. `mode` is **프로덕션** (one concurrent per theme; physical devices auto-attach by their codes) or **테스트** (many concurrent; devices attach with operator-issued test codes). States: 시작 전(created) → 진행 중(running) ⇄ 일시정지(paused) → 종료됨(ended). |
 | **Hint (힌트)** | A code (4-digit by default) + ordered steps (HTML text, optional image). Players type the code on a hint device; steps are revealed one at a time. |
 | **Message (메시지)** | A payload *schema* (typed fields) for sending structured data to a device. Values are filled in when authoring a **메시지 전송** command. |
-| **Component (컴포넌트)** | A reusable custom HTML/JS overlay rendered on a device screen for one *slot*: video overlay (e.g. a chat UI over/beside a video), subtitle renderer, or hint-code renderer. Attached to media assets (video/dialogue) or as player/device defaults, with per-attachment **속성 (props)** so one component serves many assets. See §4.6. |
 | **Tag (태그)** | Color + name label for organizing assets. Filtering only — no runtime meaning. |
 | **Placeholder media** | BGM/SFX/video assets and dialogue lines created without a file. They carry a duration and clients simulate playback for that long — lets you author and test sequences before real media exists. |
 
@@ -173,7 +172,7 @@ The typical authoring order: devices → players → media → websites/messages
 
 The asset page is the kind-tab strip on top, asset list below, and an edit panel that opens for the selected asset.
 
-- **Kind tabs**, grouped 장치 · 미디어 · 콘텐츠 · 진행: **장치**, **플레이어** | **BGM**, **효과음**, **대사**, **비디오**, **이미지**, **파일** | **웹사이트**, **메시지**, **힌트**, **컴포넌트** | **페이즈**, **이벤트**.
+- **Kind tabs**, grouped 장치 · 미디어 · 콘텐츠 · 진행: **장치**, **플레이어** | **BGM**, **효과음**, **대사**, **비디오**, **이미지**, **파일** | **웹사이트**, **메시지**, **힌트** | **페이즈**, **이벤트**.
 - **태그 필터** (default **모든 태그**) narrows the list; **태그 관리** opens the tag dialog (create with color + name, rename/recolor/delete inline).
 - **새 {kind}** (e.g. **새 BGM**, **새 대사**) creates an asset; every asset row/card has a **⋯** menu with **수정** and **삭제**.
 - Media kinds render as cards (BGM/효과음 cards have an inline play button; 비디오 opens a preview); other kinds render as tables (**이름**, **코드**, **정보**, **태그**).
@@ -185,18 +184,17 @@ Per-kind fields:
 
 | Kind | Fields |
 |---|---|
-| **장치** (device) | **코드** (theme-unique; devices connect with it), **표시 이름**, **힌트 장치** switch (this device runs the hint code-entry UI), **힌트 코드 컴포넌트** (a `hintCode`-slot component that renders the code overlay; when set, the CSS below is ignored), **힌트 코드 CSS** (styles the default `.rk-hint-code` overlay shown by the **힌트 코드 표시** command). |
-| **플레이어** (player) | **스피커 장치**, **스크린 장치**, **기본 자막 컴포넌트** (a `subtitle`-slot component rendering dialogue subtitles on the screen device; individual dialogues can override it), **자막 CSS** (applied to the default `.rk-subtitle` overlay when no component is set). |
+| **장치** (device) | **코드** (theme-unique; devices connect with it), **표시 이름**, **힌트 장치** switch (this device runs the hint code-entry UI), **힌트 코드 CSS** (styles the default `.rk-hint-code` overlay shown by the **힌트 코드 표시** command). |
+| **플레이어** (player) | **스피커 장치**, **스크린 장치**, **자막 CSS** (applied to the default `.rk-subtitle` subtitle overlay). |
 | **BGM** | **파일**, **재생 시간 (ms)** (placeholder duration when fileless), **페이드 인 (ms)**, **페이드 아웃 (ms)**. |
 | **효과음** (SFX) | **파일**, **재생 시간 (ms)**. |
-| **비디오** (video) | **파일**, **재생 시간 (ms)**, **전체 화면** switch — turn it off to place the video surface at an **X/Y/너비/높이** rect (percent of the screen, with a mini placement preview), **비디오 컴포넌트** (a `video`-slot component overlaid on the stage while this video plays — e.g. a chat UI beside a small video). |
+| **비디오** (video) | **파일**, **재생 시간 (ms)**, **전체 화면** switch — turn it off to place the video surface at an **X/Y/너비/높이** rect (percent of the screen, with a mini placement preview), **파라미터 (JSON)** (free-form JSON forwarded with the play data when a website renders the video — see §6). |
 | **이미지** (image) | **파일** — a static resource for websites, served publicly at `/api/media/{assetId}`; fileless images serve a generated placeholder with a configurable ratio. |
 | **파일** (file) | **파일** — arbitrary-file counterpart of 이미지, same public URL. |
-| **대사** (dialogue) | **재생 후 자막 유지** switch, **자막 컴포넌트** (overrides the player's default subtitle rendering for this dialogue; empty = player default), **라인 (재생 순서)** — ordered lines, each with a voice file, duration, and **자막 (HTML 허용)**. **라인 추가** appends. |
+| **대사** (dialogue) | **재생 후 자막 유지** switch, **파라미터 (JSON)** (free-form JSON forwarded with the subtitle data when a website renders subtitles — see §6), **라인 (재생 순서)** — ordered lines, each with a voice file, duration, and **자막 (HTML 허용)**. **라인 추가** appends. |
 | **웹사이트** (website) | **사이트 종류**: **외부 URL** (register a URL) or **ZIP 호스팅** (upload a static-site zip — `index.html` at root, a single wrapping folder is auto-stripped; served by the server at `/api/sites/{assetId}/`; **ZIP 재업로드** swaps the content atomically). |
 | **메시지** (message) | **표시 이름**, **페이로드 스키마** — fields with key, label, type (**문자열**/**숫자**/**불리언**/**JSON**), **필수 값**. Defines the shape only; values are entered in the **메시지 전송** command. |
-| **힌트** (hint) | **코드**, **단계 (순서대로 공개)** — each step is HTML text (**힌트 내용 (HTML 허용)**) + optional image. **단계 추가** appends. |
-| **컴포넌트** (component) | **슬롯** (**비디오**/**자막**/**힌트 코드**), **터치/클릭 받기**, **HTML** (markup with inline `<style>`/`<script>`), **속성 (props) 정의**, and a live **미리보기**. See §4.6. |
+| **힌트** (hint) | **코드**, **단계 (순서대로 공개)** — each step is HTML text (**힌트 내용 (HTML 허용)**) + optional image. **단계 추가** appends. **파라미터 (JSON)** (free-form JSON forwarded with the hint-code data when a website renders it — see §6). |
 | **페이즈** (phase) | **순서** (ascending progression order). Usually managed from the editor's **페이즈 관리** instead. |
 | **이벤트** (event) | Trigger settings + sequence. Authored in the editor — see §4.3. |
 
@@ -232,11 +230,11 @@ Playback commands target a **플레이어** asset (speaker/screen pair); device 
 
 | Command (팔레트 name) | Group | Parameters | Behavior |
 |---|---|---|---|
-| **대사 재생** | 재생 | 대사, 플레이어, **끝날 때까지 대기** | Voice to the speaker device, per-line subtitles to the screen device. Rendering: the dialogue's 자막 컴포넌트 → the player's 기본 자막 컴포넌트 → the default overlay styled by the player's 자막 CSS. Line timing is synced from the speaker via progress relay. |
+| **대사 재생** | 재생 | 대사, 플레이어, **끝날 때까지 대기** | Voice to the speaker device, per-line subtitles to the screen device — the default overlay styled by the player's 자막 CSS, or the embedded website when it has claimed subtitle rendering (§6). Line timing is synced from the speaker via progress relay. |
 | **대사 정지** | 재생 | 플레이어, **모든 플레이어** | Stop dialogue on one player, or all. |
 | **효과음 재생** | 재생 | 효과음, 플레이어 | Fire-and-forget SFX (mixes over BGM/dialogue). |
 | **효과음 정지** | 재생 | 플레이어, **모든 플레이어** | |
-| **비디오 재생** | 재생 | 비디오, 플레이어, **끝날 때까지 대기** | Plays on the screen device — fullscreen, or at the video asset's placement rect; the asset's 비디오 컴포넌트 (if any) is overlaid for the duration. |
+| **비디오 재생** | 재생 | 비디오, 플레이어, **끝날 때까지 대기** | Plays on the screen device — fullscreen, or at the video asset's placement rect. If the embedded website has claimed video rendering (§6), the Player shows no video element at all: the site plays the media itself (audio included) and reports the end of playback. |
 | **비디오 정지** | 재생 | 플레이어, **모든 플레이어** | |
 | **BGM 재생** | 재생 | BGM, 플레이어, **반복 재생** | Fade in/out follow the BGM *asset's* 페이드 인/아웃 settings. A looping BGM acks on start, so it never blocks. |
 | **BGM 정지** | 재생 | 플레이어, **모든 플레이어** | Applies the asset's fade-out. |
@@ -244,7 +242,7 @@ Playback commands target a **플레이어** asset (speaker/screen pair); device 
 | **모든 장치 리셋** | 장치 | — | Reset every device in the session. |
 | **웹사이트 이동** | 장치 | 장치, 웹사이트 | Navigates the device to the website (Player: shows it in the stage iframe). The device acks once the site actually loaded, so the next command can assume readiness. |
 | **메시지 전송** | 장치 | 장치, 메시지, values | Values are entered per the message asset's field schema; delivered to the device (Player relays it into the iframe for the helper). |
-| **힌트 코드 표시** | 장치 | 힌트, 장치 | Shows the hint's entry code as an overlay on the device — rendered by the device's 힌트 코드 컴포넌트 if set, else the default overlay styled by its 힌트 코드 CSS. |
+| **힌트 코드 표시** | 장치 | 힌트, 장치 | Shows the hint's entry code as an overlay on the device — the default overlay styled by the device's 힌트 코드 CSS, or the embedded website when it has claimed hint-code rendering (§6). |
 | **힌트 코드 숨김** | 장치 | 장치, **모든 장치** | Hides the overlay. |
 | **대기** | 흐름 | 시간 (ms) | Server-side timer; pauses together with session pause. |
 | **페이즈 전환** | 흐름 | 페이즈 | Switches phase and runs the leave/enter hooks (leave hooks complete before the switch). |
@@ -278,100 +276,9 @@ if (ctx.vars.keys < 3) return false;
 ctx.notify('모든 열쇠 발견!');
 ```
 
-### 4.6 Custom components (컴포넌트)
+### 4.6 Custom rendering beyond CSS
 
-When CSS on the default overlays isn't enough — a chat screen that fills the display while a small video plays in the corner, animated subtitles, a themed hint-code badge — author a **컴포넌트** asset: an HTML document (inline `<style>`/`<script>` allowed) that the device renders in a sandboxed iframe layered on the stage.
-
-A component is written once and reused: it declares a **슬롯** (where it can be mounted) and optional **속성 (props)**, and each attachment fills in its own prop values.
-
-| 슬롯 | Attached on | Replaces |
-|---|---|---|
-| **비디오** | a 비디오 asset (**비디오 컴포넌트**) | nothing — overlaid on the stage while that video plays |
-| **자막** | a 대사 asset (**자막 컴포넌트**) or a 플레이어 (**기본 자막 컴포넌트**) | the default `.rk-subtitle` overlay + 자막 CSS |
-| **힌트 코드** | a 장치 (**힌트 코드 컴포넌트**) | the default `.rk-hint-code` overlay + 힌트 코드 CSS |
-
-Form fields:
-
-- **슬롯** — changing it later reverts any attachment in the old slot to the default rendering (a broken/mismatched attachment never breaks playback — the device just falls back).
-- **터치/클릭 받기** — the iframe covers the whole screen; leave this **off** (default) so touches pass through to the website below, turn it **on** only for components with their own UI.
-- **HTML** — the document body. Most components need no JS at all: `{{ … }}` templates render runtime values (see below), and **예시 채우기** inserts a template-only starter for the current slot. Reference image/file assets by name or id — `{{media:로고}}` in templates, `RoomKit.mediaUrl('로고')` in JS.
-- **속성 (props) 정의** — typed fields (same editor as message schemas). Each attachment provides values, so e.g. one chat-skin component can show a different contact name per video.
-- **미리보기** — live preview rendered exactly as the Player renders it (same iframe host), with aspect-ratio presets (16:9/4:3/9:16), **새로고침**, test prop values, and **테스트 이벤트** controls per slot: a video timeline scrubber, a subtitle sender, a hint-code sender, and a **메시지 전송** tester.
-
-#### Templates — no JS for the common cases
-
-`{{ path }}` placeholders in text and attribute values are re-rendered on every bridge event, and `data-rk-html="path"` keeps an element's HTML content in sync. Paths resolve against the attachment props and the latest payload of each event; missing values render as an empty string:
-
-| Path | Value |
-|---|---|
-| `props.<key>` | this attachment's prop values |
-| `hintCode.code` | the current hint code (hintCode slot) |
-| `subtitle.html` · `subtitle.lineIndex` · `subtitle.lineCount` | current subtitle line — use `data-rk-html="subtitle.html"` for the HTML |
-| `video.status` · `video.currentTimeMs` · `video.durationMs` | raw video progress (video slot) |
-| `video.currentTime` · `video.duration` · `video.progressPercent` | template-friendly derived fields: `m:ss` labels and 0–100 |
-| `message.payload.<key>` | payload of the last 메시지 전송 |
-| `media:<asset name or id>` | public URL of an 이미지/파일 asset — e.g. `<img src="{{media:로고}}">` |
-
-A complete subtitle renderer is just markup and CSS:
-
-```html
-<div class="sub" data-rk-html="subtitle.html"></div>
-<style>
-  .sub { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%);
-         padding: 0.4em 1.2em; border-radius: 0.6em; background: rgba(0, 0, 0, 0.65);
-         color: #fff; font-size: 2.4vw; }
-  .sub:empty { display: none; }
-</style>
-```
-
-— and a hint-code badge is `<div class="code">{{hintCode.code}}</div>` plus CSS. For logic beyond display (timed reveals, appending chat bubbles), drop into the JS bridge below; templates and JS coexist in one component.
-
-Inside the iframe the bridge SDK is preloaded as `window.RoomKit`:
-
-```js
-RoomKit.props                      // this attachment's prop values
-RoomKit.slot                       // 'video' | 'subtitle' | 'hintCode'
-RoomKit.mediaUrl(ref)              // public URL of an 이미지/파일 asset, by name or id
-RoomKit.on('init', (props) => {})  // props are available (fires immediately if already)
-
-// slot events
-RoomKit.on('video',    ({ status, currentTimeMs, durationMs }) => {}) // video slot; ~5/s
-RoomKit.on('subtitle', ({ html, lineIndex, lineCount }) => {})        // subtitle slot, per line
-RoomKit.on('hintCode', ({ code }) => {})                              // hintCode slot
-
-// every mounted component also receives 메시지 전송 payloads
-RoomKit.on('message', ({ messageId, messageName, payload }) => {})
-```
-
-A minimal chat screen driven by video time and live messages:
-
-```html
-<div id="chat"></div>
-<style>
-  #chat { position: absolute; right: 0; width: 40%; height: 100%; background: #111; color: #eee; }
-  .bubble { margin: 8px; padding: 8px 12px; background: #333; border-radius: 12px; }
-</style>
-<script>
-  const bubbles = [ { at: 3000, text: '어디야?' }, { at: 8000, text: '빨리 와…' } ];
-  function add(text) {
-    const el = document.createElement('div');
-    el.className = 'bubble';
-    el.textContent = text;
-    document.getElementById('chat').appendChild(el);
-  }
-  RoomKit.on('init', (props) => { if (props.title) add(props.title); });
-  RoomKit.on('video', ({ currentTimeMs }) => {
-    while (bubbles.length && bubbles[0].at <= currentTimeMs) add(bubbles.shift().text);
-  });
-  RoomKit.on('message', ({ messageName, payload }) => {
-    if (messageName === 'chat') add(payload.text);   // pushed live from a sequence
-  });
-</script>
-```
-
-Attach it to a 비디오 asset, turn off the video's **전체 화면** and set the rect to the left 60% of the screen — the chat fills the rest. The `message` event pairs naturally with a 메시지 asset + **메시지 전송** commands to push content on cue.
-
-Components are trusted admin input (like subtitle HTML); the iframe sandbox exists for fault isolation — a scripting error breaks only the component, never the stage.
+When CSS on the default overlays isn't enough — a chat screen beside a small video, animated subtitles, a themed hint-code badge — build it into the **website** shown on the device: a site embedded via the helper script can claim subtitle / hint-code / video rendering per slot and receive the data (plus the asset's **파라미터 (JSON)** and the authored CSS) to render however it likes. See §6.
 
 ---
 
@@ -414,7 +321,7 @@ Each device runs in its own **stage window**, so several devices can run on one 
 
 - Connect with retry-on-fatal: an `invalid_code` or `session_ended` doesn't stop the client — it re-polls every 5 s, so room devices can be powered on before the session (or their test code) exists and attach on their own.
 - Pre-cache media: on every connect the device fetches its asset manifest and downloads files to a local cache (`<app data>/cache/`; file keys are immutable so presence = fresh; files no longer in the manifest are pruned). Cache misses stream the presigned URL and backfill in the background.
-- Play audio (dialogue/BGM/SFX mixed simultaneously), video (fullscreen or at the asset's placement rect), the subtitle overlay, the hint-code overlay, and websites in an embedded iframe. Component attachments (§4.6) mount as sandboxed iframes on top of the stage.
+- Play audio (dialogue/BGM/SFX mixed simultaneously), video (fullscreen or at the asset's placement rect), the subtitle overlay, the hint-code overlay, and websites in an embedded iframe. A website embedded via the helper can claim subtitle / hint-code / video rendering for itself (§6.3) — the Player then suppresses its own overlay for the claimed slots.
 - Show a connection badge only while *not* connected — production rooms see no chrome.
 
 **Test mode** activates automatically when the session is a test session. A top status bar shows a **TEST** tag, device name, session state (**대기**/**진행 중**/**일시정지**/**종료**), the timer, the verdict (**판정: 성공/실패**), cache sync progress, and connection status (collapsible). It adds:
@@ -489,9 +396,52 @@ await rk.getRemainingTime({ resync: true }); // re-sync with the server first
 rk.destroy();   // remove listeners; the instance is dead afterwards
 ```
 
-`on`/`off` are chainable. That is the entire surface — playback, navigation, and reset are handled by the Player around your iframe; the site only deals with triggers, messages, and hints.
+`on`/`off` are chainable. By default that is the entire surface — playback, navigation, and reset are handled by the Player around your iframe; the site only deals with triggers, messages, and hints. To take over on-screen rendering too, claim slots as below.
 
-### 6.3 Registering the site
+### 6.3 Rendering subtitles, hint codes, or video in the site
+
+Pass `renders` to claim slots — each independently:
+
+```js
+const rk = new RoomKitHelper({
+  renders: { subtitle: true, hintCode: true, video: false },
+});
+```
+
+For every claimed slot the Player stops rendering its own overlay and forwards the data instead. Each payload carries the same authoring inputs the default overlay uses — the CSS (자막 CSS / 힌트 코드 CSS) and the asset's **파라미터 (JSON)** — so the site decides how (or whether) to apply them:
+
+```js
+// claimed subtitle slot — fired per line; null clears the subtitle
+rk.on('subtitle', (s) => {
+  // s: { html, css, params, lineIndex, lineCount } | null
+  subtitleEl.innerHTML = s ? s.html : '';
+});
+
+// claimed hintCode slot — null hides the code
+rk.on('hintCode', (h) => {
+  // h: { code, css, params } | null
+  codeEl.textContent = h ? h.code : '';
+});
+
+// claimed video slot — the site plays the media itself, audio included
+rk.on('videoPlay', (v) => {
+  // v: { commandId, assetName, url, durationMs, frame, params }
+  video.src = v.url;                        // presigned URL (time-limited)
+  video.onended = () => rk.videoEnded(v.commandId);
+  video.onerror = () => rk.videoError(v.commandId);
+  video.play();
+});
+rk.on('videoStop', ({ commandId }) => video.pause());
+```
+
+Notes:
+
+- **Claiming `video` is a contract**: the Player renders no video element at all, and the **비디오 재생** command's ack waits for your `videoEnded(commandId)` (or `videoError`). Forgetting it stalls every `끝날 때까지 대기` sequence on that video — the test overlay's skip button is the escape hatch. Placeholder (fileless) videos are the exception: `url` is `null`, the Player acks on its own `durationMs` timer, and the site may just render a placeholder.
+- Claims are declared in the `hello` and **reset on navigation**: each page re-claims in its own constructor, and a page without claims restores the Player's default rendering.
+- On claiming, the current state is delivered immediately (e.g. a subtitle already on screen), so a late-loading page doesn't miss it.
+- `css`/`params` are forwarded verbatim (trusted admin input, like subtitle HTML). `params` is the free-form **파라미터 (JSON)** field on the 대사/힌트/비디오 asset — use it for per-asset options your renderer understands (speaker names, layouts, effects).
+
+### 6.4 Registering the site
 
 Create a 웹사이트 asset (§4.1):
 

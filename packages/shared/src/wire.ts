@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ComponentSlotSchema, VideoFrameSchema } from './assets.js';
+import { VideoFrameSchema } from './assets.js';
 import { JsonValueSchema } from './json.js';
 
 /**
@@ -19,23 +19,6 @@ import { JsonValueSchema } from './json.js';
 
 export const PlayChannelSchema = z.enum(['bgm', 'sfx', 'dialogue', 'video']);
 export type PlayChannel = z.infer<typeof PlayChannelSchema>;
-
-/**
- * A component asset resolved server-side into its ready-to-mount payload:
- * the component's html plus the attachment's prop values. Clients mount it in
- * a sandboxed iframe via buildComponentSrcdoc() and feed it bridge events.
- */
-export const WireComponentSchema = z.object({
-  componentId: z.uuid(),
-  /** Theme scope for name-based media lookups; '' on pre-field wires. */
-  themeId: z.string().default(''),
-  slot: ComponentSlotSchema,
-  html: z.string(),
-  props: z.record(z.string(), JsonValueSchema).default({}),
-  /** Whether the iframe receives pointer events. */
-  interactive: z.boolean().default(false),
-});
-export type WireComponent = z.infer<typeof WireComponentSchema>;
 
 const wireBase = { id: z.uuid() };
 
@@ -111,8 +94,8 @@ export const WirePlayDialogueSchema = z.object({
   lines: z.array(WireDialogueLineSchema),
   subtitleCss: z.string(),
   keepSubtitleAfterEnd: z.boolean(),
-  /** Renders subtitles instead of the default overlay; subtitleCss unused then. */
-  subtitleComponent: WireComponentSchema.nullable().default(null),
+  /** Dialogue asset's free-form params, forwarded for website-side rendering. */
+  params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type WirePlayDialogue = z.infer<typeof WirePlayDialogueSchema>;
 
@@ -125,8 +108,8 @@ export const WirePlayVideoSchema = z.object({
   ...wireMediaFields,
   /** Video surface placement on the stage; null = fullscreen. */
   frame: VideoFrameSchema.nullable().default(null),
-  /** Component overlaid on the stage while the video plays. */
-  component: WireComponentSchema.nullable().default(null),
+  /** Video asset's free-form params, forwarded for website-side rendering. */
+  params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type WirePlayVideo = z.infer<typeof WirePlayVideoSchema>;
 
@@ -179,8 +162,8 @@ export const WireHintCodeSchema = z.object({
   code: z.string().nullable(),
   /** Device asset's hintCodeCss; injected raw (trusted admin input). */
   css: z.string().default(''),
-  /** Renders the code instead of the default overlay; css unused then. */
-  component: WireComponentSchema.nullable().default(null),
+  /** Hint asset's free-form params, forwarded for website-side rendering. */
+  params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type WireHintCode = z.infer<typeof WireHintCodeSchema>;
 

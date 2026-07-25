@@ -3,7 +3,7 @@
 	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
-	import { PLACEHOLDER_DURATION_DEFAULTS, type ComponentRef } from '@roomkit/shared';
+	import { PLACEHOLDER_DURATION_DEFAULTS } from '@roomkit/shared';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
@@ -13,18 +13,18 @@
 	import FileUpload from '../file-upload.svelte';
 	import MediaPreview from '../media-preview.svelte';
 	import type { DraftDialogueLine } from '../types';
-	import ComponentRefField from './component-ref-field.svelte';
+	import JsonParamsField from './json-params-field.svelte';
 
 	let {
 		themeId,
 		keepSubtitleAfterEnd = $bindable(),
 		lines = $bindable(),
-		subtitleComponent = $bindable()
+		paramsText = $bindable()
 	}: {
 		themeId: string;
 		keepSubtitleAfterEnd: boolean;
 		lines: DraftDialogueLine[];
-		subtitleComponent: ComponentRef | null;
+		paramsText: string;
 	} = $props();
 
 	function addLine() {
@@ -55,13 +55,7 @@
 	<Switch id="dialogue-keep-subtitle" bind:checked={keepSubtitleAfterEnd} />
 </Field.Field>
 
-<ComponentRefField
-	{themeId}
-	slotKind="subtitle"
-	label="자막 컴포넌트"
-	description="비워 두면 플레이어의 기본 자막 컴포넌트/CSS를 따릅니다."
-	bind:value={subtitleComponent}
-/>
+<JsonParamsField id="dialogue-params" bind:paramsText />
 
 <Field.Field>
 	<Field.FieldLabel>라인 (재생 순서)</Field.FieldLabel>

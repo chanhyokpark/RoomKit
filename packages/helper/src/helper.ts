@@ -2,12 +2,19 @@ import type {
   HelperHello,
   HelperHintNext,
   HelperHintSubmit,
+  HelperRenderClaims,
   HelperTimerGet,
   HelperTrigger,
+  HelperVideoEnded,
+  HelperVideoError,
   HintError,
   HintShow,
   JsonValue,
+  PlayerHintCode,
   PlayerMessage,
+  PlayerSubtitle,
+  PlayerVideoPlay,
+  PlayerVideoStop,
 } from '@roomkit/shared';
 import { Emitter } from './emitter.js';
 
@@ -44,6 +51,14 @@ export interface RoomKitHelperOptions {
    * set false while developing the site in a normal browser.
    */
   lockdown?: boolean;
+  /**
+   * Slots this site renders itself instead of the player. While claimed the
+   * player suppresses its own overlay and forwards the data as 'subtitle' /
+   * 'hintCode' / 'videoPlay' events. Claiming `video` means the site plays the
+   * media itself (audio included) and MUST call videoEnded()/videoError() —
+   * sequences waiting on the video's end block on that report.
+   */
+  renders?: Partial<HelperRenderClaims>;
 }
 
 export interface GetRemainingTimeOptions {
@@ -63,6 +78,14 @@ export interface RoomKitHelperEvents extends Record<string, unknown[]> {
   /** A hint step to render (reply to submitHint/requestHintStep, or a push). */
   hint: [HintShow];
   hintError: [HintError];
+  /** Claimed subtitle slot: the current line (html/css/params), null = clear. */
+  subtitle: [PlayerSubtitle['subtitle']];
+  /** Claimed hintCode slot: the current entry code (code/css/params), null = hide. */
+  hintCode: [PlayerHintCode['hintCode']];
+  /** Claimed video slot: play this media; report videoEnded/videoError when done. */
+  videoPlay: [Omit<PlayerVideoPlay, 'source' | 'type'>];
+  /** Claimed video slot: stop the playback with this commandId. */
+  videoStop: [Omit<PlayerVideoStop, 'source' | 'type'>];
 }
 
 /**
@@ -89,8 +112,17 @@ export class RoomKitHelper {
     this.self = options.selfWindow ?? window;
     this.self.addEventListener('message', this.onMessage as EventListener);
     if (options.lockdown !== false) this.lockdown();
-    // Tells the player this frame is ready; it flushes buffered messages.
-    this.post({ source: HELPER_SOURCE, type: 'hello' } satisfies HelperHello);
+    // Tells the player this frame is ready (and which slots it renders); the
+    // player flushes buffered messages on it.
+    this.post({
+      source: HELPER_SOURCE,
+      type: 'hello',
+      renders: {
+        subtitle: options.renders?.subtitle ?? false,
+        hintCode: options.renders?.hintCode ?? false,
+        video: options.renders?.video ?? false,
+      },
+    } satisfies HelperHello);
   }
 
   /**
@@ -133,6 +165,24 @@ export class RoomKitHelper {
       hintId,
       step,
     } satisfies HelperHintNext);
+  }
+
+  /** A delegated video ('videoPlay') finished playing; acks the play command. */
+  videoEnded(commandId: string): void {
+    this.post({
+      source: HELPER_SOURCE,
+      type: 'video:ended',
+      commandId,
+    } satisfies HelperVideoEnded);
+  }
+
+  /** A delegated video could not be played; the play command fails over. */
+  videoError(commandId: string): void {
+    this.post({
+      source: HELPER_SOURCE,
+      type: 'video:error',
+      commandId,
+    } satisfies HelperVideoError);
   }
 
   /**
@@ -197,7 +247,9 @@ export class RoomKitHelper {
       | HelperTrigger
       | HelperHintSubmit
       | HelperHintNext
-      | HelperTimerGet,
+      | HelperTimerGet
+      | HelperVideoEnded
+      | HelperVideoError,
   ): void {
     // '*': the player's (tauri) origin is unknowable from inside the iframe;
     // being embedded by the player is the trust anchor (see shared/helper.ts).
@@ -237,6 +289,32 @@ export class RoomKitHelper {
         this.pendingTimers.delete(msg.requestId);
         clearTimeout(pending.timeout);
         pending.resolve(remainingMs);
+        return;
+      }
+      case 'subtitle': {
+        // Null clears; otherwise an object with html/css/params.
+        if (msg.subtitle !== null && (typeof msg.subtitle !== 'object' || msg.subtitle === undefined))
+          return;
+        this.emitter.emit('subtitle', (msg.subtitle ?? null) as PlayerSubtitle['subtitle']);
+        return;
+      }
+      case 'hintCode': {
+        if (msg.hintCode !== null && (typeof msg.hintCode !== 'object' || msg.hintCode === undefined))
+          return;
+        this.emitter.emit('hintCode', (msg.hintCode ?? null) as PlayerHintCode['hintCode']);
+        return;
+      }
+      case 'video:play': {
+        if (typeof msg.commandId !== 'string') return;
+        this.emitter.emit(
+          'videoPlay',
+          msg as unknown as Omit<PlayerVideoPlay, 'source' | 'type'>,
+        );
+        return;
+      }
+      case 'video:stop': {
+        if (typeof msg.commandId !== 'string') return;
+        this.emitter.emit('videoStop', { commandId: msg.commandId });
         return;
       }
       default:
