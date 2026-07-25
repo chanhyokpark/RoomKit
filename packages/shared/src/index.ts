@@ -7,6 +7,7 @@ export * from './commands.js';
 export * from './protocol.js';
 export * from './helper.js';
 export * from './wire.js';
+export * from './component-host.js';
 export * from './sessions.js';
 export * from './session-summary.js';
 export * from './logs.js';

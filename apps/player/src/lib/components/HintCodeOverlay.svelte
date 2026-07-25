@@ -1,17 +1,32 @@
 <script lang="ts">
+	import type { JsonValue } from '@roomkit/shared';
 	import { stage } from '../stores/stage.svelte';
+	import ComponentHost from './ComponentHost.svelte';
 
 	// The device's hintCodeCss is creator-authored, trusted content (SPEC
 	// security note) — injected raw, unscoped by design so themes can restyle
 	// .rk-hint-code freely.
-	const styleTag = $derived(
-		stage.hintCode ? `<style>${stage.hintCode.css}</style>` : ''
-	);
+	const styleTag = $derived(stage.hintCode ? `<style>${stage.hintCode.css}</style>` : '');
+
+	let host = $state<{ post: (event: string, payload: JsonValue) => void } | null>(null);
+
+	// Repost when a newer show replaces the code on the same component.
+	$effect(() => {
+		const hintCode = stage.hintCode;
+		if (!hintCode?.component) return;
+		host?.post('hintCode', { code: hintCode.code });
+	});
 </script>
 
 {#if stage.hintCode}
-	{@html styleTag}
-	<div class="rk-hint-code">{stage.hintCode.code}</div>
+	{#if stage.hintCode.component}
+		{#key stage.hintCode.component.componentId}
+			<ComponentHost bind:this={host} component={stage.hintCode.component} class="z-30" />
+		{/key}
+	{:else}
+		{@html styleTag}
+		<div class="rk-hint-code">{stage.hintCode.code}</div>
+	{/if}
 {/if}
 
 <style>

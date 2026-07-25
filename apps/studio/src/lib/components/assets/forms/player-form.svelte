@@ -1,21 +1,24 @@
 <script lang="ts">
-	import type { Asset } from '@roomkit/shared';
+	import type { Asset, ComponentRef } from '@roomkit/shared';
 	import * as Field from '$lib/components/ui/field';
 	import * as Select from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { listAssets } from '$lib/api/assets';
 	import { assetDisplayName } from '../asset-summary';
+	import ComponentRefField from './component-ref-field.svelte';
 
 	let {
 		themeId,
 		speakerDeviceId = $bindable(),
 		screenDeviceId = $bindable(),
-		subtitleCss = $bindable()
+		subtitleCss = $bindable(),
+		subtitleComponent = $bindable()
 	}: {
 		themeId: string;
 		speakerDeviceId: string;
 		screenDeviceId: string;
 		subtitleCss: string;
+		subtitleComponent: ComponentRef | null;
 	} = $props();
 
 	let devices = $state<Asset[]>([]);
@@ -78,13 +81,23 @@
 	<Field.FieldDescription>자막과 비디오가 표시되는 장치입니다.</Field.FieldDescription>
 </Field.Field>
 
-<Field.Field>
-	<Field.FieldLabel for="player-subtitle-css">자막 CSS</Field.FieldLabel>
-	<Textarea
-		id="player-subtitle-css"
-		bind:value={subtitleCss}
-		rows={4}
-		class="font-mono"
-		placeholder={'.subtitle { font-size: 2rem; }'}
-	/>
-</Field.Field>
+<ComponentRefField
+	{themeId}
+	slotKind="subtitle"
+	label="기본 자막 컴포넌트"
+	description="이 플레이어의 대사 자막을 렌더링합니다. 대사 애셋에서 개별로 바꿀 수 있습니다."
+	bind:value={subtitleComponent}
+/>
+
+{#if subtitleComponent === null}
+	<Field.Field>
+		<Field.FieldLabel for="player-subtitle-css">자막 CSS</Field.FieldLabel>
+		<Textarea
+			id="player-subtitle-css"
+			bind:value={subtitleCss}
+			rows={4}
+			class="font-mono"
+			placeholder={'.subtitle { font-size: 2rem; }'}
+		/>
+	</Field.Field>
+{/if}

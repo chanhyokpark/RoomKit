@@ -8,6 +8,7 @@ import { StorageModule } from './storage/storage.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ZipImportsModule } from './zip-imports/zip-imports.module';
 import { SitesModule } from './sites/sites.module';
+import { MediaModule } from './media/media.module';
 import { ThemesModule } from './themes/themes.module';
 import { TagsModule } from './tags/tags.module';
 import { AssetsModule } from './assets/assets.module';
@@ -26,6 +27,7 @@ import { GatewayModule } from './gateway/gateway.module';
     UploadsModule,
     ZipImportsModule,
     SitesModule,
+    MediaModule,
     ThemesModule,
     TagsModule,
     AssetsModule,

@@ -22,6 +22,14 @@ export function summarizeAsset(asset: Asset): string {
 			return asset.data.fileKey === null
 				? `플레이스홀더 · ${asset.data.durationMs / 1000}s`
 				: (asset.data.fileKey.split('/').at(-1) ?? '');
+		case 'image':
+			return asset.data.fileKey === null
+				? `플레이스홀더 · ${asset.data.placeholderRatio}`
+				: (asset.data.fileKey.split('/').at(-1) ?? '');
+		case 'file':
+			return asset.data.fileKey === null
+				? '파일 없음'
+				: (asset.data.fileKey.split('/').at(-1) ?? '');
 		case 'dialogue': {
 			const placeholderCount = asset.data.lines.filter((line) => line.fileKey === null).length;
 			return [
@@ -44,6 +52,12 @@ export function summarizeAsset(asset: Asset): string {
 			]
 				.filter(Boolean)
 				.join(' · ');
+		case 'component': {
+			const slot = { video: '비디오', subtitle: '자막', hintCode: '힌트 코드' }[asset.data.slot];
+			return [`${slot} 슬롯`, asset.data.params.length > 0 && `속성 ${asset.data.params.length}개`]
+				.filter(Boolean)
+				.join(' · ');
+		}
 		case 'phase':
 			return `순서 ${asset.data.order}`;
 		case 'event': {

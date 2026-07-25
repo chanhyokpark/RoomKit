@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
+	import { PUBLIC_API_URL } from '$env/static/public';
 	import {
 		CODED_ASSET_KINDS,
 		CreateAssetInputSchema,
 		PLACEHOLDER_DURATION_DEFAULTS,
 		type Asset,
+		type ComponentRef,
 		type JsonValue,
 		type Tag,
 		type UpdateAssetInput
@@ -16,6 +18,9 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { ApiError } from '$lib/api/client';
 	import { createAsset, updateAsset } from '$lib/api/assets';
+	import BinaryAssetForm from './forms/binary-asset-form.svelte';
+	import ComponentForm from './forms/component-form.svelte';
+	import ComponentRefField from './forms/component-ref-field.svelte';
 	import DeviceForm from './forms/device-form.svelte';
 	import DialogueForm from './forms/dialogue-form.svelte';
 	import EventForm from './forms/event-form.svelte';
@@ -24,6 +29,7 @@
 	import MessageForm from './forms/message-form.svelte';
 	import PhaseForm from './forms/phase-form.svelte';
 	import PlayerForm from './forms/player-form.svelte';
+	import VideoFrameFields from './forms/video-frame-fields.svelte';
 	import WebsiteForm from './forms/website-form.svelte';
 	import TagPicker from './tag-picker.svelte';
 	import type { Draft, EditorState } from './types';
@@ -47,6 +53,10 @@
 
 	const kind = $derived(editing.mode === 'create' ? editing.kind : editing.asset.kind);
 	const isCoded = $derived((CODED_ASSET_KINDS as readonly string[]).includes(kind));
+	/** Stable public URL of file-backed assets — only known after first save. */
+	const mediaUrl = $derived(
+		editing.mode === 'edit' ? `${PUBLIC_API_URL}/api/media/${editing.asset.id}` : null
+	);
 
 	// The host keys this component by editing target, so init-once is safe.
 	// svelte-ignore state_referenced_locally
@@ -64,6 +74,11 @@
 	let submitting = $state(false);
 	let errorMessage = $state<string | null>(null);
 
+	/** Deep-copies a component attachment so form edits don't mutate the asset. */
+	function cloneRef(ref: ComponentRef | null): ComponentRef | null {
+		return ref === null ? null : { componentId: ref.componentId, props: { ...ref.props } };
+	}
+
 	function initDraft(state: EditorState): Draft {
 		if (state.mode === 'edit') {
 			const asset = state.asset;
@@ -73,7 +88,8 @@
 						kind: 'device',
 						displayName: asset.data.displayName,
 						isHintDevice: asset.data.isHintDevice,
-						hintCodeCss: asset.data.hintCodeCss
+						hintCodeCss: asset.data.hintCodeCss,
+						hintCodeComponent: cloneRef(asset.data.hintCodeComponent)
 					};
 				case 'bgm':
 					return {
@@ -84,22 +100,42 @@
 						fadeOutMs: asset.data.fadeOutMs
 					};
 				case 'sfx':
-				case 'video':
 					return {
-						kind: asset.kind,
+						kind: 'sfx',
 						fileKey: asset.data.fileKey,
 						durationMs: asset.data.durationMs
 					};
+				case 'video':
+					return {
+						kind: 'video',
+						fileKey: asset.data.fileKey,
+						durationMs: asset.data.durationMs,
+						frame: asset.data.frame ? { ...asset.data.frame } : null,
+						component: cloneRef(asset.data.component)
+					};
+				case 'image':
+					return {
+						kind: 'image',
+						fileKey: asset.data.fileKey,
+						placeholderRatio: asset.data.placeholderRatio
+					};
+				case 'file':
+					return { kind: 'file', fileKey: asset.data.fileKey };
 				case 'dialogue':
 					return {
 						kind: 'dialogue',
 						keepSubtitleAfterEnd: asset.data.keepSubtitleAfterEnd,
-						lines: asset.data.lines.map((line) => ({ ...line }))
+						lines: asset.data.lines.map((line) => ({ ...line })),
+						subtitleComponent: cloneRef(asset.data.subtitleComponent)
 					};
 				case 'hint':
 					return { kind: 'hint', steps: asset.data.steps.map((step) => ({ ...step })) };
 				case 'player':
-					return { kind: 'player', ...asset.data };
+					return {
+						kind: 'player',
+						...asset.data,
+						subtitleComponent: cloneRef(asset.data.subtitleComponent)
+					};
 				case 'website':
 					return asset.data.mode === 'hosted'
 						? { kind: 'website', mode: 'hosted', url: '', sitePrefix: asset.data.sitePrefix }
@@ -109,6 +145,14 @@
 						kind: 'message',
 						displayName: asset.data.displayName,
 						fields: asset.data.fields.map((field) => ({ ...field }))
+					};
+				case 'component':
+					return {
+						kind: 'component',
+						slot: asset.data.slot,
+						html: asset.data.html,
+						interactive: asset.data.interactive,
+						params: asset.data.params.map((param) => ({ ...param }))
 					};
 				case 'phase':
 					return { kind: 'phase', orderText: String(asset.data.order) };
@@ -126,7 +170,13 @@
 		}
 		switch (state.kind) {
 			case 'device':
-				return { kind: 'device', displayName: '', isHintDevice: false, hintCodeCss: '' };
+				return {
+					kind: 'device',
+					displayName: '',
+					isHintDevice: false,
+					hintCodeCss: '',
+					hintCodeComponent: null
+				};
 			case 'bgm':
 				return {
 					kind: 'bgm',
@@ -136,22 +186,46 @@
 					fadeOutMs: 0
 				};
 			case 'sfx':
+				return {
+					kind: 'sfx',
+					fileKey: null,
+					durationMs: PLACEHOLDER_DURATION_DEFAULTS.sfx
+				};
 			case 'video':
 				return {
-					kind: state.kind,
+					kind: 'video',
 					fileKey: null,
-					durationMs: PLACEHOLDER_DURATION_DEFAULTS[state.kind]
+					durationMs: PLACEHOLDER_DURATION_DEFAULTS.video,
+					frame: null,
+					component: null
 				};
+			case 'image':
+				return { kind: 'image', fileKey: null, placeholderRatio: '16:9' };
+			case 'file':
+				return { kind: 'file', fileKey: null };
 			case 'dialogue':
-				return { kind: 'dialogue', keepSubtitleAfterEnd: false, lines: [] };
+				return {
+					kind: 'dialogue',
+					keepSubtitleAfterEnd: false,
+					lines: [],
+					subtitleComponent: null
+				};
 			case 'hint':
 				return { kind: 'hint', steps: [{ textHtml: '', imageKey: null }] };
 			case 'player':
-				return { kind: 'player', speakerDeviceId: '', screenDeviceId: '', subtitleCss: '' };
+				return {
+					kind: 'player',
+					speakerDeviceId: '',
+					screenDeviceId: '',
+					subtitleCss: '',
+					subtitleComponent: null
+				};
 			case 'website':
 				return { kind: 'website', mode: 'external', url: '', sitePrefix: null };
 			case 'message':
 				return { kind: 'message', displayName: '', fields: [] };
+			case 'component':
+				return { kind: 'component', slot: 'video', html: '', interactive: false, params: [] };
 			case 'phase':
 				return { kind: 'phase', orderText: '' };
 			case 'event':
@@ -183,11 +257,32 @@
 					? null
 					: '페이드(ms)는 0 이상의 정수여야 합니다.';
 			case 'sfx':
-			case 'video':
 				// No file = placeholder asset; only the simulated duration must be valid.
 				return draft.fileKey || isValidDuration(draft.durationMs)
 					? null
 					: '재생 시간(ms)은 양의 정수여야 합니다.';
+			case 'video': {
+				if (!draft.fileKey && !isValidDuration(draft.durationMs))
+					return '재생 시간(ms)은 양의 정수여야 합니다.';
+				const frame = draft.frame;
+				if (frame) {
+					const inRange = (value: number, min: number) =>
+						Number.isFinite(value) && value >= min && value <= 100;
+					if (
+						!inRange(frame.x, 0) ||
+						!inRange(frame.y, 0) ||
+						!inRange(frame.width, 1) ||
+						!inRange(frame.height, 1)
+					)
+						return '비디오 위치/크기는 0~100% 범위여야 합니다 (크기는 1% 이상).';
+				}
+				return null;
+			}
+			case 'image':
+				// No file = placeholder image; only its ratio must be valid.
+				return draft.fileKey || /^[1-9]\d*:[1-9]\d*$/.test(draft.placeholderRatio.trim())
+					? null
+					: '플레이스홀더 비율은 "16:9" 형식이어야 합니다.';
 			case 'dialogue':
 				return draft.lines.every((line) => line.fileKey || isValidDuration(line.durationMs))
 					? null
@@ -213,6 +308,13 @@
 				if (new Set(keys).size !== keys.length) return '필드 키가 중복됩니다.';
 				return null;
 			}
+			case 'component': {
+				if (draft.params.some((param) => !param.key.trim()))
+					return '모든 속성에 키를 입력해 주세요.';
+				const keys = draft.params.map((param) => param.key.trim());
+				if (new Set(keys).size !== keys.length) return '속성 키가 중복됩니다.';
+				return null;
+			}
 			case 'phase': {
 				const order = Number(draft.orderText);
 				return draft.orderText.trim() !== '' && Number.isInteger(order)
@@ -230,13 +332,19 @@
 		}
 	}
 
+	/** Component attachment as plain JSON for the API payload. */
+	function refData(ref: ComponentRef | null): JsonValue {
+		return ref === null ? null : ($state.snapshot(ref) as unknown as JsonValue);
+	}
+
 	function buildData(): JsonValue {
 		switch (draft.kind) {
 			case 'device':
 				return {
 					displayName: draft.displayName,
 					isHintDevice: draft.isHintDevice,
-					hintCodeCss: draft.hintCodeCss
+					hintCodeCss: draft.hintCodeCss,
+					hintCodeComponent: refData(draft.hintCodeComponent)
 				};
 			case 'bgm':
 				return {
@@ -246,8 +354,18 @@
 					fadeOutMs: draft.fadeOutMs
 				};
 			case 'sfx':
-			case 'video':
 				return { fileKey: draft.fileKey, durationMs: draft.durationMs };
+			case 'video':
+				return {
+					fileKey: draft.fileKey,
+					durationMs: draft.durationMs,
+					frame: draft.frame ? { ...$state.snapshot(draft.frame) } : null,
+					component: refData(draft.component)
+				};
+			case 'image':
+				return { fileKey: draft.fileKey, placeholderRatio: draft.placeholderRatio.trim() };
+			case 'file':
+				return { fileKey: draft.fileKey };
 			case 'dialogue':
 				return {
 					keepSubtitleAfterEnd: draft.keepSubtitleAfterEnd,
@@ -256,7 +374,8 @@
 						fileKey: line.fileKey,
 						durationMs: line.durationMs,
 						subtitleHtml: line.subtitleHtml
-					}))
+					})),
+					subtitleComponent: refData(draft.subtitleComponent)
 				};
 			case 'hint':
 				return { steps: draft.steps.map((step) => ({ ...step })) };
@@ -264,7 +383,8 @@
 				return {
 					speakerDeviceId: draft.speakerDeviceId,
 					screenDeviceId: draft.screenDeviceId,
-					subtitleCss: draft.subtitleCss
+					subtitleCss: draft.subtitleCss,
+					subtitleComponent: refData(draft.subtitleComponent)
 				};
 			case 'website':
 				return draft.mode === 'hosted'
@@ -274,6 +394,13 @@
 				return {
 					displayName: draft.displayName,
 					fields: draft.fields.map((field) => ({ ...field, key: field.key.trim() }))
+				};
+			case 'component':
+				return {
+					slot: draft.slot,
+					html: draft.html,
+					interactive: draft.interactive,
+					params: draft.params.map((param) => ({ ...param, key: param.key.trim() }))
 				};
 			case 'phase':
 				return { order: Number(draft.orderText) };
@@ -369,9 +496,11 @@
 		</Field.Field>
 		{#if draft.kind === 'device'}
 			<DeviceForm
+				{themeId}
 				bind:displayName={draft.displayName}
 				bind:isHintDevice={draft.isHintDevice}
 				bind:hintCodeCss={draft.hintCodeCss}
+				bind:hintCodeComponent={draft.hintCodeComponent}
 			/>
 		{:else if draft.kind === 'bgm'}
 			<FileAssetForm
@@ -398,12 +527,32 @@
 				bind:durationMs={draft.durationMs}
 				accept="video/*"
 				media="video"
+				publicUrl={mediaUrl}
 			/>
+			<VideoFrameFields bind:frame={draft.frame} />
+			<ComponentRefField
+				{themeId}
+				slotKind="video"
+				label="비디오 컴포넌트"
+				description="재생 중 화면에 겹쳐 표시할 컴포넌트입니다 (예: 채팅 UI)."
+				bind:value={draft.component}
+			/>
+		{:else if draft.kind === 'image'}
+			<BinaryAssetForm
+				{themeId}
+				kind="image"
+				bind:fileKey={draft.fileKey}
+				bind:placeholderRatio={draft.placeholderRatio}
+				publicUrl={mediaUrl}
+			/>
+		{:else if draft.kind === 'file'}
+			<BinaryAssetForm {themeId} kind="file" bind:fileKey={draft.fileKey} publicUrl={mediaUrl} />
 		{:else if draft.kind === 'dialogue'}
 			<DialogueForm
 				{themeId}
 				bind:keepSubtitleAfterEnd={draft.keepSubtitleAfterEnd}
 				bind:lines={draft.lines}
+				bind:subtitleComponent={draft.subtitleComponent}
 			/>
 		{:else if draft.kind === 'hint'}
 			<HintForm {themeId} bind:steps={draft.steps} />
@@ -413,6 +562,7 @@
 				bind:speakerDeviceId={draft.speakerDeviceId}
 				bind:screenDeviceId={draft.screenDeviceId}
 				bind:subtitleCss={draft.subtitleCss}
+				bind:subtitleComponent={draft.subtitleComponent}
 			/>
 		{:else if draft.kind === 'website'}
 			<WebsiteForm
@@ -424,6 +574,13 @@
 			/>
 		{:else if draft.kind === 'message'}
 			<MessageForm bind:displayName={draft.displayName} bind:fields={draft.fields} />
+		{:else if draft.kind === 'component'}
+			<ComponentForm
+				bind:slot={draft.slot}
+				bind:html={draft.html}
+				bind:interactive={draft.interactive}
+				bind:params={draft.params}
+			/>
 		{:else if draft.kind === 'phase'}
 			<PhaseForm bind:orderText={draft.orderText} />
 		{:else if draft.kind === 'event'}

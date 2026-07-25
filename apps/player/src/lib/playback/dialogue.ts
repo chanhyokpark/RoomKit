@@ -138,7 +138,13 @@ export class DialogueChannel {
 	private showLine(cmd: WirePlayDialogue, lineIndex: number): void {
 		const line = cmd.lines[lineIndex];
 		if (!line) return;
-		stage.subtitle = { html: line.subtitleHtml, css: cmd.subtitleCss };
+		stage.subtitle = {
+			html: line.subtitleHtml,
+			css: cmd.subtitleCss,
+			component: cmd.subtitleComponent,
+			lineIndex,
+			lineCount: cmd.lines.length
+		};
 	}
 
 	private teardown(entry: ActiveDialogue): void {

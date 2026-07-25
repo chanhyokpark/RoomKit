@@ -781,6 +781,82 @@ describe('Runtime (e2e)', () => {
     ).toBe(true);
   });
 
+  it('component attachments resolve into wire payloads; dangling refs degrade to null', async () => {
+    const themeId = await createTheme();
+    const deviceId = await createDevice(themeId, 'screen');
+    const componentId = await createAsset(themeId, {
+      kind: 'component',
+      name: 'chat',
+      data: {
+        slot: 'video',
+        html: '<div id="chat"></div>',
+        params: [
+          { key: 'title', label: 'Title', type: 'string', required: false },
+        ],
+      },
+    });
+    const playerId = await createAsset(themeId, {
+      kind: 'player',
+      name: 'main',
+      data: {
+        speakerDeviceId: deviceId,
+        screenDeviceId: deviceId,
+        subtitleCss: '',
+      },
+    });
+    const videoId = await createAsset(themeId, {
+      kind: 'video',
+      name: 'clip',
+      data: {
+        fileKey: 'themes/test/clip.mp4',
+        frame: { x: 10, y: 20, width: 50, height: 40 },
+        component: { componentId, props: { title: 'Chat' } },
+      },
+    });
+    const brokenVideoId = await createAsset(themeId, {
+      kind: 'video',
+      name: 'broken',
+      data: {
+        fileKey: 'themes/test/broken.mp4',
+        component: { componentId: randomUUID(), props: {} },
+      },
+    });
+    const eventId = await createEvent(themeId, 'play-both', {
+      sequence: [
+        entry({ type: 'playVideo', videoId, playerId, waitUntilEnd: false }),
+        entry({
+          type: 'playVideo',
+          videoId: brokenVideoId,
+          playerId,
+          waitUntilEnd: false,
+        }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(() => transport.ofType('play').length === 2);
+    const wires = transport.ofType('play').map((p) => p.wire);
+    const withComponent = wires.find(
+      (w) => (w as { assetId: string }).assetId === videoId,
+    );
+    const withDangling = wires.find(
+      (w) => (w as { assetId: string }).assetId === brokenVideoId,
+    );
+    expect(withComponent).toMatchObject({
+      frame: { x: 10, y: 20, width: 50, height: 40 },
+      component: {
+        componentId,
+        slot: 'video',
+        html: '<div id="chat"></div>',
+        props: { title: 'Chat' },
+        interactive: false,
+      },
+    });
+    // A broken skin never cancels playback — it degrades to default rendering.
+    expect(withDangling).toMatchObject({ frame: null, component: null });
+  });
+
   it('waitUntilEnd blocks until the ack and offline devices do not block', async () => {
     const themeId = await createTheme();
     const speakerId = await createDevice(themeId, 'speaker');

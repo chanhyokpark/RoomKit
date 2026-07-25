@@ -3,14 +3,18 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   assetDataSchemas,
+  ComponentDataSchema,
   PlayerDataSchema,
   type AssetKind,
   type Command,
+  type ComponentRef,
+  type ComponentSlot,
   type JsonValue,
   type MessageData,
   type PlayChannel,
   type PlayerData,
   type WireCommand,
+  type WireComponent,
   type WireDialogueLine,
 } from '@roomkit/shared';
 import type { Env } from '../config/env';
@@ -162,6 +166,12 @@ export class CommandResolver {
           playerId: player.id,
           assetId: video.id,
           ...(await this.mediaFields(video.name, video.data)),
+          frame: video.data.frame,
+          component: await this.wireComponent(
+            themeId,
+            video.data.component,
+            'video',
+          ),
         };
         return {
           deliveries: [{ deviceId: player.data.screenDeviceId, wire }],
@@ -251,6 +261,11 @@ export class CommandResolver {
                 type: 'hintCode',
                 code: hint.code,
                 css: device.data.hintCodeCss,
+                component: await this.wireComponent(
+                  themeId,
+                  device.data.hintCodeComponent,
+                  'hintCode',
+                ),
               },
             },
           ],
@@ -275,6 +290,7 @@ export class CommandResolver {
               type: 'hintCode' as const,
               code: null,
               css: '',
+              component: null,
             },
           })),
         };
@@ -354,6 +370,12 @@ export class CommandResolver {
       lines,
       subtitleCss: player.data.subtitleCss,
       keepSubtitleAfterEnd: dialogue.data.keepSubtitleAfterEnd,
+      // Dialogue-level component wins over the player's default.
+      subtitleComponent: await this.wireComponent(
+        themeId,
+        dialogue.data.subtitleComponent ?? player.data.subtitleComponent,
+        'subtitle',
+      ),
     };
     const { speakerDeviceId, screenDeviceId } = player.data;
 
@@ -489,6 +511,34 @@ export class CommandResolver {
 
   private mediaUrl(fileKey: string): Promise<string> {
     return this.storage.presignGet(fileKey, MEDIA_URL_EXPIRES_IN);
+  }
+
+  /**
+   * Resolves a component attachment into its wire payload. Unlike getAsset,
+   * a dangling/invalid/slot-mismatched ref degrades to null (default overlay
+   * rendering) instead of skipping the whole command — a broken skin should
+   * never cancel playback.
+   */
+  private async wireComponent(
+    themeId: string,
+    ref: ComponentRef | null,
+    slot: ComponentSlot,
+  ): Promise<WireComponent | null> {
+    if (ref === null) return null;
+    const asset = await this.prisma.asset.findFirst({
+      where: { id: ref.componentId, themeId, kind: 'component' },
+      select: { id: true, data: true },
+    });
+    if (!asset) return null;
+    const parsed = ComponentDataSchema.safeParse(asset.data);
+    if (!parsed.success || parsed.data.slot !== slot) return null;
+    return {
+      componentId: asset.id,
+      slot,
+      html: parsed.data.html,
+      props: ref.props,
+      interactive: parsed.data.interactive,
+    };
   }
 
   /**

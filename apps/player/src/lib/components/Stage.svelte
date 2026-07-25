@@ -6,6 +6,8 @@
 	import { config } from '../stores/config.svelte';
 	import { connection } from '../stores/connection.svelte';
 	import { stage } from '../stores/stage.svelte';
+	import type { JsonValue } from '@roomkit/shared';
+	import ComponentHost from './ComponentHost.svelte';
 	import ConnectionBadge from './ConnectionBadge.svelte';
 	import HintCodeOverlay from './HintCodeOverlay.svelte';
 	import PlaceholderOverlay from './PlaceholderOverlay.svelte';
@@ -33,6 +35,25 @@
 	);
 
 	let engine = $state<PlaybackEngine | null>(null);
+	let videoComponentHost = $state<{ post: (event: string, payload: JsonValue) => void } | null>(
+		null
+	);
+
+	/** Video surface placement; null frame = fullscreen. */
+	const videoFrameStyle = $derived(
+		stage.videoFrame
+			? `left:${stage.videoFrame.x}%;top:${stage.videoFrame.y}%;width:${stage.videoFrame.width}%;height:${stage.videoFrame.height}%`
+			: 'inset:0'
+	);
+
+	// Mirror video playback state into the video-slot component.
+	$effect(() => {
+		videoComponentHost?.post('video', {
+			status: 'playing',
+			currentTimeMs: stage.videoTimeMs,
+			durationMs: stage.videoDurationMs
+		});
+	});
 
 	// Hide the cursor while a real video plays; test sessions keep it so the
 	// overlay's skip buttons stay clickable.
@@ -72,12 +93,27 @@
 		{#if stage.videoSrc}
 			<!-- svelte-ignore a11y_media_has_caption -->
 			<video
-				class="absolute inset-0 z-10 h-full w-full bg-black object-contain"
+				class="absolute z-10 bg-black object-contain"
+				style={videoFrameStyle}
 				src={stage.videoSrc}
 				autoplay
 				onended={() => engine?.video.handleEnded()}
 				onerror={() => engine?.video.handleError()}
+				ontimeupdate={(e) => (stage.videoTimeMs = e.currentTarget.currentTime * 1000)}
+				onloadedmetadata={(e) => {
+					const duration = e.currentTarget.duration;
+					if (Number.isFinite(duration)) stage.videoDurationMs = duration * 1000;
+				}}
 			></video>
+		{/if}
+		{#if stage.videoComponent}
+			{#key stage.videoComponent.componentId}
+				<ComponentHost
+					bind:this={videoComponentHost}
+					component={stage.videoComponent}
+					class="z-[15]"
+				/>
+			{/key}
 		{/if}
 		<PlaceholderOverlay />
 		<SubtitleOverlay />

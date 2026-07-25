@@ -18,14 +18,30 @@ export class VideoChannel {
 		commandId: string;
 		done: DoneFn;
 		cancelSimulation: (() => void) | null;
+		/** Drives videoTimeMs for placeholder video so components still get time. */
+		timeTicker: ReturnType<typeof setInterval> | null;
 	} | null = null;
 
 	play(cmd: WirePlayVideo, done: DoneFn): void {
 		this.finish();
-		this.active = { playerId: cmd.playerId, commandId: cmd.id, done, cancelSimulation: null };
+		this.active = {
+			playerId: cmd.playerId,
+			commandId: cmd.id,
+			done,
+			cancelSimulation: null,
+			timeTicker: null
+		};
+		stage.videoFrame = cmd.frame;
+		stage.videoComponent = cmd.component;
+		stage.videoTimeMs = 0;
+		stage.videoDurationMs = cmd.durationMs;
 		if (cmd.url === null || cmd.fileKey === null) {
 			stage.videoPlaceholder = cmd.assetName;
 			this.active.cancelSimulation = simulate(cmd.durationMs ?? 0, () => this.finish());
+			const startedAt = performance.now();
+			this.active.timeTicker = setInterval(() => {
+				stage.videoTimeMs = performance.now() - startedAt;
+			}, 200);
 		} else {
 			stage.videoSrc = resolveSrc(cmd.fileKey, cmd.url);
 		}
@@ -51,10 +67,15 @@ export class VideoChannel {
 	private finish(status?: 'done' | 'failed'): void {
 		stage.videoSrc = null;
 		stage.videoPlaceholder = null;
+		stage.videoFrame = null;
+		stage.videoComponent = null;
+		stage.videoTimeMs = 0;
+		stage.videoDurationMs = null;
 		const active = this.active;
 		if (!active) return;
 		this.active = null;
 		active.cancelSimulation?.();
+		if (active.timeTicker !== null) clearInterval(active.timeTicker);
 		stage.removeSkippable(active.commandId);
 		active.done(status);
 	}

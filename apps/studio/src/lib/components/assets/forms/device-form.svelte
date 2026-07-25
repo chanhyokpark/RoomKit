@@ -1,14 +1,24 @@
 <script lang="ts">
+	import type { ComponentRef } from '@roomkit/shared';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import ComponentRefField from './component-ref-field.svelte';
 
 	let {
+		themeId,
 		displayName = $bindable(),
 		isHintDevice = $bindable(),
-		hintCodeCss = $bindable()
-	}: { displayName: string; isHintDevice: boolean; hintCodeCss: string } = $props();
+		hintCodeCss = $bindable(),
+		hintCodeComponent = $bindable()
+	}: {
+		themeId: string;
+		displayName: string;
+		isHintDevice: boolean;
+		hintCodeCss: string;
+		hintCodeComponent: ComponentRef | null;
+	} = $props();
 </script>
 
 <Field.Field>
@@ -29,16 +39,26 @@
 	<Switch id="device-hint" bind:checked={isHintDevice} />
 </Field.Field>
 
-<Field.Field>
-	<Field.FieldLabel for="device-hint-code-css">힌트 코드 CSS</Field.FieldLabel>
-	<Textarea
-		id="device-hint-code-css"
-		class="font-mono"
-		rows={4}
-		bind:value={hintCodeCss}
-		placeholder={'.rk-hint-code { font-size: 4rem; }'}
-	/>
-	<Field.FieldDescription>
-		힌트 코드 표시 명령으로 이 장치 화면(기본: 우상단)에 표시되는 코드의 스타일입니다.
-	</Field.FieldDescription>
-</Field.Field>
+<ComponentRefField
+	{themeId}
+	slotKind="hintCode"
+	label="힌트 코드 컴포넌트"
+	description="힌트 코드 표시를 이 컴포넌트가 대신 렌더링합니다. 설정하면 아래 CSS는 무시됩니다."
+	bind:value={hintCodeComponent}
+/>
+
+{#if hintCodeComponent === null}
+	<Field.Field>
+		<Field.FieldLabel for="device-hint-code-css">힌트 코드 CSS</Field.FieldLabel>
+		<Textarea
+			id="device-hint-code-css"
+			class="font-mono"
+			rows={4}
+			bind:value={hintCodeCss}
+			placeholder={'.rk-hint-code { font-size: 4rem; }'}
+		/>
+		<Field.FieldDescription>
+			힌트 코드 표시 명령으로 이 장치 화면(기본: 우상단)에 표시되는 코드의 스타일입니다.
+		</Field.FieldDescription>
+	</Field.Field>
+{/if}

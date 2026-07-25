@@ -7,10 +7,18 @@
 		dialogue: 'DIALOGUE',
 		video: 'VIDEO'
 	};
+
+	// The placeholder card stands in for the video surface, so it follows the
+	// same frame placement as the real <video>.
+	const videoFrameStyle = $derived(
+		stage.videoFrame
+			? `left:${stage.videoFrame.x}%;top:${stage.videoFrame.y}%;width:${stage.videoFrame.width}%;height:${stage.videoFrame.height}%`
+			: 'inset:0'
+	);
 </script>
 
 {#if stage.videoPlaceholder !== null}
-	<div class="absolute inset-0 z-10 flex items-center justify-center bg-black">
+	<div class="absolute z-10 flex items-center justify-center bg-black" style={videoFrameStyle}>
 		<div
 			class="flex flex-col items-center gap-2 rounded-xl border border-neutral-700 px-10 py-8 text-neutral-300"
 		>

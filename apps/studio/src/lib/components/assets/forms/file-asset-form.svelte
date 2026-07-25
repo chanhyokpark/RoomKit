@@ -3,6 +3,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import FileUpload from '../file-upload.svelte';
 	import MediaPreview from '../media-preview.svelte';
+	import PublicMediaLink from '../public-media-link.svelte';
 
 	let {
 		themeId,
@@ -11,7 +12,8 @@
 		fadeInMs = $bindable(undefined),
 		fadeOutMs = $bindable(undefined),
 		accept,
-		media
+		media,
+		publicUrl = null
 	}: {
 		themeId: string;
 		fileKey: string | null;
@@ -21,6 +23,8 @@
 		fadeOutMs?: number;
 		accept: string;
 		media: 'audio' | 'video';
+		/** Stable public URL shown when set (video); null while creating. */
+		publicUrl?: string | null;
 	} = $props();
 </script>
 
@@ -29,6 +33,9 @@
 	<FileUpload id="asset-file" {themeId} bind:fileKey {accept} />
 	{#if fileKey}
 		<MediaPreview {fileKey} {media} />
+		{#if publicUrl}
+			<PublicMediaLink url={publicUrl} />
+		{/if}
 	{:else}
 		<Field.FieldDescription>
 			파일 없이 저장하면 테스트용 플레이스홀더 애셋이 됩니다.

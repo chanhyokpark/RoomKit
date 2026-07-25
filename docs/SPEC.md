@@ -42,7 +42,7 @@ RoomKit/
 
 ### Theme
 
-Every asset, phase, event, and device belongs to a theme. Themes are duplicable (`POST themes/:id/duplicate`, deep copy) — for running multiple rooms of the same theme and for season-rework backups. The copy remaps every cross-asset id reference (player device refs, event phaseId, sequence command refs) to the new ids; device/hint codes copy verbatim (they are unique per theme); S3 fileKeys are shared with the source, not copied.
+Every asset, phase, event, and device belongs to a theme. Themes are duplicable (`POST themes/:id/duplicate`, deep copy) — for running multiple rooms of the same theme and for season-rework backups. The copy remaps every cross-asset id reference (player device refs, event phaseId, sequence command refs, component attachments) to the new ids; device/hint codes copy verbatim (they are unique per theme); S3 fileKeys are shared with the source, not copied.
 
 ### Assets
 
@@ -56,15 +56,18 @@ Every kind — including Phase and Event — is stored as an `Asset` row (`kind`
 
 | Asset | Fields / behavior |
 |---|---|
-| Device | `name` (logical identifier), `displayName` (human-friendly label for UIs), `code` (unique within theme, used for production device registration). Test device codes are issued separately and stored in the client's localStorage |
+| Device | `name` (logical identifier), `displayName` (human-friendly label for UIs), `code` (unique within theme, used for production device registration), `isHintDevice`, hint-code overlay styling (`hintCodeCss`, or a `hintCodeComponent` attachment that replaces the default overlay). Test device codes are issued separately and stored in the client's localStorage |
 | BGM | one audio file |
-| Dialogue | multiple ordered voice files. Per-file subtitle (HTML allowed). `keepSubtitleAfterEnd` flag. On zip upload, lines are created in filename order; subtitles are filled in on the edit screen |
+| Dialogue | multiple ordered voice files. Per-file subtitle (HTML allowed). `keepSubtitleAfterEnd` flag. Optional `subtitleComponent` attachment overrides the player's subtitle rendering for this dialogue. On zip upload, lines are created in filename order; subtitles are filled in on the edit screen |
 | SFX | one audio file |
-| Video | one video file |
+| Video | one video file. Optional `frame` (`{x, y, width, height}` in percent of the stage; null = fullscreen) places the video surface, and an optional Component attachment overlays custom UI (e.g. a chat screen) while it plays |
+| Image | one image file. Not played by the studio runtime — a static resource for websites, served publicly at `/api/media/{assetId}` (stable URL; re-upload swaps the file behind it). Fileless images serve a generated SVG placeholder in a customizable `placeholderRatio` ("W:H", default 16:9), so sites can lay out before artwork exists |
+| File | arbitrary file counterpart of Image, same public serving |
 | Hint | `code` (auto-generated, unique within theme — 4 digits by default, manually editable), array of steps. Each step is text (HTML) + optional image |
-| Player | logical output group. `speakerDeviceId`, `screenDeviceId` (device that renders subtitles/video), `subtitleCss`. Dialogue/video playback commands target a player, not a raw device |
+| Player | logical output group. `speakerDeviceId`, `screenDeviceId` (device that renders subtitles/video), `subtitleCss`, optional default `subtitleComponent`. Subtitle rendering resolves dialogue's component -> player's component -> default `.rk-subtitle` overlay + `subtitleCss`. Dialogue/video playback commands target a player, not a raw device |
 | Website | `mode: external \| hosted`. External: only a `url` is registered. Hosted: a zip (with `index.html` at its root; a single wrapping folder is auto-stripped) is extracted to an immutable S3 prefix (`sitePrefix`) and served by the server at `/api/sites/{assetId}/`; re-upload swaps the prefix. If the site is shown inside the player's iframe, it must have the helper script embedded; a standalone site connects with `@roomkit/client` instead |
 | Message | payload **schema** delivered to a device. `displayName` + `fields[]` (`key`, `label`, `type`: string/number/boolean/json, `required`). The asset only defines the shape; concrete values are entered dynamically in the editor when authoring a "send message to device" command |
+| Component | reusable HTML document (inline `<style>`/`<script>` allowed; trusted admin input) mounted on the stage in a sandboxed iframe for one `slot`: `video` (overlay while a video plays), `subtitle`, or `hintCode`. `params[]` (message-field shape) declares per-attachment props, so one component serves many assets with different values (`{componentId, props}` refs live on video/dialogue/player/device data). `interactive` opts into pointer events. Inside the iframe, `window.RoomKit` exposes `props`, `mediaUrl(assetId)`, and events: `video` (`{status, currentTimeMs, durationMs}`), `subtitle` (`{html, lineIndex, lineCount}`), `hintCode` (`{code}`), and `message` (every sendMessage wire). The studio component editor has a live preview (same iframe host as the player) with mock slot events, test props, and aspect presets; a broken/dangling component ref degrades to the default overlay rendering server-side, never cancelling playback |
 | Tag | `name`, `color`. Many-to-many with assets, organization only (no runtime meaning) |
 | Phase | `name`, `order`. Game progression stage. A session is always in exactly one phase |
 | Event | `phaseId` (null = common), `triggerKind`, `triggerName`, `manualTriggerable`, `allowReentry`, `sequence`. See below |
@@ -225,7 +228,7 @@ const manifest = await rk.fetchAssetManifest();
 - Stage windows connect with `retryOnFatalError`: an `invalid_code` / `session_ended` doesn't stop the client — it keeps polling (5s), so devices can be powered on **before** the session or their test code exists and attach on their own once the operator creates it
 - On connect, fetches `assets:manifest` and downloads the files to a local cache (fileKey-based refresh — upload keys are immutable, so presence = fresh). Cache miss streams the wire command's presigned URL and backfills in the background
 - Fullscreen kiosk lock per device (window-level: fullscreen, always-on-top, hidden cursor, close prevention, browser-shortcut suppression; escape chord Ctrl+Shift+Alt+F12). OS chords (Win key, Alt+Tab) cannot be blocked from an app — use Windows Assigned Access for a hard lock
-- Implements audio (dialogue/BGM/SFX mixed simultaneously), video, and subtitle overlay (applies the player's `subtitleCss`, renders subtitle HTML) directly
+- Implements audio (dialogue/BGM/SFX mixed simultaneously), video (fullscreen or placed by the video asset's `frame`), and subtitle overlay (applies the player's `subtitleCss`, renders subtitle HTML) directly. Component attachments (video overlay / subtitle / hint code) mount as sandboxed `srcdoc` iframes fed by the `window.RoomKit` postMessage bridge (`@roomkit/shared` `component-host.ts` — the same host the studio preview uses)
 - Websites are shown in an embedded webview (iframe) — communicates with the helper script via postMessage (`@roomkit/shared` `helper.ts` envelopes; the player buffers until the helper's `hello`)
 - No hint UI in the player: hint UIs are built by client/helper consumers
 - Test mode: skip button overlay (dialogue/video) + status bar (connection, session state, timer)

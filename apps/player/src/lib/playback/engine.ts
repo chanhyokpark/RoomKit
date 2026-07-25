@@ -28,8 +28,14 @@ export class PlaybackEngine {
 		client.on('reset', () => this.resetAll());
 		client.on('navigate', (url, cmd, done) => stage.navigate(url, done, cmd.force));
 		client.on('hintCode', (cmd) => {
-			stage.hintCode = cmd.code === null ? null : { code: cmd.code, css: cmd.css };
+			stage.hintCode =
+				cmd.code === null
+					? null
+					: { code: cmd.code, css: cmd.css, component: cmd.component };
 		});
+		// Components (chat screens etc.) receive sendMessage wires as 'message'
+		// bridge events, alongside the existing website-iframe forwarding.
+		client.on('message', (_payload, cmd) => stage.broadcastMessage(cmd));
 		// Session end stops everything — otherwise looping BGM/video would play
 		// into the next team's setup (and the server detaches the socket anyway).
 		client.on('sessionState', (state) => {

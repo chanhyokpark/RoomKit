@@ -27,10 +27,13 @@ enum AssetKind {
   dialogue
   sfx
   video
+  image
+  file
   hint
   player
   website
   message
+  component
   phase
   event
 }
