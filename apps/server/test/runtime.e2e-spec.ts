@@ -142,6 +142,7 @@ describe('Runtime (e2e)', () => {
       triggerName: string | null;
       manualTriggerable: boolean;
       allowReentry: boolean;
+      once: boolean;
       sequence: object[];
     }>,
   ) {
@@ -389,6 +390,85 @@ describe('Runtime (e2e)', () => {
       request(server()).get(`/api/sessions/${sessionId}`),
     ).expect(200);
     expect(session.body.phaseId).toBe(p1);
+  });
+
+  it('leaving a phase resets once-tracking so re-entry runs once events afresh', async () => {
+    const themeId = await createTheme();
+    const p1 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    const p2 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P2',
+      data: { order: 2 },
+    });
+    const onceId = await createEvent(themeId, 'once-in-p1', {
+      phaseId: p1,
+      once: true,
+      sequence: [entry({ type: 'eval', code: 'ctx.log("once ran")' })],
+    });
+    const sessionId = await createSession(themeId);
+
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId: onceId });
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) => l.message === 'once ran'),
+    );
+    // Second trigger while still in P1 is rejected (once).
+    const res = await auth(
+      request(server())
+        .post(`/api/sessions/${sessionId}/trigger`)
+        .send({ eventId: onceId }),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(400);
+
+    // Leave P1 and come back: the once flag must be reset.
+    await post(`/api/sessions/${sessionId}/phase`, { phaseId: p2 });
+    await post(`/api/sessions/${sessionId}/phase`, { phaseId: p1 });
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId: onceId });
+    await waitFor(async () => {
+      const logs = await getLogs(sessionId);
+      return logs.filter((l) => l.message === 'once ran').length === 2;
+    });
+  });
+
+  it('switching phase aborts in-flight runs of the old phase mid-wait', async () => {
+    const themeId = await createTheme();
+    const p1 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    const p2 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P2',
+      data: { order: 2 },
+    });
+    const stuckId = await createEvent(themeId, 'stuck-in-p1', {
+      phaseId: p1,
+      sequence: [
+        entry({ type: 'wait', durationMs: 60_000 }),
+        entry({ type: 'notify', message: 'stale tail' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId: stuckId });
+    await waitFor(() =>
+      transport.runs.some((r) => r.runs.some((run) => run.eventId === stuckId)),
+    );
+
+    await post(`/api/sessions/${sessionId}/phase`, { phaseId: p2 });
+    // The 60s wait is interrupted immediately; the run dies without its tail.
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) =>
+        l.message.includes('"stuck-in-p1" aborted'),
+      ),
+    );
+    expect(transport.notifications).toHaveLength(0);
+    // The run is gone from the active-runs snapshot.
+    const last = transport.runs.at(-1);
+    expect(last?.runs.filter((run) => run.eventId === stuckId)).toHaveLength(0);
   });
 
   it('endTheme resets all devices, records the verdict, and ends the session', async () => {

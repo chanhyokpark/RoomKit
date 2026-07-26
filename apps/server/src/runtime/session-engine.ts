@@ -459,44 +459,7 @@ export class SessionEngine {
       where: { id: phaseId, themeId: this.themeId, kind: 'phase' },
       select: { name: true },
     });
-    // Restart resets once-tracking for this phase's events (common events —
-    // phaseId null — keep theirs), so the restarted phase runs them afresh,
-    // leave/enter hooks included.
-    const onceEvents = await this.findEvents(
-      (e) => e.data.once && e.data.phaseId === phaseId,
-    );
-    let onceCleared = false;
-    for (const event of onceEvents) {
-      if (this.onceRun.delete(event.id)) onceCleared = true;
-    }
-    if (onceCleared) this.queuePersist({ onceRun: [...this.onceRun] });
-    // Abort in-flight runs of this phase's events: a run stuck on a device
-    // ack (device died mid-sequence) must not replay its stale tail after
-    // the restart put the phase back into a clean state.
-    const phaseEventIds = new Set(
-      (await this.findEvents((e) => e.data.phaseId === phaseId)).map((e) => e.id),
-    );
-    let aborted = 0;
-    for (const run of this.activeRuns.values()) {
-      if (!phaseEventIds.has(run.eventId)) continue;
-      this.abortedRunIds.add(run.runId);
-      aborted++;
-    }
-    if (aborted > 0) {
-      for (const [commandId, pending] of this.pendingAcks) {
-        if (pending.runId !== undefined && this.abortedRunIds.has(pending.runId)) {
-          this.pendingAcks.delete(commandId);
-          clearTimeout(pending.timeout);
-          pending.resolve('aborted');
-        }
-      }
-      void this.log(
-        'warn',
-        'phase',
-        `Phase restart aborted ${aborted} in-flight run(s)`,
-        { phaseId },
-      );
-    }
+    await this.resetPhaseEvents(phaseId);
     await this.fireSystemEvents('phase:leave', phaseId);
     this.checkAborted();
     void this.log(
@@ -506,6 +469,58 @@ export class SessionEngine {
       { phaseId },
     );
     this.fireSystemEvents('phase:enter', phaseId).catch(() => {});
+  }
+
+  /**
+   * Phase-exit hardening shared by switchPhase and restartCurrentPhase, so a
+   * phase always (re)starts from a clean slate no matter in which order the
+   * operator jumps around:
+   *
+   * - Once-tracking of the phase's events is reset (common events — phaseId
+   *   null — keep theirs), so re-entering the phase runs them afresh.
+   * - In-flight runs of the phase's events are aborted — a run stuck on a
+   *   device ack or mid-wait must not replay its stale tail into the freshly
+   *   (re)entered phase. `keepRunId` protects the run that initiated the
+   *   transition: its own sequence continues past the switchPhase entry.
+   */
+  private async resetPhaseEvents(
+    phaseId: string,
+    keepRunId?: string,
+  ): Promise<void> {
+    const phaseEvents = await this.findEvents((e) => e.data.phaseId === phaseId);
+    let onceCleared = false;
+    for (const event of phaseEvents) {
+      if (event.data.once && this.onceRun.delete(event.id)) onceCleared = true;
+    }
+    if (onceCleared) this.queuePersist({ onceRun: [...this.onceRun] });
+    const phaseEventIds = new Set(phaseEvents.map((e) => e.id));
+    let aborted = 0;
+    for (const run of this.activeRuns.values()) {
+      if (run.runId === keepRunId) continue;
+      if (!phaseEventIds.has(run.eventId)) continue;
+      this.abortedRunIds.add(run.runId);
+      aborted++;
+    }
+    if (aborted > 0) {
+      for (const [commandId, pending] of this.pendingAcks) {
+        if (
+          pending.runId !== undefined &&
+          this.abortedRunIds.has(pending.runId)
+        ) {
+          this.pendingAcks.delete(commandId);
+          clearTimeout(pending.timeout);
+          pending.resolve('aborted');
+        }
+      }
+      // Wake sleeping runs so they observe the abort now, not after the wait.
+      this.emitter.emit('runsAborted');
+      void this.log(
+        'warn',
+        'phase',
+        `Leaving phase aborted ${aborted} in-flight run(s)`,
+        { phaseId },
+      );
+    }
   }
 
   async resetAllDevices(): Promise<void> {
@@ -664,8 +679,16 @@ export class SessionEngine {
     ) {
       return 'out of phase';
     }
-    if ((this.runCounts.get(event.id) ?? 0) > 0 && !event.data.allowReentry) {
-      return 'already running (re-entry not allowed)';
+    if (!event.data.allowReentry && (this.runCounts.get(event.id) ?? 0) > 0) {
+      // Runs already marked aborted by a phase transition are dead in all but
+      // timing — don't let their teardown window block a fresh (re)admission.
+      let live = 0;
+      for (const run of this.activeRuns.values()) {
+        if (run.eventId === event.id && !this.abortedRunIds.has(run.runId)) {
+          live++;
+        }
+      }
+      if (live > 0) return 'already running (re-entry not allowed)';
     }
     if (event.data.once && this.onceRun.has(event.id)) {
       return 'already ran (once)';
@@ -707,7 +730,7 @@ export class SessionEngine {
         void this.log(
           'warn',
           'event',
-          `Event "${event.name}" aborted (session ended or phase restarted)`,
+          `Event "${event.name}" aborted (session ended or phase changed)`,
         );
       } else {
         void this.log(
@@ -743,6 +766,8 @@ export class SessionEngine {
       run.commandType = entry.type;
       this.broadcastRuns();
       await this.awaitGate();
+      // Re-check: a phase transition may have aborted this run while gated.
+      if (this.abortedRunIds.has(run.runId)) throw new RunAbortedError();
       const stop = await this.runCommand(entry, depth, payload, run);
       if (stop) return;
     }
@@ -758,10 +783,10 @@ export class SessionEngine {
   ): Promise<boolean> {
     switch (entry.type) {
       case 'wait':
-        await this.pausableSleep(entry.durationMs);
+        await this.pausableSleep(entry.durationMs, run?.runId);
         return false;
       case 'eval':
-        return this.runEvalCommand(entry.code, payload);
+        return this.runEvalCommand(entry.code, payload, run);
       case 'switchPhase':
         if (entry.phaseId === null) {
           void this.log(
@@ -771,7 +796,7 @@ export class SessionEngine {
           );
           return false;
         }
-        await this.switchPhase(entry.phaseId, 'sequence');
+        await this.switchPhase(entry.phaseId, 'sequence', run?.runId);
         return false;
       case 'callEvent':
         if (entry.eventId === null) {
@@ -986,7 +1011,11 @@ export class SessionEngine {
     await this.end();
   }
 
-  private async switchPhase(phaseId: string, source: string): Promise<void> {
+  private async switchPhase(
+    phaseId: string,
+    source: string,
+    keepRunId?: string,
+  ): Promise<void> {
     const phase = await this.deps.prisma.asset.findFirst({
       where: { id: phaseId, themeId: this.themeId, kind: 'phase' },
       select: { id: true, name: true },
@@ -998,6 +1027,7 @@ export class SessionEngine {
     const oldPhaseId = this.phaseId;
     // Leave hooks run (and finish) while still in the old phase…
     if (oldPhaseId !== null) {
+      await this.resetPhaseEvents(oldPhaseId, keepRunId);
       await this.fireSystemEvents('phase:leave', oldPhaseId);
       this.checkAborted();
     }
@@ -1020,6 +1050,7 @@ export class SessionEngine {
   private async runEvalCommand(
     code: string,
     payload: JsonValue | null = null,
+    run?: RunningEvent,
   ): Promise<boolean> {
     let phaseName: string | null = null;
     if (this.phaseId !== null) {
@@ -1069,7 +1100,7 @@ export class SessionEngine {
     this.queuePersist({ vars: this.vars });
     // Queued actions run even when the script returns false — they were
     // invoked before the return, which is the least surprising rule.
-    if (await this.runEvalActions(actions)) return true;
+    if (await this.runEvalActions(actions, run)) return true;
     if (result === false) {
       void this.log('info', 'eval', 'eval returned false; sequence stopped');
       return true;
@@ -1078,7 +1109,10 @@ export class SessionEngine {
   }
 
   /** Returns true when the sequence must stop (an action ended the session). */
-  private async runEvalActions(actions: EvalAction[]): Promise<boolean> {
+  private async runEvalActions(
+    actions: EvalAction[],
+    run?: RunningEvent,
+  ): Promise<boolean> {
     for (const action of actions) {
       switch (action.kind) {
         case 'switchPhase': {
@@ -1094,7 +1128,7 @@ export class SessionEngine {
             );
             break;
           }
-          await this.switchPhase(phase.id, 'eval');
+          await this.switchPhase(phase.id, 'eval', run?.runId);
           break;
         }
         case 'notify': {
@@ -1417,11 +1451,14 @@ export class SessionEngine {
     this.gateRelease = null;
   }
 
-  /** Sleep that pauses with the session and aborts on end. */
-  private async pausableSleep(ms: number): Promise<void> {
+  /** Sleep that pauses with the session and aborts on end or run abort. */
+  private async pausableSleep(ms: number, runId?: string): Promise<void> {
     let remaining = ms;
     while (remaining > 0) {
       await this.awaitGate();
+      if (runId !== undefined && this.abortedRunIds.has(runId)) {
+        throw new RunAbortedError();
+      }
       const start = Date.now();
       const outcome = await new Promise<'timeout' | 'pause' | 'end'>(
         (resolve) => {
@@ -1437,13 +1474,22 @@ export class SessionEngine {
             cleanup();
             resolve('end');
           };
+          // A phase transition aborted some runs — if this sleep's run is one
+          // of them, stop waiting now instead of at the timer's end.
+          const onRunsAborted = () => {
+            if (runId === undefined || !this.abortedRunIds.has(runId)) return;
+            cleanup();
+            resolve('end');
+          };
           const cleanup = () => {
             clearTimeout(timeout);
             this.emitter.off('pause', onPause);
             this.emitter.off('end', onEnd);
+            this.emitter.off('runsAborted', onRunsAborted);
           };
           this.emitter.once('pause', onPause);
           this.emitter.once('end', onEnd);
+          this.emitter.on('runsAborted', onRunsAborted);
         },
       );
       if (outcome === 'timeout') return;

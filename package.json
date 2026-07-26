@@ -12,6 +12,7 @@
     "dev:player": "pnpm --filter player dev",
     "dev:shared": "pnpm --filter @roomkit/shared dev",
     "dev:client": "pnpm --filter @roomkit/client dev",
+    "build:mcp": "pnpm --filter @roomkit/shared build && pnpm --filter @roomkit/mcp build",
     "test:e2e": "pnpm --filter server test:e2e"
   }
 }

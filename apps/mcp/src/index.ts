@@ -1,0 +1,67 @@
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { GUIDE } from './guide.js';
+import { ApiClient } from './http.js';
+import { createServer, type ResourceDef, type ToolContext } from './registry.js';
+import { commandsDoc } from './schemas.js';
+import { SessionState } from './session.js';
+import { VirtualDeviceManager } from './virtual-device.js';
+import { assetTools } from './tools/assets.js';
+import { connectionTools } from './tools/connection.js';
+import { deviceTools } from './tools/devices.js';
+import { discoveryTools } from './tools/discovery.js';
+import { sequenceTools } from './tools/sequences.js';
+import { sessionTools } from './tools/sessions.js';
+import { tagTools } from './tools/tags.js';
+import { themeTools } from './tools/themes.js';
+import { uploadTools } from './tools/uploads.js';
+import { websiteTestTools } from './tools/website-test.js';
+
+const state = new SessionState();
+const ctx: ToolContext = {
+  state,
+  api: new ApiClient(state),
+  devices: new VirtualDeviceManager(state),
+};
+
+const tools = [
+  ...connectionTools,
+  ...discoveryTools,
+  ...themeTools,
+  ...tagTools,
+  ...assetTools,
+  ...uploadTools,
+  ...sequenceTools,
+  ...sessionTools,
+  ...websiteTestTools,
+  ...deviceTools,
+];
+
+const resources: ResourceDef[] = [
+  {
+    uri: 'roomkit://guide',
+    name: 'RoomKit guide',
+    description: 'Concepts, authoring workflow, and test loops (same as get_started).',
+    mimeType: 'text/markdown',
+    text: () => GUIDE,
+  },
+  {
+    uri: 'roomkit://schema/commands',
+    name: 'Sequence command schema',
+    description: 'JSON Schema and notes for event sequences (same as describe_commands).',
+    mimeType: 'application/json',
+    text: () => JSON.stringify(commandsDoc(), null, 2),
+  },
+];
+
+const server = createServer(tools, resources, ctx);
+
+async function main() {
+  await server.connect(new StdioServerTransport());
+  // stdout is the MCP stream — diagnostics must go to stderr.
+  console.error(`roomkit-mcp ready (${tools.length} tools)`);
+}
+
+main().catch((err) => {
+  console.error('roomkit-mcp failed to start:', err);
+  process.exit(1);
+});
