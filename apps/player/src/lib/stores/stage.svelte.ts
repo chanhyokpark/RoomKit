@@ -25,6 +25,12 @@ export interface DelegatedVideo {
 	assetName: string;
 	/** Presigned media URL; null = placeholder (fileless) asset. */
 	url: string | null;
+	/**
+	 * Cached media bytes, handed to the site as a same-origin blob: URL (an
+	 * https site cannot load the loopback media server — WebKit blocks mixed
+	 * content even from 127.0.0.1). Null = stream `url` instead.
+	 */
+	blob: Blob | null;
 	/** Simulated playback length; set exactly when url is null. */
 	durationMs: number | null;
 	frame: VideoFrame | null;

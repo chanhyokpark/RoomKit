@@ -301,7 +301,7 @@ Everything live happens in **운영**: a session list on the left, the dashboard
 ### 5.2 The dashboard cards
 
 - **타이머** — countdown with badges (**시작 전** / **일시정지** / **시간 초과**), adjust buttons **-5분 / -1분 / +1분 / +5분**, and **일시정지**/**재개** (independent from session pause). Themes without a limit show **타이머 없는 테마입니다.**
-- **페이즈** — current phase, forced **전환** to any phase (runs leave/enter hooks, confirmed), and **재시작** (re-fires the current phase's leave + enter hooks).
+- **페이즈** — current phase, forced **전환** to any phase (runs leave/enter hooks, confirmed), and **재시작** (re-fires the current phase's leave + enter hooks). A restart also clears the phase's **1회만 실행** records and **aborts the phase's in-flight event runs** — including runs blocked on a device ack (e.g. a device that died mid-sequence) — so the phase re-enters from a clean slate; the aborted run never executes its remaining commands.
 - **수동 이벤트** — one button per event with **수동 실행 허용**, grouped **현재 페이즈** / **공통** / **다른 페이즈** (out-of-phase buttons are disabled).
 - **힌트 전송** — pick a hint (`{코드} · {이름}`) and a step, **전송** pushes it to the hint device — the operator-side override of the code-entry flow. Warns if no device is flagged 힌트 장치.
 - **디바이스** — per-device **온라인**/**오프라인** status (with a **힌트** badge on hint devices) and **모든 디바이스 초기화** (bulk reset, confirmed).

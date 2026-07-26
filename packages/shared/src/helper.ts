@@ -223,6 +223,19 @@ export const PlayerHintCodeSchema = z.object({
 export type PlayerHintCode = z.infer<typeof PlayerHintCodeSchema>;
 
 /**
+ * Structural stand-in for the DOM/Node Blob type — this package compiles
+ * without DOM or Node libs; consumers' real Blob instances satisfy it.
+ */
+export interface BlobLike {
+  readonly size: number;
+  readonly type: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+/** Runtime Blob constructor where one exists (browser, Node ≥18). */
+const BlobCtor = (globalThis as { Blob?: abstract new (...args: never[]) => BlobLike }).Blob;
+
+/**
  * Delegated video playback for a claimed video slot. The site plays the media
  * (audio included) and MUST report `video:ended` (or `video:error`) with the
  * same commandId — the play command is only acked then. Null url = placeholder
@@ -236,6 +249,15 @@ export const PlayerVideoPlaySchema = z.object({
   assetName: z.string(),
   /** Presigned media URL (time-limited); null = placeholder. */
   url: z.url().nullable(),
+  /**
+   * Locally cached media bytes; when set, `url` is the streaming fallback.
+   * Travels only via postMessage structured clone, never as JSON. The helper
+   * turns it into a same-origin blob: URL and rewrites `url` with it, so
+   * sites only ever read `url`. (The claiming site is an https page and
+   * cannot load the player's loopback media server — WebKit blocks mixed
+   * content even from 127.0.0.1 — so cached bytes are handed over as a Blob.)
+   */
+  blob: z.custom<BlobLike>((v) => BlobCtor !== undefined && v instanceof BlobCtor).optional(),
   /** Simulated playback length; set exactly when url is null. */
   durationMs: z.number().int().positive().nullable(),
   /** Authored stage placement; null = fullscreen. The site may ignore it. */

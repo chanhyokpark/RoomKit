@@ -319,6 +319,73 @@ describe('RoomKitHelper', () => {
     expect(onStop).toHaveBeenCalledExactlyOnceWith({ commandId });
   });
 
+  it('rewrites a video:play Blob to a same-origin object URL, revoking on stop', () => {
+    const created = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:site/1');
+    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    try {
+      const { helper, inject } = env({ renders: { video: true } });
+      const onPlay = vi.fn();
+      helper.on('videoPlay', onPlay);
+      const commandId = '55555555-5555-4555-8555-555555555555';
+      const blob = new Blob(['bytes'], { type: 'video/mp4' });
+      inject({
+        source: 'roomkit-player',
+        type: 'video:play',
+        commandId,
+        assetName: 'clip',
+        url: 'https://media.example/clip.mp4',
+        blob,
+        durationMs: null,
+        frame: null,
+        params: {},
+      });
+      expect(created).toHaveBeenCalledExactlyOnceWith(blob);
+      // Sites only ever see `url` — rewritten to the blob URL, blob stripped.
+      expect(onPlay).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ commandId, url: 'blob:site/1' }),
+      );
+      expect(onPlay.mock.calls[0][0]).not.toHaveProperty('blob');
+      expect(revoked).not.toHaveBeenCalled();
+      inject({ source: 'roomkit-player', type: 'video:stop', commandId });
+      expect(revoked).toHaveBeenCalledExactlyOnceWith('blob:site/1');
+    } finally {
+      created.mockRestore();
+      revoked.mockRestore();
+    }
+  });
+
+  it('revokes an outstanding video object URL when a new play replaces it and on destroy', () => {
+    const created = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:site/1')
+      .mockReturnValueOnce('blob:site/2');
+    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    try {
+      const { helper, inject } = env({ renders: { video: true } });
+      const play = (commandId: string) => ({
+        source: 'roomkit-player',
+        type: 'video:play',
+        commandId,
+        assetName: 'clip',
+        url: 'https://media.example/clip.mp4',
+        blob: new Blob(['bytes'], { type: 'video/mp4' }),
+        durationMs: null,
+        frame: null,
+        params: {},
+      });
+      inject(play('55555555-5555-4555-8555-555555555555'));
+      inject(play('66666666-6666-4666-8666-666666666666'));
+      expect(revoked).toHaveBeenCalledExactlyOnceWith('blob:site/1');
+      helper.destroy();
+      expect(revoked).toHaveBeenCalledTimes(2);
+      expect(revoked).toHaveBeenLastCalledWith('blob:site/2');
+      expect(created).toHaveBeenCalledTimes(2);
+    } finally {
+      created.mockRestore();
+      revoked.mockRestore();
+    }
+  });
+
   it('getRemainingTime posts a schema-valid request and resolves on the reply', async () => {
     const { helper, posted, inject } = env();
     const promise = helper.getRemainingTime({ resync: true });

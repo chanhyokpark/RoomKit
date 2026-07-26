@@ -4,11 +4,14 @@ use std::path::PathBuf;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
-/// Loopback HTTP server exposing the media cache read-only. Cross-origin
-/// helper iframes cannot load `asset://` URLs, but they can load
-/// `http://127.0.0.1:<port>/<fileKey>` — this is how delegated video plays
-/// from cache. ServeDir handles Range requests (video seeking) and rejects
-/// path traversal; CORS is permissive so fetch-based site players work too.
+/// Loopback HTTP server exposing the media cache read-only. The player's own
+/// windows load `http://127.0.0.1:<port>/<fileKey>` for cached media (the
+/// `asset://` protocol 404s media on macOS; see playback/resolve.ts). Https
+/// helper iframes canNOT load it — WebKit blocks loopback http from secure
+/// pages as mixed content — so delegated video hands cached bytes over as a
+/// Blob via postMessage instead (cache_read command). ServeDir handles Range
+/// requests (video seeking) and rejects path traversal; CORS stays permissive
+/// for fetch-based uses from the player's own origins.
 pub struct MediaServer {
   /// None when the server failed to start; clients fall back to presigned URLs.
   pub port: Option<u16>,

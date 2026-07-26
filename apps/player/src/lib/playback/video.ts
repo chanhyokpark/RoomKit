@@ -14,9 +14,10 @@ import { simulate } from './simulate';
  * simulates for durationMs; the skip button routes through finish() as usual.
  *
  * When the embedded website has claimed the video slot, playback is delegated:
- * no <video> element renders (videoSrc stays null); the site receives a
- * loopback media-server URL for cached video (a tauri-protocol src would be
- * unreachable cross-origin), falling back to the raw presigned URL, and its
+ * no <video> element renders (videoSrc stays null); the site receives the
+ * presigned URL plus — when cached — the file's bytes as a Blob (the site is
+ * an https page, and WebKit blocks both tauri-protocol and loopback http srcs
+ * there; the helper turns the Blob into a same-origin blob: URL), and its
  * video:ended/video:error report drives finish(). Placeholder videos keep the
  * local simulation for the ack even while delegated.
  */
@@ -46,16 +47,19 @@ export class VideoChannel {
 		};
 		const placeholder = cmd.url === null || cmd.fileKey === null;
 		if (delegated) {
-			const src = placeholder ? null : (cache.httpSrc(cmd.fileKey as string) ?? cmd.url);
-			if (src !== null && src !== cmd.url) this.active.fallbackUrl = cmd.url;
-			stage.delegatedVideo = {
-				commandId: cmd.id,
-				assetName: cmd.assetName,
-				url: src,
-				durationMs: placeholder ? cmd.durationMs : null,
-				frame: cmd.frame,
-				params: cmd.params
-			};
+			if (placeholder) {
+				stage.delegatedVideo = {
+					commandId: cmd.id,
+					assetName: cmd.assetName,
+					url: null,
+					blob: null,
+					durationMs: cmd.durationMs,
+					frame: cmd.frame,
+					params: cmd.params
+				};
+			} else {
+				void this.playDelegated(cmd);
+			}
 		} else {
 			stage.videoFrame = cmd.frame;
 			if (placeholder) {
@@ -70,6 +74,30 @@ export class VideoChannel {
 			this.active.cancelSimulation = simulate(cmd.durationMs ?? 0, () => this.finish());
 		}
 		stage.addSkippable({ id: cmd.id, kind: 'video', skip: () => this.finish() });
+	}
+
+	/**
+	 * Delegated playback hands cached bytes over as a Blob: the claiming site
+	 * is an https page and cannot load the loopback media server (WebKit
+	 * blocks mixed content even from 127.0.0.1). The helper mints a
+	 * same-origin blob: URL from it; `url` stays the presigned fallback —
+	 * also what old helper bundles (ignoring `blob`) simply stream.
+	 */
+	private async playDelegated(cmd: WirePlayVideo): Promise<void> {
+		const blob = await cache.blob(cmd.fileKey as string);
+		// The read is async — bail if this playback was replaced meanwhile.
+		if (this.active?.commandId !== cmd.id) return;
+		if (blob) this.active.fallbackUrl = cmd.url;
+		else void cache.ensure(cmd.fileKey as string, cmd.url as string);
+		stage.delegatedVideo = {
+			commandId: cmd.id,
+			assetName: cmd.assetName,
+			url: cmd.url,
+			blob,
+			durationMs: null,
+			frame: cmd.frame,
+			params: cmd.params
+		};
 	}
 
 	stop(playerId: string): void {
@@ -100,7 +128,8 @@ export class VideoChannel {
 		if (!this.active?.delegated || this.active.commandId !== commandId) return;
 		if (
 			this.retryWithFallback((url) => {
-				if (stage.delegatedVideo) stage.delegatedVideo = { ...stage.delegatedVideo, url };
+				if (stage.delegatedVideo)
+					stage.delegatedVideo = { ...stage.delegatedVideo, url, blob: null };
 			})
 		) {
 			return;

@@ -197,7 +197,7 @@ rk.on('videoStop', ({ commandId }) => video.pause());
 
 - The **비디오 재생** command's ack waits for your `videoEnded(commandId)` (or `videoError`). Forgetting it stalls every `끝날 때까지 대기` sequence on that video — the test overlay's skip button is the escape hatch.
 - **Placeholder** (fileless) videos: `url` is `null` and `durationMs` is set; the Player acks on its own duration timer, so the site only needs to render a placeholder (using `assetName` if it likes) — no `videoEnded` required.
-- `url` is served from the Player's local media cache when the file is cached (a loopback HTTP server on `127.0.0.1`, reachable from cross-origin iframes), otherwise the time-limited presigned URL. Either way, assign it to `video.src` as-is.
+- `url` is a same-origin `blob:` URL when the Player has the file in its local media cache (the bytes arrive with the message and the helper mints the URL — an https site cannot load the Player's loopback server directly, WebKit blocks that as mixed content), otherwise the time-limited presigned URL. Either way, assign it to `video.src` as-is. The blob URL is revoked when the next `videoPlay`/`videoStop` arrives, so don't stash it for later.
 - `frame` is the authored placement rect (`{ x, y, width, height }` in percent) or `null` for fullscreen — the site may honor or ignore it.
 - `videoStop` arrives on a server stop command, a replacement play, or a test-overlay skip.
 

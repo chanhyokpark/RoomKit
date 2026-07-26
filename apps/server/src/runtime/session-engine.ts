@@ -127,10 +127,14 @@ export class SessionEngine {
   private readonly pendingAcks = new Map<
     string,
     {
-      resolve: (status: 'done' | 'failed' | 'ended') => void;
+      resolve: (status: 'done' | 'failed' | 'ended' | 'aborted') => void;
       timeout: NodeJS.Timeout;
+      /** Run awaiting this ack — lets a phase restart break the wait. */
+      runId?: string;
     }
   >();
+  /** Runs killed by a phase restart; they die at the next command boundary. */
+  private readonly abortedRunIds = new Set<string>();
   private readonly unacked = new Map<string, Map<string, WireCommand>>();
   private readonly progressRelays = new Map<
     string,
@@ -466,6 +470,33 @@ export class SessionEngine {
       if (this.onceRun.delete(event.id)) onceCleared = true;
     }
     if (onceCleared) this.queuePersist({ onceRun: [...this.onceRun] });
+    // Abort in-flight runs of this phase's events: a run stuck on a device
+    // ack (device died mid-sequence) must not replay its stale tail after
+    // the restart put the phase back into a clean state.
+    const phaseEventIds = new Set(
+      (await this.findEvents((e) => e.data.phaseId === phaseId)).map((e) => e.id),
+    );
+    let aborted = 0;
+    for (const run of this.activeRuns.values()) {
+      if (!phaseEventIds.has(run.eventId)) continue;
+      this.abortedRunIds.add(run.runId);
+      aborted++;
+    }
+    if (aborted > 0) {
+      for (const [commandId, pending] of this.pendingAcks) {
+        if (pending.runId !== undefined && this.abortedRunIds.has(pending.runId)) {
+          this.pendingAcks.delete(commandId);
+          clearTimeout(pending.timeout);
+          pending.resolve('aborted');
+        }
+      }
+      void this.log(
+        'warn',
+        'phase',
+        `Phase restart aborted ${aborted} in-flight run(s)`,
+        { phaseId },
+      );
+    }
     await this.fireSystemEvents('phase:leave', phaseId);
     this.checkAborted();
     void this.log(
@@ -676,7 +707,7 @@ export class SessionEngine {
         void this.log(
           'warn',
           'event',
-          `Event "${event.name}" aborted (session ended)`,
+          `Event "${event.name}" aborted (session ended or phase restarted)`,
         );
       } else {
         void this.log(
@@ -693,6 +724,7 @@ export class SessionEngine {
       if (count <= 0) this.runCounts.delete(event.id);
       else this.runCounts.set(event.id, count);
       this.activeRuns.delete(run.runId);
+      this.abortedRunIds.delete(run.runId);
       this.broadcastRuns();
     }
   }
@@ -706,13 +738,15 @@ export class SessionEngine {
     payload: JsonValue | null,
   ): Promise<void> {
     for (const [index, entry] of event.data.sequence.entries()) {
+      if (this.abortedRunIds.has(run.runId)) throw new RunAbortedError();
       run.entryIndex = index;
       run.commandType = entry.type;
       this.broadcastRuns();
       await this.awaitGate();
-      const stop = await this.runCommand(entry, depth, payload);
+      const stop = await this.runCommand(entry, depth, payload, run);
       if (stop) return;
     }
+    if (this.abortedRunIds.has(run.runId)) throw new RunAbortedError();
   }
 
   /** Returns true when the sequence must stop (eval returned false / failed). */
@@ -720,6 +754,7 @@ export class SessionEngine {
     entry: SequenceEntry,
     depth: number,
     payload: JsonValue | null = null,
+    run?: RunningEvent,
   ): Promise<boolean> {
     switch (entry.type) {
       case 'wait':
@@ -777,7 +812,7 @@ export class SessionEngine {
         return false;
       }
       default:
-        await this.dispatchCommand(entry, depth, payload);
+        await this.dispatchCommand(entry, depth, payload, run);
         return false;
     }
   }
@@ -786,6 +821,7 @@ export class SessionEngine {
     cmd: Command,
     depth = 0,
     payload: JsonValue | null = null,
+    run?: RunningEvent,
   ): Promise<void> {
     let resolution: Resolution;
     try {
@@ -842,8 +878,9 @@ export class SessionEngine {
     if (resolution.awaitAckOf) {
       const { commandId, deviceId } = resolution.awaitAckOf;
       if (!online.get(commandId)) return; // offline: logged, continue immediately
-      const status = await this.waitForAck(commandId);
+      const status = await this.waitForAck(commandId, run?.runId);
       this.checkAborted();
+      if (status === 'aborted') return; // run dies at the next entry boundary
       if (status === 'timeout') {
         void this.log(
           'warn',
@@ -891,13 +928,14 @@ export class SessionEngine {
 
   private waitForAck(
     commandId: string,
-  ): Promise<'done' | 'failed' | 'ended' | 'timeout'> {
+    runId?: string,
+  ): Promise<'done' | 'failed' | 'ended' | 'timeout' | 'aborted'> {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.pendingAcks.delete(commandId);
         resolve('timeout');
       }, ACK_WAIT_TIMEOUT_MS);
-      this.pendingAcks.set(commandId, { resolve, timeout });
+      this.pendingAcks.set(commandId, { resolve, timeout, runId });
     });
   }
 

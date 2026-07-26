@@ -6,6 +6,25 @@ type SyncState = 'idle' | 'syncing' | 'ready' | 'error';
 
 const DOWNLOAD_CONCURRENCY = 2;
 
+const MEDIA_TYPES: Record<string, string> = {
+	mp4: 'video/mp4',
+	m4v: 'video/x-m4v',
+	webm: 'video/webm',
+	mov: 'video/quicktime',
+	mp3: 'audio/mpeg',
+	m4a: 'audio/mp4',
+	aac: 'audio/aac',
+	wav: 'audio/wav',
+	ogg: 'audio/ogg',
+	flac: 'audio/flac'
+};
+
+/** Blob content type from the fileKey's extension (players key on it). */
+function mediaType(fileKey: string): string {
+	const ext = fileKey.slice(fileKey.lastIndexOf('.') + 1).toLowerCase();
+	return MEDIA_TYPES[ext] ?? 'application/octet-stream';
+}
+
 /**
  * Local media cache, keyed by immutable fileKey (presence = fresh; no
  * hashing). Downloads run in Rust (streaming, atomic rename); files are
@@ -32,13 +51,36 @@ class CacheManager {
 	}
 
 	/**
-	 * Loopback media-server URL when cached, else null. Unlike localSrc, this
-	 * URL is reachable from cross-origin helper iframes (delegated video).
+	 * Loopback media-server URL when cached, else null. Only usable from the
+	 * player's own (tauri-origin) windows: https helper iframes cannot load
+	 * it — WebKit blocks loopback http as mixed content — they get cached
+	 * bytes via blob() instead.
 	 */
 	httpSrc(fileKey: string): string | null {
 		if (this.mediaPort === null || !this.cached.has(fileKey)) return null;
 		const path = fileKey.split('/').map(encodeURIComponent).join('/');
 		return `http://127.0.0.1:${this.mediaPort}/${path}`;
+	}
+
+	/**
+	 * Cached file contents as a Blob, for delegated video: the claiming site
+	 * is an https page and cannot load the loopback media server (WebKit
+	 * blocks mixed content even from 127.0.0.1), but a Blob survives
+	 * postMessage and becomes a same-origin blob: URL inside the iframe.
+	 * Null when uncached or on a read error (callers stream the presigned
+	 * URL instead).
+	 */
+	async blob(fileKey: string): Promise<Blob | null> {
+		if (!this.cached.has(fileKey)) return null;
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const bytes = await invoke<ArrayBuffer>('cache_read', { fileKey });
+			return new Blob([bytes], { type: mediaType(fileKey) });
+		} catch (err) {
+			console.warn('[player] cache read failed', fileKey, err);
+			this.invalidate(fileKey);
+			return null;
+		}
 	}
 
 	private convert: ((path: string) => string) | null = null;

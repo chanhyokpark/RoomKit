@@ -252,13 +252,18 @@ export class HelperBridge {
 		// Svelte proxies in nested fields; structured clone rejects proxies, so a
 		// raw postMessage throws DataCloneError — which kills the posting $effect
 		// and with it the whole bridge. The wire shapes are plain JSON, so a JSON
-		// round-trip deproxies losslessly; the catch keeps a bad envelope from
-		// ever tearing the bridge down again.
+		// round-trip deproxies losslessly — except a video:play's cached-media
+		// Blob, which JSON flattens to {}: detach it and reattach afterwards
+		// (structured clone handles Blob natively). The catch keeps a bad
+		// envelope from ever tearing the bridge down again.
 		try {
-			this.iframe.contentWindow?.postMessage(
-				JSON.parse(JSON.stringify(msg)),
-				this.targetOrigin
-			);
+			const blob = msg.type === 'video:play' ? msg.blob : undefined;
+			const envelope = JSON.parse(JSON.stringify(msg)) as PlayerToHelper;
+			if (envelope.type === 'video:play') {
+				if (blob instanceof Blob) envelope.blob = blob;
+				else delete envelope.blob;
+			}
+			this.iframe.contentWindow?.postMessage(envelope, this.targetOrigin);
 		} catch (err) {
 			console.error('[player] bridge post failed', msg.type, err);
 		}

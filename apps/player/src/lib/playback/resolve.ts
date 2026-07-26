@@ -6,10 +6,11 @@ import { cache } from '../cache/manager.svelte';
  * the next playback hits the cache). fileKeys are immutable, so presence in
  * the cache means fresh.
  *
- * Cached files are served via the loopback media server (Range support,
- * proven for delegated video) — the tauri `asset://` protocol 404s cached
- * media on macOS despite the file existing, so it is only the fallback for
- * the rare case where the media server failed to start.
+ * Cached files are served via the loopback media server (Range support) —
+ * the tauri `asset://` protocol 404s cached media on macOS despite the file
+ * existing, so it is only the fallback for the rare case where the media
+ * server failed to start. (Only for the player's own windows: delegated
+ * video in https iframes gets cached bytes as a Blob instead, see video.ts.)
  */
 export function resolveSrc(fileKey: string, url: string): string {
 	const local = cache.httpSrc(fileKey) ?? cache.localSrc(fileKey);

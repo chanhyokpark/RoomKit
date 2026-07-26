@@ -12,6 +12,7 @@ pub fn run() {
       cache::cache_download,
       cache::cache_list,
       cache::cache_prune,
+      cache::cache_read,
       cache::cache_root,
       media_server::media_server_port
     ])

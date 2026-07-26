@@ -122,6 +122,8 @@ export class RoomKitHelper {
   };
   /** Player-reported session mode; production (locked down) until told. */
   private mode: SessionMode = 'production';
+  /** blob: URL minted for the current delegated video; revoked on the next play/stop/destroy. */
+  private videoUrl: string | null = null;
   /** Injected lockdown stylesheet, kept for removal in destroy(). */
   private lockdownStyle: HTMLStyleElement | null = null;
   /** hello retry timer; stopped by the first player message (the ack). */
@@ -314,9 +316,17 @@ export class RoomKitHelper {
     return this;
   }
 
+  private revokeVideoUrl(): void {
+    if (this.videoUrl !== null) {
+      URL.revokeObjectURL(this.videoUrl);
+      this.videoUrl = null;
+    }
+  }
+
   /** Unregisters the message listener; the instance is dead afterwards. */
   destroy(): void {
     this.stopHelloRetry();
+    this.revokeVideoUrl();
     this.self.removeEventListener('message', this.onMessage as EventListener);
     if (typeof document !== 'undefined') {
       document.removeEventListener('contextmenu', this.onContextMenu, true);
@@ -430,14 +440,26 @@ export class RoomKitHelper {
       }
       case 'video:play': {
         if (typeof msg.commandId !== 'string') return;
-        this.emitter.emit(
-          'videoPlay',
-          msg as unknown as Omit<PlayerVideoPlay, 'source' | 'type'>,
-        );
+        this.revokeVideoUrl();
+        const { blob, ...play } = msg as unknown as Omit<
+          PlayerVideoPlay,
+          'source' | 'type'
+        >;
+        // Cached media arrives as a Blob — this https page cannot load the
+        // player's loopback media server (WebKit blocks mixed content even
+        // from 127.0.0.1) — and becomes a same-origin blob: URL here, so
+        // sites keep reading `url` and never see the handover.
+        if (typeof Blob !== 'undefined' && blob instanceof Blob) {
+          this.videoUrl = URL.createObjectURL(blob);
+          this.emitter.emit('videoPlay', { ...play, url: this.videoUrl });
+          return;
+        }
+        this.emitter.emit('videoPlay', play);
         return;
       }
       case 'video:stop': {
         if (typeof msg.commandId !== 'string') return;
+        this.revokeVideoUrl();
         this.emitter.emit('videoStop', { commandId: msg.commandId });
         return;
       }

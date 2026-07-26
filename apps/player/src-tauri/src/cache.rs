@@ -180,6 +180,18 @@ pub fn cache_prune(app: AppHandle, keep: Vec<String>) -> Result<u32, String> {
   Ok(deleted)
 }
 
+/// Cached file contents for the webview. Delegated video ships them to the
+/// claiming https site as a Blob over postMessage — such pages cannot load
+/// the loopback media server (WebKit blocks mixed content even from
+/// 127.0.0.1).
+#[tauri::command]
+pub async fn cache_read(app: AppHandle, file_key: String) -> Result<tauri::ipc::Response, String> {
+  let root = cache_base(&app)?;
+  let path = safe_join(&root, &file_key)?;
+  let bytes = tokio::fs::read(&path).await.map_err(|e| e.to_string())?;
+  Ok(tauri::ipc::Response::new(bytes))
+}
+
 #[tauri::command]
 pub fn cache_root(app: AppHandle) -> Result<String, String> {
   Ok(cache_base(&app)?.to_string_lossy().into_owned())
