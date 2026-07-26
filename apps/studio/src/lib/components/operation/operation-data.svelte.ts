@@ -11,6 +11,7 @@ import {
 	DeviceStatusSchema,
 	PlayerStatusSchema,
 	SessionLogEntrySchema,
+	SessionMediaSchema,
 	SessionNotificationSchema,
 	SessionRunsSchema,
 	SessionStateSchema,
@@ -19,6 +20,7 @@ import {
 	type RunningEvent,
 	type Session,
 	type SessionLogEntry,
+	type SessionMedia,
 	type SessionState,
 	type SessionStateValue,
 	type Verdict
@@ -69,6 +71,8 @@ export class OperationData {
 	readonly deviceStatus = new SvelteMap<string, boolean>();
 	/** sessionId → in-flight event runs (server sends full snapshots). */
 	readonly runs = new SvelteMap<string, RunningEvent[]>();
+	/** sessionId → playing media/websites (server sends full snapshots). */
+	readonly media = new SvelteMap<string, SessionMedia>();
 	/** playerId → connected player launcher (global, not per theme). */
 	readonly playersById = new SvelteMap<string, PlayerStatus>();
 
@@ -168,6 +172,7 @@ export class OperationData {
 	async forgetSession(sessionId: string): Promise<void> {
 		this.live.delete(sessionId);
 		this.runs.delete(sessionId);
+		this.media.delete(sessionId);
 		for (const key of this.deviceStatus.keys()) {
 			if (key.startsWith(`${sessionId}:`)) this.deviceStatus.delete(key);
 		}
@@ -216,6 +221,7 @@ export class OperationData {
 			this.live.clear();
 			this.deviceStatus.clear();
 			this.runs.clear();
+			this.media.clear();
 			this.playersById.clear();
 			// The dump only covers live sessions; sessions created or ended while
 			// disconnected only show up in a fresh REST list.
@@ -244,6 +250,11 @@ export class OperationData {
 			const parsed = SessionRunsSchema.safeParse(payload);
 			if (!parsed.success) return;
 			this.runs.set(parsed.data.sessionId, parsed.data.runs);
+		});
+		this.#socket.on(AdminEvents.sessionMedia, (payload: unknown) => {
+			const parsed = SessionMediaSchema.safeParse(payload);
+			if (!parsed.success) return;
+			this.media.set(parsed.data.sessionId, parsed.data);
 		});
 		this.#socket.on(AdminEvents.deviceStatus, (payload: unknown) => {
 			const parsed = DeviceStatusSchema.safeParse(payload);
@@ -298,6 +309,10 @@ export class OperationData {
 
 	runsFor(sessionId: string): RunningEvent[] {
 		return this.runs.get(sessionId) ?? [];
+	}
+
+	mediaFor(sessionId: string): SessionMedia {
+		return this.media.get(sessionId) ?? { sessionId, playing: [], websites: [] };
 	}
 
 	assetName(id: string | null): string | null {

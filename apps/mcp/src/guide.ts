@@ -52,6 +52,12 @@ Core model:
   \`get_virtual_device_state\` (shows commands each device received).
   Virtual devices ack every command immediately, so waitUntilEnd
   completes instantly — timing is not realistic, logic is.
+- **One-off commands** — \`run_session_command\` runs any sequence command
+  (same JSON as an event entry) against a live session without authoring an
+  event: play/stop media, navigate, eval, notify, ... Fire-and-forget; the
+  outcome lands in the session log. Stop commands end playback "normally"
+  (a sequence awaiting waitUntilEnd continues). \`list_session_runs\` +
+  \`abort_session_run\` force-terminate a stuck event run.
 - **Website test** — exercises a real website in a real player window
   (requires a connected player launcher app and its playerId):
   \`create_website_test\` → \`control_website_test\` (manual commands,

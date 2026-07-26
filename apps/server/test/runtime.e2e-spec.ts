@@ -3,6 +3,7 @@ import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import type {
   PlaybackProgress,
+  SessionMedia,
   SessionNotification,
   SessionRuns,
   WireCommand,
@@ -22,6 +23,7 @@ class FakeTransport implements RuntimeTransport {
   sent: Sent[] = [];
   progress: { deviceId: string; progress: PlaybackProgress }[] = [];
   runs: SessionRuns[] = [];
+  media: SessionMedia[] = [];
   notifications: SessionNotification[] = [];
   offline = new Set<string>();
 
@@ -45,6 +47,9 @@ class FakeTransport implements RuntimeTransport {
   broadcastDeviceStatus(): void {}
   broadcastSessionRuns(runs: SessionRuns): void {
     this.runs.push(runs);
+  }
+  broadcastSessionMedia(media: SessionMedia): void {
+    this.media.push(media);
   }
   broadcastNotification(notification: SessionNotification): void {
     this.notifications.push(notification);
@@ -1331,5 +1336,128 @@ describe('Runtime (e2e)', () => {
           l.message.includes('"setter" finished'),
         ).length >= 2,
     );
+  });
+
+  it('admin abort terminates a running event mid-wait', async () => {
+    const themeId = await createTheme();
+    const eventId = await createEvent(themeId, 'sleeper', {
+      sequence: [entry({ type: 'wait', durationMs: 60_000 })],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+
+    await waitFor(() => (transport.runs.at(-1)?.runs.length ?? 0) === 1);
+
+    // the REST runs listing exposes the runId (console / MCP abort flow)
+    const listed = await auth(
+      request(server()).get(`/api/sessions/${sessionId}/runs`),
+    ).expect(200);
+    expect(listed.body.runs).toHaveLength(1);
+    const runId = listed.body.runs[0].runId as string;
+    expect(runId).toBe(transport.runs.at(-1)!.runs[0].runId);
+
+    await post(`/api/sessions/${sessionId}/runs/${runId}/abort`);
+    await waitFor(() => transport.runs.at(-1)?.runs.length === 0);
+    const logs = await getLogs(sessionId);
+    expect(
+      logs.some((l) => l.message.includes('"sleeper" terminated by admin')),
+    ).toBe(true);
+    expect(logs.some((l) => l.message.includes('"sleeper" aborted'))).toBe(
+      true,
+    );
+
+    // unknown run id → 400
+    await auth(
+      request(server()).post(
+        `/api/sessions/${sessionId}/runs/${randomUUID()}/abort`,
+      ),
+    ).expect(400);
+  });
+
+  it('admin command endpoint plays media; tracking survives the loop ack and clears on stop', async () => {
+    const themeId = await createTheme();
+    const deviceId = await createDevice(themeId, 'stage');
+    const playerId = await createAsset(themeId, {
+      kind: 'player',
+      name: 'main',
+      data: {
+        speakerDeviceId: deviceId,
+        screenDeviceId: deviceId,
+        subtitleCss: '',
+      },
+    });
+    const bgmId = await createAsset(themeId, {
+      kind: 'bgm',
+      name: 'ambient',
+      data: { fileKey: 'themes/test/ambient.mp3' },
+    });
+    const websiteId = await createAsset(themeId, {
+      kind: 'website',
+      name: 'panel',
+      data: { mode: 'external', url: 'https://example.com/panel' },
+    });
+    const sessionId = await createSession(themeId);
+
+    await post(`/api/sessions/${sessionId}/command`, {
+      type: 'playBgm',
+      bgmId,
+      playerId,
+      loop: true,
+      waitUntilEnd: false,
+    });
+    await waitFor(() => transport.ofType('play').length === 1);
+    const play = transport.ofType('play')[0];
+    await waitFor(() => (transport.media.at(-1)?.playing.length ?? 0) === 1);
+    expect(transport.media.at(-1)!.playing[0]).toMatchObject({
+      commandId: play.wire.id,
+      deviceId,
+      channel: 'bgm',
+      playerId,
+      assetId: bgmId,
+      assetName: 'ambient',
+      loop: true,
+    });
+
+    // Looping BGM acks on playback start — the entry must survive it.
+    runtime.handleAck(sessionId, deviceId, {
+      commandId: play.wire.id,
+      status: 'done',
+    });
+    expect(transport.media.at(-1)!.playing).toHaveLength(1);
+
+    // navigate is tracked as the device's current website
+    await post(`/api/sessions/${sessionId}/command`, {
+      type: 'navigate',
+      deviceId,
+      websiteId,
+      query: [],
+    });
+    await waitFor(() => (transport.media.at(-1)?.websites.length ?? 0) === 1);
+    expect(transport.media.at(-1)!.websites[0]).toMatchObject({
+      deviceId,
+      websiteId,
+      url: 'https://example.com/panel',
+    });
+
+    // stopBgm ends the tracked playback (the admin force-stop path)
+    await post(`/api/sessions/${sessionId}/command`, {
+      type: 'stopBgm',
+      playerId,
+      allPlayers: false,
+    });
+    await waitFor(() => transport.media.at(-1)?.playing.length === 0);
+    expect(transport.media.at(-1)!.websites).toHaveLength(1);
+
+    // resetDevice clears the website (the admin website-terminate path)
+    await post(`/api/sessions/${sessionId}/command`, {
+      type: 'resetDevice',
+      deviceId,
+    });
+    await waitFor(() => transport.media.at(-1)?.websites.length === 0);
+
+    const logs = await getLogs(sessionId);
+    expect(
+      logs.filter((l) => l.message.startsWith('Admin command:')).length,
+    ).toBe(4);
   });
 });

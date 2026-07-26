@@ -4,6 +4,7 @@ import type { Prisma, Session } from '@prisma/client';
 import {
   assetDataSchemas,
   type Command,
+  type DeviceWebsite,
   type DialogueCueEntry,
   type EventData,
   type HintError,
@@ -11,9 +12,11 @@ import {
   type HintShow,
   type JsonValue,
   type PlaybackProgress,
+  type PlayingMedia,
   type RunningEvent,
   type SequenceEntry,
   type SessionLogEntry,
+  type SessionMedia,
   type SessionRuns,
   type SessionState,
   type SessionStateValue,
@@ -136,6 +139,14 @@ export class SessionEngine {
   /** Runs killed by a phase restart; they die at the next command boundary. */
   private readonly abortedRunIds = new Set<string>();
   private readonly unacked = new Map<string, Map<string, WireCommand>>();
+  /**
+   * Playback the engine believes is in flight, keyed by the play wire's id.
+   * Entries live from delivery to ack; looping BGM (acks on start) lives
+   * until stopped, replaced, or the device is reset. Mirrored to /admin.
+   */
+  private readonly playingMedia = new Map<string, PlayingMedia>();
+  /** deviceId → website last navigated to (cleared by a reset wire). */
+  private readonly deviceWebsites = new Map<string, DeviceWebsite>();
   private readonly progressRelays = new Map<
     string,
     { toDeviceId: string; toCommandId: string; lineCount: number }
@@ -279,6 +290,11 @@ export class SessionEngine {
     if (this.activeRuns.size > 0) {
       this.activeRuns.clear();
       this.broadcastRuns();
+    }
+    if (this.playingMedia.size > 0 || this.deviceWebsites.size > 0) {
+      this.playingMedia.clear();
+      this.deviceWebsites.clear();
+      this.broadcastMedia();
     }
     this.openGate();
     this.queuePersist({ state: 'ended', endedAt: new Date() });
@@ -487,7 +503,9 @@ export class SessionEngine {
     phaseId: string,
     keepRunId?: string,
   ): Promise<void> {
-    const phaseEvents = await this.findEvents((e) => e.data.phaseId === phaseId);
+    const phaseEvents = await this.findEvents(
+      (e) => e.data.phaseId === phaseId,
+    );
     let onceCleared = false;
     for (const event of phaseEvents) {
       if (event.data.once && this.onceRun.delete(event.id)) onceCleared = true;
@@ -526,6 +544,62 @@ export class SessionEngine {
   async resetAllDevices(): Promise<void> {
     await this.dispatchCommand({ type: 'resetAllDevices' });
     void this.log('info', 'device', 'All devices reset');
+  }
+
+  /**
+   * REST forced termination of one in-flight event run. Reuses the phase
+   * transition's abort mechanism: the run dies at its next command boundary,
+   * and a pending ack/sleep it waits on is broken immediately.
+   */
+  abortRun(runId: string): void {
+    const run = this.activeRuns.get(runId);
+    if (!run) {
+      throw new EngineStateError('Run not found (already finished?)');
+    }
+    if (this.abortedRunIds.has(runId)) return; // already dying — idempotent
+    this.abortedRunIds.add(runId);
+    for (const [commandId, pending] of this.pendingAcks) {
+      if (pending.runId === runId) {
+        this.pendingAcks.delete(commandId);
+        clearTimeout(pending.timeout);
+        pending.resolve('aborted');
+      }
+    }
+    this.emitter.emit('runsAborted');
+    void this.log(
+      'warn',
+      'event',
+      `Event "${run.eventName}" terminated by admin`,
+      { runId, eventId: run.eventId },
+    );
+  }
+
+  /**
+   * One-off operator command from the operation console. Runs like a sequence
+   * entry (same resolution, logging, and stop semantics) but detached from
+   * any event run; fire-and-forget — outcomes surface in the session log.
+   * Allowed while paused or before start (operator judgment overrides the
+   * gate a sequence would wait on).
+   */
+  runAdminCommand(cmd: Command): void {
+    if (this.state === 'ended') {
+      throw new EngineStateError('Session has ended');
+    }
+    void this.log('info', 'command', `Admin command: ${cmd.type}`);
+    const entry = { ...cmd, id: randomUUID() } as SequenceEntry;
+    void (async () => {
+      try {
+        await this.runCommand(entry, 0);
+      } catch (err) {
+        if (!(err instanceof RunAbortedError)) {
+          void this.log(
+            'error',
+            'command',
+            `Admin command ${cmd.type} failed: ${msg(err)}`,
+          );
+        }
+      }
+    })();
   }
 
   // ── hints ────────────────────────────────────────────────────────────────
@@ -719,6 +793,7 @@ export class SessionEngine {
     this.broadcastRuns();
     void this.log('info', 'event', `Event "${event.name}" started`, {
       eventId: event.id,
+      runId: run.runId,
     });
     try {
       await this.runSequence(event, depth, run, payload);
@@ -936,6 +1011,7 @@ export class SessionEngine {
           (perDevice = new Map<string, WireCommand>()),
         );
       perDevice.set(wire.id, wire);
+      this.trackWire(deviceId, wire);
       void this.log('info', 'command', `${label} sent to device`, {
         deviceId,
         commandId: wire.id,
@@ -1174,6 +1250,13 @@ export class SessionEngine {
     status: 'done' | 'failed',
   ): void {
     this.unacked.get(deviceId)?.delete(commandId);
+    // Playback over — except a looping BGM, whose 'done' fires on start and
+    // which keeps playing until stopped or replaced.
+    const media = this.playingMedia.get(commandId);
+    if (media && !(media.loop && status === 'done')) {
+      this.playingMedia.delete(commandId);
+      this.broadcastMedia();
+    }
     // Dialogue over (finished, skipped, or stopped): un-run line cues die with
     // it; a cue already mid-run finishes on its own (its go-ahead is ignored).
     this.pendingDialogueCues.delete(commandId);
@@ -1389,12 +1472,97 @@ export class SessionEngine {
     return { sessionId: this.id, runs: [...this.activeRuns.values()] };
   }
 
+  /** Snapshot of playing media/websites — the /admin connect dump and broadcasts. */
+  sessionMedia(): SessionMedia {
+    return {
+      sessionId: this.id,
+      playing: [...this.playingMedia.values()],
+      websites: [...this.deviceWebsites.values()],
+    };
+  }
+
+  /**
+   * Mirrors delivered wires into the playing-media view. Only called for
+   * online deliveries — an offline delivery is dropped, nothing will play.
+   */
+  private trackWire(deviceId: string, wire: WireCommand): void {
+    switch (wire.type) {
+      case 'play': {
+        // BGM/video/dialogue replace the previous playback of the same player
+        // on the device; SFX plays additively.
+        if (wire.channel !== 'sfx') {
+          for (const [id, entry] of this.playingMedia) {
+            if (
+              entry.deviceId === deviceId &&
+              entry.channel === wire.channel &&
+              entry.playerId === wire.playerId
+            ) {
+              this.playingMedia.delete(id);
+            }
+          }
+        }
+        this.playingMedia.set(wire.id, {
+          commandId: wire.id,
+          deviceId,
+          channel: wire.channel,
+          playerId: wire.playerId,
+          assetId: wire.assetId,
+          assetName: wire.assetName,
+          loop: wire.channel === 'bgm' && wire.loop,
+          startedAt: Date.now(),
+        });
+        break;
+      }
+      case 'stop': {
+        let changed = false;
+        for (const [id, entry] of this.playingMedia) {
+          if (
+            entry.deviceId === deviceId &&
+            entry.channel === wire.channel &&
+            (wire.playerId === null || entry.playerId === wire.playerId)
+          ) {
+            this.playingMedia.delete(id);
+            changed = true;
+          }
+        }
+        if (!changed) return;
+        break;
+      }
+      case 'navigate':
+        this.deviceWebsites.set(deviceId, {
+          deviceId,
+          websiteId: wire.websiteId,
+          url: wire.url,
+          startedAt: Date.now(),
+        });
+        break;
+      case 'reset': {
+        let changed = this.deviceWebsites.delete(deviceId);
+        for (const [id, entry] of this.playingMedia) {
+          if (entry.deviceId === deviceId) {
+            this.playingMedia.delete(id);
+            changed = true;
+          }
+        }
+        if (!changed) return;
+        break;
+      }
+      default:
+        return;
+    }
+    this.broadcastMedia();
+  }
+
   private broadcastState(): void {
     this.deps.transport().broadcastSessionState(this.sessionState());
   }
 
   private broadcastRuns(): void {
     this.deps.transport().broadcastSessionRuns(this.sessionRuns());
+  }
+
+  private broadcastMedia(): void {
+    this.deps.transport().broadcastSessionMedia(this.sessionMedia());
   }
 
   private log(

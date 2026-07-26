@@ -12,6 +12,7 @@ import {
   type DeviceStatus,
   type PlayerStatus,
   type SessionLogEntry,
+  type SessionMedia,
   type SessionNotification,
   type SessionRuns,
   type SessionState,
@@ -70,6 +71,9 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
     for (const runs of this.runtime.listSessionRuns()) {
       socket.emit(AdminEvents.sessionRuns, runs);
     }
+    for (const media of this.runtime.listSessionMedia()) {
+      socket.emit(AdminEvents.sessionMedia, media);
+    }
     for (const player of this.players.onlinePlayers()) {
       socket.emit(AdminEvents.playerStatus, player);
     }
@@ -109,6 +113,10 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
 
   broadcastSessionRuns(runs: SessionRuns): void {
     this.server.to(ADMINS_ROOM).emit(AdminEvents.sessionRuns, runs);
+  }
+
+  broadcastSessionMedia(media: SessionMedia): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.sessionMedia, media);
   }
 
   broadcastNotification(notification: SessionNotification): void {

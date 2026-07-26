@@ -10,12 +10,14 @@ import {
 } from '@nestjs/common';
 import {
   AdjustTimerInputSchema,
+  CommandSchema,
   CreateSessionInputSchema,
   ListSessionsQuerySchema,
   ManualTriggerInputSchema,
   PushHintInputSchema,
   SwitchPhaseInputSchema,
   type AdjustTimerInput,
+  type Command,
   type CreateSessionInput,
   type ListSessionsQuery,
   type ManualTriggerInput,
@@ -139,6 +141,32 @@ export class SessionsController {
   async resetDevices(@Param('id') id: string) {
     await this.sessionsService.get(id);
     await this.runtime.resetAllDevices(id);
+  }
+
+  /** In-flight event runs (empty when the session is not live). */
+  @Get(':id/runs')
+  async runs(@Param('id') id: string) {
+    await this.sessionsService.get(id);
+    return this.runtime.getSessionRuns(id);
+  }
+
+  /** Force-terminate one in-flight event run. */
+  @Post(':id/runs/:runId/abort')
+  @HttpCode(204)
+  async abortRun(@Param('id') id: string, @Param('runId') runId: string) {
+    await this.sessionsService.get(id);
+    this.runtime.abortRun(id, runId);
+  }
+
+  /** One-off operator command (operation console / media stop buttons). */
+  @Post(':id/command')
+  @HttpCode(204)
+  async runCommand(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(CommandSchema)) command: Command,
+  ) {
+    await this.sessionsService.get(id);
+    this.runtime.runCommand(id, command);
   }
 
   @Post(':id/hint')

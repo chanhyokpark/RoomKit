@@ -3,8 +3,10 @@ import { z } from 'zod';
 import {
   AdjustTimerInputSchema,
   AssetSchema,
+  CommandSchema,
   SessionLogEntrySchema,
   SessionResponseSchema,
+  SessionRunsSchema,
   SessionSchema,
   SessionSummarySchema,
 } from '@roomkit/shared';
@@ -122,6 +124,45 @@ export const sessionTools = [
           });
           return { ok: true };
       }
+    },
+  }),
+
+  defineTool({
+    name: 'run_session_command',
+    description:
+      'Run one sequence command against a live session, outside any event — the operation console\'s backend. Takes the same command JSON as an event sequence entry (see describe_commands), without the entry id. Fire-and-forget: the server accepts immediately and the outcome (resolution errors, delivery, acks) streams into the session log — poll get_session_logs. Allowed while paused or before start (operator override). Notable uses: stopBgm/stopSfx/stopVideo/stopDialogue force-stop playback so a sequence awaiting waitUntilEnd continues as if it ended normally; resetDevice clears a device (the way to close its website); playBgm/navigate/notify/eval for ad-hoc operation.',
+    inputSchema: z.object({ sessionId: z.uuid(), command: CommandSchema }),
+    handler: async ({ sessionId, command }, ctx) => {
+      await ctx.api.api(`/sessions/${sessionId}/command`, {
+        method: 'POST',
+        body: command,
+      });
+      return {
+        dispatched: command.type,
+        note: 'Poll get_session_logs to observe the outcome.',
+      };
+    },
+  }),
+
+  defineTool({
+    name: 'list_session_runs',
+    description:
+      'List a session\'s in-flight event runs (runId, event, current command position). Empty when nothing is running or the session ended. Use a runId with abort_session_run; the "Event ... started" log entry also carries it.',
+    inputSchema: z.object({ sessionId: z.uuid() }),
+    handler: ({ sessionId }, ctx) =>
+      ctx.api.api(`/sessions/${sessionId}/runs`, { schema: SessionRunsSchema }),
+  }),
+
+  defineTool({
+    name: 'abort_session_run',
+    description:
+      'Force-terminate one in-flight event run (runId from list_session_runs or the session log). A pending device ack or wait breaks immediately and the run\'s remaining commands never execute.',
+    inputSchema: z.object({ sessionId: z.uuid(), runId: z.uuid() }),
+    handler: async ({ sessionId, runId }, ctx) => {
+      await ctx.api.api(`/sessions/${sessionId}/runs/${runId}/abort`, {
+        method: 'POST',
+      });
+      return { aborted: runId };
     },
   }),
 

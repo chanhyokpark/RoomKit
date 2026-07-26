@@ -18,7 +18,9 @@ end, all through conversation.
   app needed. With a running player app it can also open real device
   windows and drive website tests.
 - **Operate sessions**: start/pause/end, switch phases, adjust the timer,
-  push hints, inspect logs and post-game summaries.
+  push hints, run one-off sequence commands (play/stop media, navigate,
+  eval, …), force-terminate stuck event runs, inspect logs and post-game
+  summaries.
 
 ## One-time setup
 

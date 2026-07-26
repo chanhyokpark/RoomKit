@@ -4,6 +4,7 @@ import {
 	SessionSchema,
 	SessionSummarySchema,
 	type AdjustTimerInput,
+	type Command,
 	type CreateSessionInput,
 	type PushHintInput,
 	type Session,
@@ -93,4 +94,17 @@ export function resetDevices(id: string): Promise<void> {
 
 export function pushHint(id: string, input: PushHintInput): Promise<void> {
 	return api(`/sessions/${id}/hint`, { method: 'POST', body: input });
+}
+
+/** Force-terminate one in-flight event run. */
+export function abortRun(id: string, runId: string): Promise<void> {
+	return api(`/sessions/${id}/runs/${runId}/abort`, { method: 'POST' });
+}
+
+/**
+ * One-off operator command (operation console / media stop buttons).
+ * Fire-and-forget on the server — outcomes stream in via the session log.
+ */
+export function runSessionCommand(id: string, command: Command): Promise<void> {
+	return api(`/sessions/${id}/command`, { method: 'POST', body: command });
 }

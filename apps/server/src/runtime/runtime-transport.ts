@@ -2,6 +2,7 @@ import type {
   DeviceStatus,
   HintShow,
   PlaybackProgress,
+  SessionMedia,
   SessionNotification,
   SessionRuns,
   SessionState,
@@ -38,6 +39,8 @@ export interface RuntimeTransport {
   /** Broadcast to /admin. */
   broadcastSessionRuns(runs: SessionRuns): void;
   /** Broadcast to /admin. */
+  broadcastSessionMedia(media: SessionMedia): void;
+  /** Broadcast to /admin. */
   broadcastNotification(notification: SessionNotification): void;
 }
 
@@ -50,5 +53,6 @@ export const NOOP_TRANSPORT: RuntimeTransport = {
   broadcastLog: () => {},
   broadcastDeviceStatus: () => {},
   broadcastSessionRuns: () => {},
+  broadcastSessionMedia: () => {},
   broadcastNotification: () => {},
 };

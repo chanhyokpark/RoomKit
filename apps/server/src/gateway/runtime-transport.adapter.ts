@@ -4,6 +4,7 @@ import type {
   HintShow,
   PlaybackProgress,
   SessionLogEntry,
+  SessionMedia,
   SessionNotification,
   SessionRuns,
   SessionState,
@@ -83,6 +84,10 @@ export class RuntimeTransportAdapter
 
   broadcastSessionRuns(runs: SessionRuns): void {
     this.adminGateway.broadcastSessionRuns(runs);
+  }
+
+  broadcastSessionMedia(media: SessionMedia): void {
+    this.adminGateway.broadcastSessionMedia(media);
   }
 
   broadcastNotification(notification: SessionNotification): void {

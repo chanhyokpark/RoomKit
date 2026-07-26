@@ -11,12 +11,14 @@ import type { Session } from '@prisma/client';
 import type {
   Ack,
   AdjustTimerInput,
+  Command,
   HintError,
   HintNext,
   HintShow,
   HintSubmit,
   PlaybackProgress,
   PushHintInput,
+  SessionMedia,
   SessionRuns,
   SessionState,
   Trigger,
@@ -139,6 +141,16 @@ export class SessionRuntimeService
     await this.wrapAsync(() => this.getEngine(sessionId).resetAllDevices());
   }
 
+  /** REST forced termination of one in-flight event run. */
+  abortRun(sessionId: string, runId: string): void {
+    this.wrap(() => this.getEngine(sessionId).abortRun(runId));
+  }
+
+  /** REST one-off operator command (operation console / media stop buttons). */
+  runCommand(sessionId: string, cmd: Command): void {
+    this.wrap(() => this.getEngine(sessionId).runAdminCommand(cmd));
+  }
+
   /** REST admin hint push. */
   async pushHint(sessionId: string, input: PushHintInput): Promise<void> {
     await this.wrapAsync(() =>
@@ -216,6 +228,13 @@ export class SessionRuntimeService
     return this.engines.get(sessionId)?.sessionState() ?? null;
   }
 
+  /** In-flight event runs for one session (empty when not live). */
+  getSessionRuns(sessionId: string): SessionRuns {
+    return (
+      this.engines.get(sessionId)?.sessionRuns() ?? { sessionId, runs: [] }
+    );
+  }
+
   /** All live session states — the /admin connect dump. */
   listSessionStates(): SessionState[] {
     return [...this.engines.values()].map((e) => e.sessionState());
@@ -224,6 +243,11 @@ export class SessionRuntimeService
   /** All live sessions' running events — the /admin connect dump. */
   listSessionRuns(): SessionRuns[] {
     return [...this.engines.values()].map((e) => e.sessionRuns());
+  }
+
+  /** All live sessions' playing media — the /admin connect dump. */
+  listSessionMedia(): SessionMedia[] {
+    return [...this.engines.values()].map((e) => e.sessionMedia());
   }
 
   isLive(sessionId: string): boolean {

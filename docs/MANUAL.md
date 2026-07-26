@@ -304,10 +304,10 @@ Everything live happens in **운영**: a session list on the left, the dashboard
 - **페이즈** — current phase, forced **전환** to any phase (runs leave/enter hooks, confirmed), and **재시작** (re-fires the current phase's leave + enter hooks). A restart also clears the phase's **1회만 실행** records and **aborts the phase's in-flight event runs** — including runs blocked on a device ack (e.g. a device that died mid-sequence) — so the phase re-enters from a clean slate; the aborted run never executes its remaining commands.
 - **수동 이벤트** — one button per event with **수동 실행 허용**, grouped **현재 페이즈** / **공통** / **다른 페이즈** (out-of-phase buttons are disabled).
 - **힌트 전송** — pick a hint (`{코드} · {이름}`) and a step, **전송** pushes it to the hint device — the operator-side override of the code-entry flow. Warns if no device is flagged 힌트 장치.
-- **디바이스** — per-device **온라인**/**오프라인** status (with a **힌트** badge on hint devices) and **모든 디바이스 초기화** (bulk reset, confirmed).
-- **실행 중 이벤트** — live view of in-flight sequences: event name, `current/total` command position and the running command's name.
+- **디바이스** — per-device **온라인**/**오프라인** status (with a **힌트** badge on hint devices) and **모든 디바이스 초기화** (bulk reset, confirmed). Under each device, everything currently playing on it is listed — the current website plus BGM / SFX / dialogue / video — each with a ✕ force-stop button. Stopping media sends the channel's stop command, so the device acks the playback as finished: a sequence waiting on **끝날 때까지 대기** continues as if it ended normally. Stopping the website resets that device (there is no narrower "close website" wire).
+- **실행 중 이벤트** — live view of in-flight sequences: event name, `current/total` command position and the running command's name. Each run has a ✕ button that force-terminates it: a pending device ack or 대기 is broken immediately and the run's remaining commands never execute (same mechanism as a phase restart abort).
 - **테스트 코드** (test sessions only) — the issued codes with **코드 복사**.
-- **로그** — the live session log (kinds: 세션/페이즈/타이머/트리거/이벤트/커맨드/eval/디바이스/힌트), also queryable after the fact via the REST API.
+- **로그** — the live session log (kinds: 세션/페이즈/타이머/트리거/이벤트/커맨드/eval/디바이스/힌트), also queryable after the fact via the REST API. The panel's bottom row is a command input — the operation console (§5.5).
 - **세션 결과** (ended sessions only) — the post-game summary: the verdict banner (**테마 종료 — 판정: 성공/실패**), total play time, remaining/overtime, hint usage (including operator pushes), pause count, a per-phase duration chart (**페이즈별 소요 시간**), the hint history (**힌트 사용 내역**), and operator interventions (**운영 개입** — phase restarts, timer adjustments). Also available via `GET /api/sessions/:id/summary`.
 
 Toasts from the **알림 보내기** command appear on this screen. A 테마 종료 command ends the session on its own (no operator action needed); the verdict then appears in the **세션 결과** card.
@@ -340,6 +340,47 @@ Each device runs in its own **stage window**, so several devices can run on one 
 2. Start the Player app, set the server URL, note the 플레이어 이름.
 3. In 운영: **테스트 세션 만들기** → **연결된 플레이어** → pick the player → **만들기**. Stage windows open by themselves.
 4. **세션 시작**. Watch the log panel and the stage windows; use the test overlay's 트리거 input to fire device-trigger events and skip buttons to fast-forward.
+
+### 5.5 The operation console
+
+The input row at the bottom of the log panel runs one-off commands against the selected session — every command from the editor palette (§4.4) plus local lookups, without authoring an event. Type `help` for the full syntax; ↑/↓ recall history. Local output (help, lists, errors) is interleaved into the log stream; session commands report through the server log like any sequence command.
+
+Rules:
+
+- Assets are referenced **by name** (or id). Partial names match when unambiguous; quote names containing spaces (`"메인 테마"`).
+- Where a play command takes a player and the theme has exactly one 플레이어 asset, it can be omitted.
+- Durations accept `1.5s`, `500ms`, `2m`; a bare number means seconds.
+- Commands run even while the session is paused or not yet started (operator override — a sequence would wait at the pause gate instead).
+
+| Input | Runs |
+|---|---|
+| `help` | Print the command reference. |
+| `list devices\|players\|events\|phases\|hints\|bgm\|sfx\|video\|dialogues\|websites\|messages\|assets` | Local listing with per-kind detail — devices show online status, events show their trigger/phase, hints show code and step count. |
+| `playBgm <bgm> [<player>] [once] [wait]` | BGM 재생 — loops by default; `once` disables looping, `wait` sets 끝날 때까지 대기. |
+| `playSfx <sfx> [<player>] [wait]` · `playVideo <video> [<player>] [wait]` · `playDialogue <dialogue> [<player>] [wait]` | The corresponding play command. |
+| `stopBgm` / `stopSfx` / `stopVideo` / `stopDialogue` `[<player>\|all]` | Stop the channel — on every player when the player is omitted or `all`. |
+| `navigate <device> <website> [key=value ...]` | 웹사이트 이동 with optional query params. |
+| `sendMessage <device> <message> [{"key":"value"}]` | 메시지 전송 — the trailing JSON object supplies the field values. |
+| `resetDevice <device>` · `resetAllDevices` | Device reset. |
+| `showHintCode <hint> <device>` · `hideHintCode [<device>\|all]` | Hint-code overlay. |
+| `switchPhase <phase>` · `callEvent <event> [wait]` | Phase switch / run an event's sequence. |
+| `wait <duration>` | Server-side wait (rarely useful standalone). |
+| `adjustTimer +30s\|-1m\|pause\|resume` | Timer adjustment. |
+| `endTheme success\|fail` | Game over with the given verdict. |
+| `notify <message>` | Toast on the operation screen. |
+| `eval <code>` | Run code in the eval sandbox (§4.5); everything after `eval` is passed verbatim. |
+
+Examples:
+
+```
+list devices
+playBgm 오프닝              # single-player theme: player omitted
+playSfx 효과음A 메인플레이어
+navigate 태블릿 안내페이지 mode=dark
+callEvent "문 열림 연출" wait
+adjustTimer +5m
+eval ctx.vars.keys = 3; ctx.notify('열쇠 지급됨')
+```
 
 ---
 
@@ -599,11 +640,11 @@ All routes under `/api`, JWT Bearer auth except where marked public. Log in with
 | Zip imports | `POST /themes/:themeId/imports/:kind` (bgm/sfx/dialogue/video), `POST /themes/:themeId/imports/site` |
 | Hosted sites | `GET /sites/:assetId` and `GET /sites/:assetId/*` (public) |
 | Media | `GET /media/:assetId` (public — 이미지/파일 assets, §4.1) |
-| Sessions | `GET/POST /sessions`, `GET/DELETE /sessions/:id`, `POST /sessions/:id/start·pause·resume·end·timer·phase·phase/restart·trigger·reset-devices·hint`, `GET /sessions/:id/summary` (post-game summary; 409 until ended) |
+| Sessions | `GET/POST /sessions`, `GET/DELETE /sessions/:id`, `POST /sessions/:id/start·pause·resume·end·timer·phase·phase/restart·trigger·reset-devices·hint`, `POST /sessions/:id/command` (one-off operator command — a §4.4 command JSON, fire-and-forget; the console's backend), `GET /sessions/:id/runs` (in-flight event runs), `POST /sessions/:id/runs/:runId/abort` (force-terminate an in-flight event run), `GET /sessions/:id/summary` (post-game summary; 409 until ended) |
 | Logs | `GET /sessions/:id/logs` |
 | Website tests | `GET/POST /website-test`, `GET/PATCH/DELETE /website-test/:runId`, `GET /website-test/:runId/activity`, `POST /website-test/:runId/command·run-event·cancel-run·reload·timer` (§6.5) |
 
-Session *control* is REST; the `/admin` socket namespace is broadcast-only (session state, logs, device/player status, running events, notifications, website-test state/activity). The `/player` namespace registers Player apps (the **연결된 플레이어** list) and pushes window-open commands to them: `test:start` for test sessions, `websiteTest:start`/`websiteTest:stop` for website tests.
+Session *control* is REST; the `/admin` socket namespace is broadcast-only (session state, logs, device/player status, running events, playing media, notifications, website-test state/activity). The `/player` namespace registers Player apps (the **연결된 플레이어** list) and pushes window-open commands to them: `test:start` for test sessions, `websiteTest:start`/`websiteTest:stop` for website tests.
 
 ### 8.2 Device wire protocol (socket.io `/device`)
 

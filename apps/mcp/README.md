@@ -64,8 +64,10 @@ and `@roomkit/shared` built).
   schema validation, dangling-ref warnings, preserves trigger config),
   `validate_sequence`.
 - **Sessions**: `create_session` (auto-generates test device codes),
-  `control_session`, `list_sessions`, `get_session`, `get_session_summary`,
-  `get_session_logs`, `delete_session`.
+  `control_session`, `run_session_command` (one-off sequence command — the
+  operation console's backend), `list_session_runs`, `abort_session_run`,
+  `list_sessions`, `get_session`, `get_session_summary`, `get_session_logs`,
+  `delete_session`.
 - **Website test**: `create_website_test`, `list_website_tests`,
   `control_website_test`, `get_website_test_activity`.
 - **Virtual devices**: `connect_virtual_devices`, `get_virtual_device_state`,

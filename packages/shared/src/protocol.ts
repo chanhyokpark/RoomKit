@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { JsonValueSchema } from './json.js';
+import { PlayChannelSchema } from './wire.js';
 
 /**
  * Socket.io wire contract for M2+. Only names and payload shapes live here —
@@ -60,6 +61,8 @@ export const AdminEvents = {
   deviceStatus: 'device:status',
   /** Live snapshot of a session's running event sequences. */
   sessionRuns: 'session:runs',
+  /** Live snapshot of a session's playing media / device websites. */
+  sessionMedia: 'session:media',
   /** A player launcher connected or disconnected. */
   playerStatus: 'player:status',
   /** Operator notification pushed by the `notify` sequence command. */
@@ -278,6 +281,46 @@ export const SessionRunsSchema = z.object({
   runs: z.array(RunningEventSchema),
 });
 export type SessionRuns = z.infer<typeof SessionRunsSchema>;
+
+/**
+ * One media playback the engine believes is in flight on a device. Tracked
+ * from the play wire's delivery until its ack (looping BGM: until stopped or
+ * replaced — its ack fires on playback start). The operator stops it with the
+ * matching stop command; the device then acks the play wire 'done', so a
+ * sequence awaiting `waitUntilEnd` continues as if playback ended normally.
+ */
+export const PlayingMediaSchema = z.object({
+  /** The play wire's delivery id — the ack that ends this entry. */
+  commandId: z.uuid(),
+  deviceId: z.uuid(),
+  channel: PlayChannelSchema,
+  playerId: z.uuid(),
+  assetId: z.uuid(),
+  assetName: z.string(),
+  /** BGM only; a looping track never acks 'finished', so it stays until stopped. */
+  loop: z.boolean().default(false),
+  /** Epoch ms when the play wire was delivered. */
+  startedAt: z.number().int().nonnegative(),
+});
+export type PlayingMedia = z.infer<typeof PlayingMediaSchema>;
+
+/** The website a device was last navigated to (cleared by a device reset). */
+export const DeviceWebsiteSchema = z.object({
+  deviceId: z.uuid(),
+  websiteId: z.uuid(),
+  url: z.url(),
+  /** Epoch ms of the navigate delivery. */
+  startedAt: z.number().int().nonnegative(),
+});
+export type DeviceWebsite = z.infer<typeof DeviceWebsiteSchema>;
+
+/** /admin `session:media` payload — full snapshot, replaces the previous one. */
+export const SessionMediaSchema = z.object({
+  sessionId: z.uuid(),
+  playing: z.array(PlayingMediaSchema),
+  websites: z.array(DeviceWebsiteSchema),
+});
+export type SessionMedia = z.infer<typeof SessionMediaSchema>;
 
 /** /admin connection auth payload (admin JWT). */
 export const AdminAuthSchema = z.object({ token: z.string().min(1) });

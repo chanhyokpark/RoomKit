@@ -10,13 +10,12 @@
 	import { useOperationData, type SessionView } from './operation-data.svelte';
 	import DeviceStatusCard from './device-status-card.svelte';
 	import EventTriggerCard from './event-trigger-card.svelte';
-	import HintPushCard from './hint-push-card.svelte';
-	import LogPanel from './log-panel.svelte';
+	// Hint push is hidden for now — restore the import and the card below to bring it back.
+	// import HintPushCard from './hint-push-card.svelte';
 	import PhaseCard from './phase-card.svelte';
 	import RunningEventsCard from './running-events-card.svelte';
 	import SessionSummaryCard from './session-summary-card.svelte';
 	import StartSessionDialog from './start-session-dialog.svelte';
-	import TestCodesCard from './test-codes-card.svelte';
 	import TimerCard from './timer-card.svelte';
 	import { toastApiError } from '$lib/api/client';
 
@@ -119,13 +118,8 @@
 		<RunningEventsCard {session} />
 		<EventTriggerCard {session} disabled={gameDisabled} />
 		<DeviceStatusCard {session} disabled={busy || ended} />
-		<HintPushCard {session} disabled={gameDisabled} />
-		{#if session.mode === 'test'}
-			<TestCodesCard {session} />
-		{/if}
+		<!-- <HintPushCard {session} disabled={gameDisabled} /> -->
 	</div>
-
-	<LogPanel />
 </div>
 
 <StartSessionDialog bind:open={startDialogOpen} {session} />
