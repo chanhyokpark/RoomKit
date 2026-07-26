@@ -7,6 +7,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { ApiError } from '$lib/api/client';
+	import logo from '$lib/assets/favicon.svg';
 	import { auth } from '$lib/stores/auth.svelte';
 
 	let id = $state('');
@@ -42,6 +43,7 @@
 <div class="flex min-h-svh items-center justify-center p-4">
 	<Card.Root class="w-full max-w-sm">
 		<Card.Header>
+			<img src={logo} alt="RoomKit" class="mb-2 size-12 rounded-xl" />
 			<Card.Title>RoomKit Studio</Card.Title>
 			<Card.Description>관리자 계정으로 로그인하세요.</Card.Description>
 		</Card.Header>

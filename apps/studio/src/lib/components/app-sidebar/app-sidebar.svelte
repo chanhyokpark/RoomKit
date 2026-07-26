@@ -8,6 +8,7 @@
 	import MonitorPlayIcon from '@lucide/svelte/icons/monitor-play';
 	import WorkflowIcon from '@lucide/svelte/icons/workflow';
 	import * as Sidebar from '$lib/components/ui/sidebar';
+	import logo from '$lib/assets/favicon.svg';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { themesStore } from '$lib/stores/themes.svelte';
 	import ThemeSwitcher from './theme-switcher.svelte';
@@ -25,6 +26,13 @@
 
 <Sidebar.Root>
 	<Sidebar.Header>
+		<div class="flex items-center gap-2 px-2 py-1.5">
+			<img src={logo} alt="RoomKit" class="size-8 shrink-0 rounded-lg" />
+			<div class="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
+				<span class="text-sm font-semibold">RoomKit</span>
+				<span class="text-xs text-muted-foreground">Studio</span>
+			</div>
+		</div>
 		<ThemeSwitcher />
 	</Sidebar.Header>
 	<Sidebar.Content>

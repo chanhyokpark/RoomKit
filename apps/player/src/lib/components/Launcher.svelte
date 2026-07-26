@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import logo from '../assets/logo.svg';
 	import { config } from '../stores/config.svelte';
 	import { player } from '../stores/player.svelte';
 	import { openDeviceWindow } from '../windows';
@@ -41,11 +42,14 @@
 </script>
 
 <main class="mx-auto flex h-full max-w-2xl flex-col gap-6 overflow-y-auto p-8">
-	<header>
-		<h1 class="text-xl font-semibold">RoomKit Player</h1>
-		<p class="mt-1 text-sm text-neutral-400">
-			서버와 디바이스를 설정하고 창을 열어 시작하세요. 설정은 자동으로 저장됩니다.
-		</p>
+	<header class="flex items-center gap-3">
+		<img src={logo} alt="RoomKit" class="size-10 rounded-lg" />
+		<div>
+			<h1 class="text-xl font-semibold">RoomKit Player</h1>
+			<p class="mt-0.5 text-sm text-neutral-400">
+				서버와 디바이스를 설정하고 창을 열어 시작하세요. 설정은 자동으로 저장됩니다.
+			</p>
+		</div>
 	</header>
 
 	<label class="flex flex-col gap-1.5">
