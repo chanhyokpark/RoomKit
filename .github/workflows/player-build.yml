@@ -67,3 +67,84 @@ jobs:
             apps/player/src-tauri/target/release/bundle/nsis/*.exe
             apps/player/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
           if-no-files-found: error
+
+  build-android:
+    runs-on: ubuntu-22.04
+
+    env:
+      NDK_VERSION: 27.2.12479018
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager "ndk;${{ env.NDK_VERSION }}"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Real devices are arm64; add armv7-linux-androideabi (and --target
+          # armv7 below) if 32-bit tablets ever show up.
+          targets: aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/player/src-tauri
+          key: android
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Android project
+        # No-op once src-tauri/gen/android is committed.
+        run: |
+          if [ ! -d apps/player/src-tauri/gen/android ]; then
+            pnpm --filter player tauri android init
+          fi
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+
+      - name: Build APK
+        run: pnpm --filter player tauri android build --apk --target aarch64
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+
+      - name: Sign APK
+        # Stable release keystore from repo secrets — devices accept updates
+        # as long as the key stays the same.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          OUT=apps/player/src-tauri/gen/android/app/build/outputs/apk
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)"
+          UNSIGNED=$(find "$OUT" -name '*-unsigned.apk' -print -quit)
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" roomkit-player.apk
+          "$BUILD_TOOLS/apksigner" sign --ks release.keystore \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            roomkit-player.apk
+          rm release.keystore
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-android
+          path: roomkit-player.apk
+          if-no-files-found: error

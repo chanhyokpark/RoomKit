@@ -1,6 +1,28 @@
 import { vlog } from './log';
-import { isTauri } from './tauri';
+import { isMobile, isTauri } from './tauri';
 import type { DeviceEntry } from './stores/config.svelte';
+
+let mobileNavigated = false;
+
+/**
+ * Mobile builds host a single webview, so "opening a window" means navigating
+ * the launcher itself to the stage URL. One-shot: extra opens in the same
+ * batch (multi-device test start, "open all") are dropped — only one stage can
+ * exist, and the user closes the app to get back to the launcher.
+ */
+async function navigateSingleWindow(query: string): Promise<boolean> {
+	if (!(await isMobile())) return false;
+	if (mobileNavigated) {
+		vlog('windows', 'single-window mode: dropping extra open', query);
+		return true;
+	}
+	mobileNavigated = true;
+	const url = new URL(window.location.href);
+	url.search = query;
+	vlog('windows', 'single-window mode: navigating to stage', query);
+	window.location.replace(url.toString());
+	return true;
+}
 
 /**
  * One stage webview window per device entry — this is how several devices run
@@ -9,12 +31,14 @@ import type { DeviceEntry } from './stores/config.svelte';
  */
 export async function openDeviceWindow(device: DeviceEntry): Promise<void> {
 	vlog('windows', 'open device window', { id: device.id, label: device.label });
-	const url = `index.html?device=${encodeURIComponent(device.id)}`;
+	const query = `device=${encodeURIComponent(device.id)}`;
+	const url = `index.html?${query}`;
 	if (!isTauri()) {
 		// Browser dev harness: a plain tab.
-		window.open(`/?device=${encodeURIComponent(device.id)}`, `device-${device.id}`);
+		window.open(`/?${query}`, `device-${device.id}`);
 		return;
 	}
+	if (await navigateSingleWindow(query)) return;
 	const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
 	const label = `device-${device.id}`;
 	const existing = await WebviewWindow.getByLabel(label);
@@ -65,9 +89,9 @@ export async function openWebsiteTestWindow(
 	return openCodedWindow('wtest', runId, device);
 }
 
-/** Close a website test's window(s); no-op in the browser harness. */
+/** Close a website test's window(s); no-op in the browser harness and on mobile. */
 export async function closeWebsiteTestWindows(runId: string): Promise<void> {
-	if (!isTauri()) return;
+	if (!isTauri() || (await isMobile())) return;
 	const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
 	const suffix = `-${runId.slice(0, 8)}`;
 	for (const w of await WebviewWindow.getAll()) {
@@ -94,6 +118,7 @@ async function openCodedWindow(
 		window.open(`/?${query}`, `${prefix}-${device.deviceId}`);
 		return;
 	}
+	if (await navigateSingleWindow(query)) return;
 	const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
 	const windowLabel = `${prefix}-${device.deviceId}-${scopeId.slice(0, 8)}`;
 	for (const w of await WebviewWindow.getAll()) {

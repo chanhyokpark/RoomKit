@@ -11,3 +11,12 @@ export async function platformName(): Promise<string> {
 	const { platform } = await import('@tauri-apps/plugin-os');
 	return platform();
 }
+
+/**
+ * Mobile builds host exactly one webview — window management degrades to
+ * in-place navigation (see windows.ts).
+ */
+export async function isMobile(): Promise<boolean> {
+	const name = await platformName();
+	return name === 'android' || name === 'ios';
+}

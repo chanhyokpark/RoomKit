@@ -28,8 +28,17 @@ export default defineConfig({
 			}
 		})
 	],
-	// Tauri expects a fixed dev port (studio owns 5173/5174).
-	server: { port: 5175, strictPort: true },
+	// Tauri expects a fixed dev port (studio owns 5173/5174). For mobile dev
+	// the CLI exports TAURI_DEV_HOST — the server must listen on that address
+	// so the device/emulator can reach it (HMR gets its own port).
+	server: {
+		port: 5175,
+		strictPort: true,
+		host: process.env.TAURI_DEV_HOST || false,
+		hmr: process.env.TAURI_DEV_HOST
+			? { protocol: 'ws', host: process.env.TAURI_DEV_HOST, port: 5176 }
+			: undefined
+	},
 	clearScreen: false,
 	envPrefix: ['VITE_', 'TAURI_']
 });

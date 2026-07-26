@@ -3,7 +3,13 @@
 	import logo from '../assets/logo.svg';
 	import { config } from '../stores/config.svelte';
 	import { player } from '../stores/player.svelte';
+	import { isMobile } from '../tauri';
 	import { openDeviceWindow } from '../windows';
+
+	// Single-window platforms (Android): opening a device replaces the
+	// launcher, so batch-open is hidden and a notice explains the escape path.
+	let mobile = $state(false);
+	void isMobile().then((m) => (mobile = m));
 
 	// Settings persist to disk but the launcher still opens on every start —
 	// the operator explicitly opens device windows from here.
@@ -88,6 +94,13 @@
 		</span>
 	</label>
 
+	{#if mobile}
+		<p class="rounded-md border border-amber-900 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
+			모바일에서는 창을 하나만 열 수 있습니다. 디바이스를 열면 이 화면이 스테이지로 전환되며,
+			런처로 돌아오려면 앱을 완전히 종료했다가 다시 실행하세요.
+		</p>
+	{/if}
+
 	{#if player.lastTestStart}
 		<p class="rounded-md border border-emerald-900 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-300">
 			테스트 세션이 시작되어 디바이스 창 {player.lastTestStart.devices.length}개를 열었습니다.
@@ -107,13 +120,15 @@
 				>
 					추가
 				</button>
-				<button
-					class="rounded-md bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-40"
-					disabled={!config.devices.some((d) => d.deviceCode.trim())}
-					onclick={openAll}
-				>
-					모두 열기
-				</button>
+				{#if !mobile}
+					<button
+						class="rounded-md bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-40"
+						disabled={!config.devices.some((d) => d.deviceCode.trim())}
+						onclick={openAll}
+					>
+						모두 열기
+					</button>
+				{/if}
 			</div>
 		</div>
 
