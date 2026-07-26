@@ -13,17 +13,21 @@
       "require": "./dist/index.cjs"
     }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "prepare": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@roomkit/shared": "workspace:*",
     "socket.io-client": "^4.8.3",
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@roomkit/shared": "workspace:*",
     "tsup": "^8.5.0",
     "typescript": "^5.7.3"
   }

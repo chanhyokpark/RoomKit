@@ -11,6 +11,9 @@ export default defineConfig({
     // its external deps (zod) from ESM output.
     js: '#!/usr/bin/env node\nimport { createRequire as __createRequire } from "node:module";\nconst require = __createRequire(import.meta.url);',
   },
-  // Shared is a CJS workspace package; bundling it makes dist self-contained.
-  noExternal: ['@roomkit/shared'],
+  // Bundle every dependency so dist/index.js runs standalone (installable
+  // from git without a node_modules). ws's optional native addons stay
+  // external; its try/catch require falls back to the JS implementation.
+  noExternal: [/.*/],
+  external: ['bufferutil', 'utf-8-validate'],
 });

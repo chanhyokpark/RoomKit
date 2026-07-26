@@ -6,25 +6,27 @@
   "bin": {
     "roomkit-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "prepare": "tsup",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke": "tsx scripts/smoke.ts"
   },
-  "dependencies": {
+  "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@roomkit/shared": "workspace:*",
-    "mime-types": "^3.0.2",
-    "socket.io-client": "^4.8.3",
-    "zod": "^4.0.0"
-  },
-  "devDependencies": {
     "@types/mime-types": "^3.0.1",
+    "mime-types": "^3.0.2",
     "@types/node": "^22.10.0",
+    "socket.io-client": "^4.8.3",
     "tsup": "^8.5.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "zod": "^4.0.0"
   }
 }

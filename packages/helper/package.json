@@ -13,19 +13,23 @@
       "require": "./dist/index.cjs"
     }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "prepare": "tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@roomkit/shared": "workspace:*"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@roomkit/shared": "workspace:*",
     "tsup": "^8.5.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.4",
-    "zod": "^4.0.0"
+    "vitest": "^3.2.4"
   }
 }
