@@ -76,6 +76,8 @@ export interface RoomKitClientOptions {
 
 const FATAL_RETRY_DELAY_MS = 5000;
 const RESYNC_TIMEOUT_MS = 10_000;
+/** Event runs can be long (waits, videos) — the wait timeout is generous. */
+const TRIGGER_WAIT_TIMEOUT_MS = 600_000;
 
 export interface GetRemainingTimeOptions {
   /**
@@ -108,6 +110,12 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    * call `done()` before changing location (the socket unloads with the page).
    */
   navigate: [string, WireNavigate, DoneFn];
+  /**
+   * A sendMessage command's payload. Listeners may return a promise: when the
+   * command was sent with waitUntilEnd (`cmd.awaitHandled`), the ack — and the
+   * server sequence — waits until every listener's promise settles ('failed'
+   * if any rejected). Without the flag the ack is sent before listeners run.
+   */
   message: [Record<string, JsonValue>, WireMessage];
   reset: [WireReset];
   /**
@@ -300,6 +308,33 @@ export class RoomKitClient {
   }
 
   /**
+   * Report a game event and resolve once the server has completely finished
+   * every event run it started (immediately when nothing listens). A command
+   * failing inside a run does not reject — the run still finishes. Rejects
+   * when not connected, or when no ack arrives within `timeoutMs` (runs
+   * longer than that — or a server predating trigger acks — reject even
+   * though the runs themselves continue). Default 600000ms.
+   */
+  triggerAndWait(
+    event: string,
+    payload?: JsonValue,
+    timeoutMs = TRIGGER_WAIT_TIMEOUT_MS,
+  ): Promise<void> {
+    const socket = this.socket;
+    if (!socket) return Promise.reject(new Error('not connected'));
+    this.log('trigger (awaited)', event, payload);
+    return new Promise((resolve, reject) => {
+      socket
+        .timeout(timeoutMs)
+        .emit(DeviceEvents.trigger, { event, payload }, (err: Error | null) => {
+          if (err) return reject(new Error('trigger wait timed out'));
+          this.log('trigger finished', event);
+          resolve();
+        });
+    });
+  }
+
+  /**
    * Speaker-role dialogue: report that `lineIndex` started playing so the
    * server can relay subtitle sync to the screen device. With `waiting: true`
    * the speaker instead reports that it is holding before `lineIndex` (a
@@ -458,10 +493,25 @@ export class RoomKitClient {
         );
         break;
       }
-      case 'message':
-        this.ack(cmd.id, 'done');
-        this.emitter.emit('message', (cmd as WireMessage).payload, cmd as WireMessage);
+      case 'message': {
+        const msg = cmd as WireMessage;
+        if (!msg.awaitHandled) {
+          this.ack(cmd.id, 'done');
+          this.emitter.emit('message', msg.payload, msg);
+          break;
+        }
+        // Awaited message: the ack waits until every listener's returned
+        // promise settles; any rejection acks 'failed'. Sync listeners (and
+        // no listeners at all) settle immediately.
+        const results = this.emitter.emitCollect('message', msg.payload, msg);
+        void Promise.allSettled(
+          results.filter((r): r is Promise<unknown> => r instanceof Promise),
+        ).then((settled) => {
+          const failed = settled.some((s) => s.status === 'rejected');
+          this.ack(cmd.id, failed ? 'failed' : 'done');
+        });
         break;
+      }
       case 'reset':
         this.ack(cmd.id, 'done');
         this.emitter.emit('reset', cmd as WireReset);

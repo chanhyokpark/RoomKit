@@ -23,6 +23,7 @@ import {
   type HintShow,
   type PlaybackProgress,
   type SessionState,
+  type TriggerAck,
   type WireCommand,
 } from '@roomkit/shared';
 import type { DefaultEventsMap, Namespace } from 'socket.io';
@@ -317,25 +318,35 @@ export class DeviceGateway
     this.runtime.handleAck(attach.sessionId, attach.deviceId, parsed.data);
   }
 
+  /**
+   * Returned value = socket.io ack payload (only sent when the client
+   * requested one): every event run the trigger started has finished.
+   */
   @SubscribeMessage(DeviceEvents.trigger)
-  onTrigger(
+  async onTrigger(
     @ConnectedSocket() socket: DeviceSocket,
     @MessageBody() body: unknown,
-  ): void {
+  ): Promise<TriggerAck | undefined> {
     const attach = socket.data.attach;
-    if (!attach) return;
+    if (!attach) return undefined;
     const parsed = TriggerSchema.safeParse(body);
-    if (!parsed.success) return;
+    if (!parsed.success) return undefined;
     if (socket.data.websiteTest) {
-      // Website-test triggers are reported to studio, never executed.
-      void this.websiteTest.handleTrigger(attach.sessionId, parsed.data);
-      return;
+      // Website-test triggers are reported to studio, never executed — the
+      // ack is immediate, and reporting failures don't leave a waiter hanging.
+      try {
+        await this.websiteTest.handleTrigger(attach.sessionId, parsed.data);
+      } catch (err) {
+        this.logger.error(`website-test trigger failed: ${String(err)}`);
+      }
+      return { done: true };
     }
-    this.runtime.handleDeviceTrigger(
+    await this.runtime.handleDeviceTrigger(
       attach.sessionId,
       attach.deviceId,
       parsed.data,
     );
+    return { done: true };
   }
 
   @SubscribeMessage(DeviceEvents.progress)

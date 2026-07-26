@@ -35,22 +35,20 @@
 		onValueChange={(value) => (activeKind = value as AssetKind)}
 		class="min-w-0"
 	>
-		<div class="overflow-x-auto">
-			<Tabs.List>
-				{#each ASSET_KIND_GROUPS as group, groupIndex (group.label)}
-					{#if groupIndex > 0}
-						<div class="mx-1 h-4 w-px shrink-0 bg-border" role="separator"></div>
-					{/if}
-					{#each group.kinds as kind (kind)}
-						{@const meta = KIND_META[kind]}
-						<Tabs.Trigger value={kind}>
-							<meta.icon />
-							{meta.label}
-						</Tabs.Trigger>
-					{/each}
+		<Tabs.List class="flex-wrap justify-start rounded-2xl group-data-horizontal/tabs:h-auto">
+			{#each ASSET_KIND_GROUPS as group, groupIndex (group.label)}
+				{#if groupIndex > 0}
+					<div class="mx-1 h-4 w-px shrink-0 bg-border" role="separator"></div>
+				{/if}
+				{#each group.kinds as kind (kind)}
+					{@const meta = KIND_META[kind]}
+					<Tabs.Trigger value={kind}>
+						<meta.icon />
+						{meta.label}
+					</Tabs.Trigger>
 				{/each}
-			</Tabs.List>
-		</div>
+			{/each}
+		</Tabs.List>
 	</Tabs.Root>
 	<div class="flex flex-wrap items-center gap-2">
 		<Select.Root type="single" bind:value={tagId}>

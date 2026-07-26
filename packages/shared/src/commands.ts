@@ -88,6 +88,11 @@ const nonDialogueOptions = [
      * at resolve time; an exact-match template keeps the variable's JSON type.
      */
     values: z.record(z.string(), JsonValueSchema),
+    /**
+     * Await the device's message handlers before continuing: the ack is
+     * deferred until every `message` listener's returned promise settles.
+     */
+    waitUntilEnd: z.boolean().default(false),
   }),
   z.object({ type: z.literal('switchPhase'), phaseId: assetRef }),
   z.object({

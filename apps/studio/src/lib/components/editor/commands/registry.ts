@@ -97,7 +97,13 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	sendMessage: {
 		label: '메시지 전송',
 		icon: SendIcon,
-		create: () => ({ type: 'sendMessage', deviceId: null, messageId: null, values: {} })
+		create: () => ({
+			type: 'sendMessage',
+			deviceId: null,
+			messageId: null,
+			values: {},
+			waitUntilEnd: false
+		})
 	},
 	wait: {
 		label: '대기',

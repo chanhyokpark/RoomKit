@@ -37,7 +37,7 @@ This manual covers the whole system: concepts, setup, authoring, operation, and 
 | Part | What it is |
 |---|---|
 | `apps/server` | NestJS main server: REST API (`/api` prefix), Socket.io gateways, and the sequence runtime (event engine, countdown timer, eval sandbox). Postgres via Prisma; media on S3/MinIO. |
-| `apps/studio` | SvelteKit SPA for the admin. Three workspaces per theme: **애셋** (asset management), **에디터** (event/sequence authoring), **운영** (live session operation). |
+| `apps/studio` | SvelteKit SPA for the admin. Four workspaces per theme: **애셋** (asset management), **에디터** (event/sequence authoring), **운영** (live session operation), **웹 테스트** (website test harness, §6.5). |
 | `apps/player` | Tauri desktop app for in-room devices. A launcher window opens stage windows (one per device) that play audio/video/subtitles and embed websites. |
 | `@roomkit/client` | TypeScript library any device uses to connect to the server directly over Socket.io. The Player is built on it. Workspace-only package. |
 | `@roomkit/helper` | Tiny (~KB) script embedded in websites shown *inside the Player's iframe*. Talks to the Player via `postMessage` — no server connection of its own. |
@@ -70,7 +70,7 @@ This manual covers the whole system: concepts, setup, authoring, operation, and 
 5. The operator watches logs, device status, and running events live; can trigger manual events, switch phases, adjust the timer, and push hints.
 6. A **테마 종료** command records the verdict (성공/실패) and ends the session; between teams the operator starts a fresh session (with an optional bulk device reset).
 
-Delivery is at-least-once: every wire command has a UUID; unacked commands are redelivered on reconnect and clients dedupe by id. Offline devices don't stall the game — the send is logged as failed and the sequence continues (waited commands time out after 15 minutes).
+Delivery is at-least-once: every wire command has a UUID; unacked commands are redelivered on reconnect and clients dedupe by id. Offline devices don't stall the game — a send to an offline device is logged as failed and the sequence continues immediately, even for waited commands; a command delivered to an online device that never acks times out after 15 minutes.
 
 ---
 
@@ -151,7 +151,7 @@ The browser harness has no native asset cache or kiosk lock — media streams fr
 
 Open Studio → `/login`. Enter the admin **아이디** and **비밀번호** (from the server env) and press **로그인**.
 
-The sidebar has the theme switcher on top and the **메뉴**: **애셋**, **에디터**, **운영** — the three workspaces of the current theme. **로그아웃** is at the bottom.
+The sidebar has the theme switcher on top and the **메뉴**: **애셋**, **에디터**, **운영**, **웹 테스트** — the four workspaces of the current theme. **로그아웃** is at the bottom.
 
 The theme switcher button shows the current theme and its time limit (**제한 시간 N분** or **타이머 없음**). Its dropdown:
 
@@ -175,7 +175,7 @@ The asset page is the kind-tab strip on top, asset list below, and an edit panel
 - **Kind tabs**, grouped 장치 · 미디어 · 콘텐츠 · 진행: **장치**, **플레이어** | **BGM**, **효과음**, **대사**, **비디오**, **이미지**, **파일** | **웹사이트**, **메시지**, **힌트** | **페이즈**, **이벤트**.
 - **태그 필터** (default **모든 태그**) narrows the list; **태그 관리** opens the tag dialog (create with color + name, rename/recolor/delete inline).
 - **새 {kind}** (e.g. **새 BGM**, **새 대사**) creates an asset; every asset row/card has a **⋯** menu with **수정** and **삭제**.
-- Media kinds render as cards (BGM/효과음 cards have an inline play button; 비디오 opens a preview); other kinds render as tables (**이름**, **코드**, **정보**, **태그**).
+- 장치/플레이어/BGM/효과음/비디오/이미지/파일 render as cards (BGM/효과음 cards have an inline play button; 비디오 opens a preview); the remaining kinds (대사, 웹사이트, 메시지, 힌트, 페이즈, 이벤트) render as tables (**이름**, **코드**, **정보**, **태그**).
 - **ZIP 업로드** appears for bulk-uploadable kinds — see §4.2.
 
 Common form fields for every kind: **이름** (required), **설명** (optional note), **태그**, and — for 장치/힌트 — **코드** (hint code placeholder: **비워 두면 4자리 자동 생성**). **저장** / **취소** to commit.
@@ -185,7 +185,7 @@ Per-kind fields:
 | Kind | Fields |
 |---|---|
 | **장치** (device) | **코드** (theme-unique; devices connect with it), **표시 이름**, **힌트 장치** switch (this device runs the hint code-entry UI), **힌트 코드 CSS** (styles the default `.rk-hint-code` overlay shown by the **힌트 코드 표시** command). |
-| **플레이어** (player) | **스피커 장치**, **스크린 장치**, **자막 CSS** (applied to the default `.rk-subtitle` subtitle overlay). |
+| **플레이어** (player) | **스피커 장치**, **스크린 장치**, **대사 중 BGM 볼륨 (%)** / **효과음 중 BGM 볼륨 (%)** (BGM ducking — the BGM volume while dialogue/SFX plays, 0–100; empty = no ducking), **자막 CSS** (applied to the default `.rk-subtitle` subtitle overlay). |
 | **BGM** | **파일**, **재생 시간 (ms)** (placeholder duration when fileless), **페이드 인 (ms)**, **페이드 아웃 (ms)**. |
 | **효과음** (SFX) | **파일**, **재생 시간 (ms)**. |
 | **비디오** (video) | **파일**, **재생 시간 (ms)**, **전체 화면** switch — turn it off to place the video surface at an **X/Y/너비/높이** rect (percent of the screen, with a mini placement preview), **파라미터 (JSON)** (free-form JSON forwarded with the play data when a website renders the video — see §6). |
@@ -219,6 +219,7 @@ The editor is phase tabs on top (**공통** first, then each phase; **페이즈 
   - **시스템 트리거** — pick a **시스템 훅**: **세션 시작** (`session:start`), **페이즈 시작** (`phase:enter`), **페이즈 종료** (`phase:leave`), **타이머 만료** (`timer:expired`). Phase hooks belong to a phase; starting a session also fires 페이즈 시작 for the initial phase.
 - **수동 실행 허용** — also expose this event as a button on the operation screen (any trigger kind).
 - **재진입 허용** — allow re-triggering while the event is already running (blocked by default). Sequences of *different* events always run in parallel.
+- **1회만 실행** — once run, the event won't run again in the same session. Restarting a phase (**재시작**, §5.2) clears the run records of that phase's events.
 
 The sequence editor is a vertical command stack: add from the **커맨드 팔레트** (searchable, grouped **재생** / **장치** / **흐름** / **타이머** / **운영**), drag to reorder, and use the row menu (**위로**/**아래로**/**복제**/**삭제**). Edits autosave (**저장됨** / **저장 중** / **저장 실패** + **재시도**). Rows warn about dangling references (**삭제된 애셋을 참조합니다**) and missing params (**입력하지 않은 항목이 있습니다**) — the runtime skips (and logs) commands with null/dangling refs rather than failing the sequence.
 
@@ -230,18 +231,18 @@ Playback commands target a **플레이어** asset (speaker/screen pair); device 
 
 | Command (팔레트 name) | Group | Parameters | Behavior |
 |---|---|---|---|
-| **대사 재생** | 재생 | 대사, 플레이어, **끝날 때까지 대기** | Voice to the speaker device, per-line subtitles to the screen device — the default overlay styled by the player's 자막 CSS, or the embedded website when it has claimed subtitle rendering (§6). Line timing is synced from the speaker via progress relay. |
+| **대사 재생** | 재생 | 대사, 플레이어, **끝날 때까지 대기**, **라인 사이 커맨드** | Voice to the speaker device, per-line subtitles to the screen device — the default overlay styled by the player's 자막 CSS, or the embedded website when it has claimed subtitle rendering (§6). Line timing is synced from the speaker via progress relay. **라인 사이 커맨드** wedges a mini-sequence into the gap after a chosen line: the speaker holds before the next line, the cue commands run in order, then playback continues (**끝날 때까지 대기** spans cue time too). Cues are anchored to the line, so they survive reordering in the asset editor; a cue whose line was deleted (or is the last line) is skipped with a warning. |
 | **대사 정지** | 재생 | 플레이어, **모든 플레이어** | Stop dialogue on one player, or all. |
-| **효과음 재생** | 재생 | 효과음, 플레이어 | Fire-and-forget SFX (mixes over BGM/dialogue). |
+| **효과음 재생** | 재생 | 효과음, 플레이어, **끝날 때까지 대기** | SFX, mixed over BGM/dialogue. Fire-and-forget unless waited. |
 | **효과음 정지** | 재생 | 플레이어, **모든 플레이어** | |
 | **비디오 재생** | 재생 | 비디오, 플레이어, **끝날 때까지 대기** | Plays on the screen device — fullscreen, or at the video asset's placement rect. If the embedded website has claimed video rendering (§6), the Player shows no video element at all: the site plays the media itself (audio included) and reports the end of playback. |
 | **비디오 정지** | 재생 | 플레이어, **모든 플레이어** | |
-| **BGM 재생** | 재생 | BGM, 플레이어, **반복 재생** | Fade in/out follow the BGM *asset's* 페이드 인/아웃 settings. A looping BGM acks on start, so it never blocks. |
+| **BGM 재생** | 재생 | BGM, 플레이어, **반복 재생**, **끝날 때까지 대기** | Fade in/out follow the BGM *asset's* 페이드 인/아웃 settings. Non-looping BGM can be waited on; a looping BGM acks on start, so **끝날 때까지 대기** is unavailable while **반복 재생** is on. |
 | **BGM 정지** | 재생 | 플레이어, **모든 플레이어** | Applies the asset's fade-out. |
 | **장치 리셋** | 장치 | 장치 | Sends `reset` — the device returns to its initial state (Player: stops all playback, clears the stage). |
 | **모든 장치 리셋** | 장치 | — | Reset every device in the session. |
-| **웹사이트 이동** | 장치 | 장치, 웹사이트 | Navigates the device to the website (Player: shows it in the stage iframe). The device acks once the site actually loaded, so the next command can assume readiness. |
-| **메시지 전송** | 장치 | 장치, 메시지, values | Values are entered per the message asset's field schema; delivered to the device (Player relays it into the iframe for the helper). |
+| **웹사이트 이동** | 장치 | 장치, 웹사이트, **쿼리 파라미터** | Navigates the device to the website (Player: shows it in the stage iframe). Query params (key/value pairs, **쿼리 파라미터 추가**) are appended to the site URL; values support `{{vars.이름}}` / `{{payload.이름}}` interpolation (§4.5 session vars / trigger payload). The device acks once the site actually loaded, so the next command can assume readiness. |
+| **메시지 전송** | 장치 | 장치, 메시지, values, **끝날 때까지 대기** | Values are entered per the message asset's field schema; delivered to the device (Player relays it into the iframe for the helper). String values support `{{vars.이름}}` / `{{payload.이름}}` interpolation — a value that is exactly one template keeps the variable's JSON type (number, boolean, …). With **끝날 때까지 대기** the sequence waits until the site's `message` handlers finish — an async handler's returned promise gates the ack. |
 | **힌트 코드 표시** | 장치 | 힌트, 장치 | Shows the hint's entry code as an overlay on the device — the default overlay styled by the device's 힌트 코드 CSS, or the embedded website when it has claimed hint-code rendering (§6). |
 | **힌트 코드 숨김** | 장치 | 장치, **모든 장치** | Hides the overlay. |
 | **대기** | 흐름 | 시간 (ms) | Server-side timer; pauses together with session pause. |
@@ -249,7 +250,7 @@ Playback commands target a **플레이어** asset (speaker/screen pair); device 
 | **이벤트 호출** | 흐름 | 이벤트, **끝날 때까지 대기** | Runs another event's sequence (reuse). Fire-and-forget unless waited. Recursion depth capped at 8. |
 | **JavaScript 실행** | 흐름 | code | Runs in the server sandbox — see §4.5. Returning `false` stops the sequence (guard/branching). |
 | **테마 종료** | 흐름 | **판정** (성공/실패) | Game over: resets every device, records the verdict (shown on the operation screen), and ends the session. |
-| **타이머 조정** | 타이머 | **동작**: 시간 조정 (±ms) / 일시정지 / 재개 | Bonus/penalty time or pause/resume of the countdown. Adjusting below zero expires it. |
+| **타이머 조정** | 타이머 | **동작**: 시간 조정 (±ms) / 일시정지 / 재개 | Bonus/penalty time or pause/resume of the countdown. Adjusting a running timer below zero expires it; a paused timer is clamped just above zero instead and expires on resume. |
 | **알림 보내기** | 운영 | 메시지 | Shows a toast on the operation screen (e.g. "puzzle 3 solved — watch the door"). |
 
 ### 4.5 The eval sandbox (JavaScript 실행)
@@ -258,6 +259,7 @@ Code runs synchronously in a server-side `node:vm` context with a 1-second timeo
 
 ```js
 ctx.vars              // session variables (get/set; persisted, visible to parallel runs)
+ctx.payload           // the trigger payload of this run (read; null when none)
 ctx.phase             // current phase name, or null (read)
 ctx.trigger(name)     // fire an event (same admission rules as a device trigger)
 ctx.log(msg)          // write to the session log
@@ -291,7 +293,7 @@ Everything live happens in **운영**: a session list on the left, the dashboard
 - **프로덕션 세션 만들기** — creates an idle production session. Only one non-ended production session may exist per theme. Physical devices whose 코드 matches a device asset of the theme attach to it automatically — even *before* it exists, devices wait in a lobby and attach the moment the session is created.
 - **테스트 세션 만들기** — many can run concurrently. The dialog has two tabs:
   - **연결된 플레이어** — pick a Player app registered on the server (by its **플레이어 이름**). Codes are auto-generated per device and the Player's launcher opens all stage windows automatically. If empty: start the Player app and connect it to the server first.
-  - **직접 입력** — type a test code per device yourself (6 chars, alphabet without 0/1/l/o; the form pre-fills suggestions, persisted per theme). Give these codes to any client — Player launcher entries, `@roomkit/client` consumers, etc. Codes are freed when the session ends.
+  - **직접 입력** — type a test code per device yourself (6 chars, lowercase letters and digits excluding 0/1/i/l/o; the form pre-fills suggestions, persisted per theme). Give these codes to any client — Player launcher entries, `@roomkit/client` consumers, etc. Codes are freed when the session ends.
 - Sessions are created **idle** (**시작 전**) — devices can connect so you can verify their online status before starting.
 - **세션 시작** opens a confirm dialog (**세션을 시작할까요?**): it warns about offline devices (**오프라인 장치가 있습니다:** — **그래도 시작** to proceed anyway) and offers **시작 전 모든 디바이스 초기화**. Starting arms the timer and fires 세션 시작 + the initial 페이즈 시작.
 - **일시정지** / **재개** pause the whole session (timer, 대기 commands, playback state broadcast). **세션 종료** stops all running sequences, detaches devices, and frees test codes; ended sessions can't restart. Created/ended sessions can be deleted (**세션 삭제** — removes logs too).
@@ -306,15 +308,16 @@ Everything live happens in **운영**: a session list on the left, the dashboard
 - **실행 중 이벤트** — live view of in-flight sequences: event name, `current/total` command position and the running command's name.
 - **테스트 코드** (test sessions only) — the issued codes with **코드 복사**.
 - **로그** — the live session log (kinds: 세션/페이즈/타이머/트리거/이벤트/커맨드/eval/디바이스/힌트), also queryable after the fact via the REST API.
+- **세션 결과** (ended sessions only) — the post-game summary: the verdict banner (**테마 종료 — 판정: 성공/실패**), total play time, remaining/overtime, hint usage (including operator pushes), pause count, a per-phase duration chart (**페이즈별 소요 시간**), the hint history (**힌트 사용 내역**), and operator interventions (**운영 개입** — phase restarts, timer adjustments). Also available via `GET /api/sessions/:id/summary`.
 
-Toasts from the **알림 보내기** command appear on this screen. When a 테마 종료 command runs, the dashboard shows the verdict banner (**테마 종료 — 판정: 성공/실패**); the session stays live until the operator ends it.
+Toasts from the **알림 보내기** command appear on this screen. A 테마 종료 command ends the session on its own (no operator action needed); the verdict then appears in the **세션 결과** card.
 
 ### 5.3 Running devices with the Player app
 
 The Player (RoomKit Player) always opens its **launcher** window first:
 
 - **서버 URL** — the server origin (e.g. `http://localhost:3000`). Saved automatically (all settings persist to `config.json` in the app data dir — macOS: `~/Library/Application Support/app.roomkit.player/`).
-- **플레이어 이름** — how this machine appears in Studio's **연결된 플레이어** tab, with a live connection indicator (**서버에 연결됨** / **연결 중…** / **오프라인**). When Studio starts a test session targeting this player, device windows open automatically.
+- **플레이어 이름** — how this machine appears in Studio's **연결된 플레이어** tab, with a live connection indicator (**서버에 연결됨** / **연결 중…** / **오프라인**). A default name (`플레이어-XXXX`) and a stable player id are generated on first run. When Studio starts a test session (or a 웹 테스트, §6.5) targeting this player, device windows open automatically.
 - **디바이스** list — **추가** a row per device: **라벨**, **디바이스 코드** (production code or test code), **키오스크** checkbox. **열기** opens that device's stage window; **모두 열기** opens all.
 
 Each device runs in its own **stage window**, so several devices can run on one machine for testing. Stage windows:
@@ -329,7 +332,7 @@ Each device runs in its own **stage window**, so several devices can run on one 
 - A **트리거** row — type an event name (e.g. `door-open`) and **전송** to simulate a sensor/button; recent triggers become reusable chips.
 - Skip buttons for waited playback: **대사 건너뛰기 ⏭** and **영상 건너뛰기 ⏭** — stops the media and acks the command, so `끝날 때까지 대기` sequences advance immediately. Placeholder simulations are skippable too.
 
-**Kiosk mode** (the **키오스크** checkbox) is for production room devices: fullscreen, always-on-top, hidden cursor, close prevention, and browser-shortcut suppression (F5/F11/F12, Ctrl+R/W/P/F, devtools chords, context menu). Escape chord: **Ctrl+Shift+Alt+F12** → confirm **키오스크 잠금을 해제할까요?**. OS-level chords (Win key, Alt+Tab) cannot be blocked from an app — use Windows Assigned Access for a hard lock.
+**Kiosk mode** (the **키오스크** checkbox) is for production room devices: fullscreen, always-on-top, close prevention, and browser-shortcut suppression (F5/F11/F12, Ctrl+R/W/P/F, devtools chords). Escape chord: **Ctrl+Shift+Alt+F12** → confirm **키오스크 잠금을 해제할까요?**. Independent of the kiosk flag, production stage windows also suppress the context menu and hide the cursor while a video plays. OS-level chords (Win key, Alt+Tab) cannot be blocked from an app — use Windows Assigned Access for a hard lock.
 
 ### 5.4 A minimal test loop
 
@@ -342,13 +345,13 @@ Each device runs in its own **stage window**, so several devices can run on one 
 
 ## 6. Building a Website with the Helper Script
 
-Websites shown *inside the Player's iframe* (via the **웹사이트 이동** command) embed `@roomkit/helper`. The helper never opens its own connection — all traffic rides the Player's existing device connection over `postMessage`.
+Websites shown *inside the Player's iframe* (via the **웹사이트 이동** command) embed `@roomkit/helper`. The helper never opens its own connection — all traffic rides the Player's existing device connection over `postMessage`. This section is the tour; the full API and protocol reference is [HELPER.md](./HELPER.md).
 
 > If your site runs standalone (a regular browser, its own machine), it is a device in its own right: register a 장치 asset for it and use `@roomkit/client` (§7) instead. The helper is inert outside the Player — its messages go nowhere, silently.
 
 ### 6.1 Embedding
 
-Build the package (`pnpm --filter @roomkit/helper build`) and copy `packages/helper/dist/roomkit-helper.global.js` into your site (it's a self-contained ~2.5 KB IIFE that defines `window.RoomKitHelper`):
+Build the package (`pnpm --filter @roomkit/helper build`) and copy `packages/helper/dist/roomkit-helper.global.js` into your site (it's a self-contained ~5 KB IIFE that defines `window.RoomKitHelper`):
 
 ```html
 <script src="./roomkit-helper.global.js"></script>
@@ -359,7 +362,7 @@ Build the package (`pnpm --filter @roomkit/helper build`) and copy `packages/hel
 
 On construction the helper posts a `hello` to the parent; the Player buffers any outbound messages until then, so you never miss a message by loading late.
 
-The constructor also applies the Player's kiosk defaults inside the iframe: the context menu and text selection are disabled document-wide (`input`/`textarea` stay selectable). Pass `new RoomKitHelper({ lockdown: false })` to skip this while developing the site in a normal browser; `destroy()` reverts it.
+The constructor also applies the Player's kiosk defaults inside the iframe: the context menu and text selection are disabled document-wide (`input`/`textarea` stay selectable). In a test session the context menu stays available (for devtools); the Player reports the session mode to the helper, exposed as `rk.sessionMode` (`'production'` / `'test'`). Pass `new RoomKitHelper({ lockdown: false })` to skip the lockdown entirely while developing the site in a normal browser; `destroy()` reverts it.
 
 ### 6.2 API
 
@@ -369,6 +372,10 @@ const rk = new RoomKitHelper();
 // report a game event — fires 장치 트리거 events whose 트리거 이름 matches
 rk.trigger('door-open');
 rk.trigger('keypad', { digits: '0417' });          // optional JSON payload
+
+// same, but resolves once every event run the trigger started has fully
+// finished on the server (rejects on timeout — default 10 min — or offline)
+await rk.triggerAndWait('door-open');
 
 // receive 메시지 전송 payloads (values keyed by the message asset's field keys)
 rk.on('message', (payload, envelope) => {
@@ -393,10 +400,14 @@ rk.on('hintError', (err) => {
 const ms = await rk.getRemainingTime();
 await rk.getRemainingTime({ resync: true }); // re-sync with the server first
 
+// 'production' | 'test' — the session mode the Player reported (defaults to
+// 'production' until told otherwise)
+rk.sessionMode;
+
 rk.destroy();   // remove listeners; the instance is dead afterwards
 ```
 
-`on`/`off` are chainable. By default that is the entire surface — playback, navigation, and reset are handled by the Player around your iframe; the site only deals with triggers, messages, and hints. To take over on-screen rendering too, claim slots as below.
+`on`/`off` are chainable, and the `triggerAndWait`/`getRemainingTime` timeouts are tunable (`rk.triggerAndWait('x', payload, { timeoutMs })`, `rk.getRemainingTime({ timeoutMs })`). By default that is the entire surface — playback, navigation, and reset are handled by the Player around your iframe; the site only deals with triggers, messages, and hints. To take over on-screen rendering too, claim slots as below.
 
 ### 6.3 Rendering subtitles, hint codes, or video in the site
 
@@ -426,7 +437,7 @@ rk.on('hintCode', (h) => {
 // claimed video slot — the site plays the media itself, audio included
 rk.on('videoPlay', (v) => {
   // v: { commandId, assetName, url, durationMs, frame, params }
-  video.src = v.url;                        // presigned URL (time-limited)
+  video.src = v.url;                        // media URL (see note below)
   video.onended = () => rk.videoEnded(v.commandId);
   video.onerror = () => rk.videoError(v.commandId);
   video.play();
@@ -437,6 +448,7 @@ rk.on('videoStop', ({ commandId }) => video.pause());
 Notes:
 
 - **Claiming `video` is a contract**: the Player renders no video element at all, and the **비디오 재생** command's ack waits for your `videoEnded(commandId)` (or `videoError`). Forgetting it stalls every `끝날 때까지 대기` sequence on that video — the test overlay's skip button is the escape hatch. Placeholder (fileless) videos are the exception: `url` is `null`, the Player acks on its own `durationMs` timer, and the site may just render a placeholder.
+- `url` is served from the Player's local media cache when the file is cached (a loopback HTTP server on `127.0.0.1`, reachable from cross-origin iframes), falling back to the time-limited presigned URL otherwise — just assign it to `video.src` either way.
 - Claims are declared in the `hello` and **reset on navigation**: each page re-claims in its own constructor, and a page without claims restores the Player's default rendering.
 - On claiming, the current state is delivered immediately (e.g. a subtitle already on screen), so a late-loading page doesn't miss it.
 - `css`/`params` are forwarded verbatim (trusted admin input, like subtitle HTML). `params` is the free-form **파라미터 (JSON)** field on the 대사/힌트/비디오 asset — use it for per-asset options your renderer understands (speaker names, layouts, effects).
@@ -450,11 +462,25 @@ Create a 웹사이트 asset (§4.1):
 
 Then point a **웹사이트 이동** command at it. The device acks after the page loads, so a following command (say, 대사 재생 introducing the puzzle) starts only once the site is visible.
 
+### 6.5 Iterating on a site: the 웹 테스트 workspace
+
+The **웹 테스트** workspace (fourth sidebar menu item) exercises a website + helper integration without creating a session — nothing is saved, and the site's triggers are *reported, never executed*, so you can bang on a puzzle page without game logic firing.
+
+Setup: pick a connected **플레이어** and one of the theme's **장치** assets, enter any **웹사이트 URL** — a dev server like `localhost:5173` works, with HMR intact — or pick from the theme's website assets (**웹사이트 애셋에서 가져오기…**), then **테스트 시작**. The Player opens a dedicated stage window for the test; **장치 접속 코드 복사** copies the run's device code so any other client (a real device, `@roomkit/client`) can join instead. The run screen:
+
+- **Header** — the URL field with **이동** (re-point the window live), **사이트 새로고침**, a **시뮬레이션 페이즈** picker (used only for trigger-match display), and **종료**.
+- **수동 커맨드** — pick any command from the palette and **실행** it against the test device immediately. Device/player targets are pinned to the test device; commands that need a real session (웹사이트 이동, 대기, 페이즈 전환, 이벤트 호출, 테마 종료, 타이머 조정, JavaScript 실행, 알림 보내기) are excluded.
+- **이벤트 실행** — run a whole event's sequence; commands targeting other devices and flow commands are skipped and logged.
+- **타이머** — a simulated countdown (**타이머 설정 (분)**, pause/resume, adjust freely): the site's `getRemainingTime()` reads this value.
+- **활동 로그** — everything the site does: triggers (with the events they *would* match under the simulated phase — a matched event has a shortcut to run it), hint submissions, command acks.
+
+Runs are in-memory: a server restart clears them, and stale runs are swept after 12 hours.
+
 ---
 
 ## 7. Using @roomkit/client Directly
 
-`@roomkit/client` is how any custom device — a Raspberry Pi prop controller, a standalone kiosk website, a mobile app — connects to the server without the Player. It's a workspace package (`workspace:*` dependency, ESM + CJS); the Player itself is built on it, so its handling is the reference implementation.
+`@roomkit/client` is how any custom device — a Raspberry Pi prop controller, a standalone kiosk website, a mobile app — connects to the server without the Player. It's a workspace package (`workspace:*` dependency, ESM + CJS); the Player itself is built on it, so its handling is the reference implementation. This section is the tour; the full reference (per-channel playback contracts, line cues, dedupe/ack semantics) is [CLIENT.md](./CLIENT.md).
 
 ### 7.1 Connecting
 
@@ -483,6 +509,7 @@ Options:
 | `storage` | `localStorage` | Any `getItem/setItem/removeItem` store; no-op in Node. |
 | `retryOnFatalError` | `false` | `invalid_code` / `session_ended` normally stop the client with status `error`. With this on, it forgets any stored test code and re-polls with the configured code every `fatalRetryDelayMs` — so devices can boot before their session/code exists. |
 | `fatalRetryDelayMs` | `5000` | Delay between fatal-error retries. |
+| `debug` | `false` | Log the connection lifecycle, inbound events/commands, and outbound emits to the console (prefixed `[roomkit]`). |
 
 Connection lifecycle surfaces solely through the `status` event and the `rk.status` getter: `idle → connecting → connected / disconnected / error` (`detail` carries the connect-error reason). `rk.sessionState` holds the last session snapshot.
 
@@ -526,6 +553,10 @@ For dialogue on a split speaker/screen pair: the speaker calls `rk.sendProgress(
 // wire a sensor/button to a 장치 트리거 event
 gpio.on('pressed', () => rk.trigger('door-open'));
 
+// awaited variant — resolves once every event run the trigger started has
+// fully finished on the server (rejects on timeout, default 10 min)
+await rk.triggerAndWait('door-open');
+
 // hint UI — only meaningful on the 힌트 장치
 rk.submitHint('0417');
 rk.requestHintStep(hintId, step + 1);
@@ -538,7 +569,7 @@ rk.on('hintCode', (cmd) => cmd.code ? showCodeOverlay(cmd.code, cmd.css) : hideC
 // resync asks the server for a fresh snapshot first (best effort — falls
 // back to the local value when disconnected or on timeout).
 const ms = await rk.getRemainingTime();
-await rk.getRemainingTime({ resync: true });
+await rk.getRemainingTime({ resync: true }); // timeoutMs tunes the round-trip cap (default 10 s)
 
 // media manifest for pre-caching (presigned URLs, ~6h — re-call to refresh)
 const manifest = await rk.fetchAssetManifest();
@@ -566,15 +597,17 @@ All routes under `/api`, JWT Bearer auth except where marked public. Log in with
 | Tags | `GET/POST /themes/:themeId/tags`, `PATCH/DELETE /themes/:themeId/tags/:id` |
 | Uploads | `POST /themes/:themeId/uploads` (presign PUT → `{ key, url }`), `GET /files/url?key=` (presign GET) |
 | Zip imports | `POST /themes/:themeId/imports/:kind` (bgm/sfx/dialogue/video), `POST /themes/:themeId/imports/site` |
-| Hosted sites | `GET /sites/:assetId/*` (public) |
-| Sessions | `GET/POST /sessions`, `GET/DELETE /sessions/:id`, `POST /sessions/:id/start·pause·resume·end·timer·phase·phase/restart·trigger·reset-devices·hint` |
+| Hosted sites | `GET /sites/:assetId` and `GET /sites/:assetId/*` (public) |
+| Media | `GET /media/:assetId` (public — 이미지/파일 assets, §4.1) |
+| Sessions | `GET/POST /sessions`, `GET/DELETE /sessions/:id`, `POST /sessions/:id/start·pause·resume·end·timer·phase·phase/restart·trigger·reset-devices·hint`, `GET /sessions/:id/summary` (post-game summary; 409 until ended) |
 | Logs | `GET /sessions/:id/logs` |
+| Website tests | `GET/POST /website-test`, `GET/PATCH/DELETE /website-test/:runId`, `GET /website-test/:runId/activity`, `POST /website-test/:runId/command·run-event·cancel-run·reload·timer` (§6.5) |
 
-Session *control* is REST; the `/admin` socket namespace is broadcast-only (session state, logs, device/player status, running events, notifications).
+Session *control* is REST; the `/admin` socket namespace is broadcast-only (session state, logs, device/player status, running events, notifications, website-test state/activity). The `/player` namespace registers Player apps (the **연결된 플레이어** list) and pushes window-open commands to them: `test:start` for test sessions, `websiteTest:start`/`websiteTest:stop` for website tests.
 
 ### 8.2 Device wire protocol (socket.io `/device`)
 
-Connect with `auth: { deviceCode, deviceName? }`. Server→client: `welcome`, `command`, `session:state`, `hint:show`, `hint:error`, `progress`. Client→server: `ack { commandId, status: done|failed }`, `trigger { event, payload? }`, `progress { commandId, lineIndex }`, `hint:submit { code }`, `hint:next { hintId, step }`, and `assets:manifest` (ack-style request → manifest). Wire command types: `play` (channel bgm/sfx/dialogue/video), `stop`, `navigate`, `reset`, `message`, `hintCode`. Fatal connect errors: `invalid_code`, `session_ended`. All schemas live in `packages/shared/src` (`protocol.ts`, `wire.ts`, `commands.ts`, `helper.ts`).
+Connect with `auth: { deviceCode, deviceName? }`. Server→client: `welcome`, `command`, `session:state`, `hint:show`, `hint:error`, `progress`. Client→server: `ack { commandId, status: done|failed }`, `trigger { event, payload? }` (optional socket.io ack, answered once the event runs it started have finished), `progress { commandId, lineIndex }`, `hint:submit { code }`, `hint:next { hintId, step }`, `assets:manifest` (ack-style request → manifest), and `session:sync` (ack-style request → fresh session-state snapshot; backs `getRemainingTime({ resync: true })`). Wire command types: `play` (channel bgm/sfx/dialogue/video), `stop`, `navigate`, `reset`, `message`, `hintCode`. Fatal connect errors: `invalid_code`, `session_ended`. All schemas live in `packages/shared/src` (`protocol.ts`, `wire.ts`, `commands.ts`, `helper.ts`).
 
 ### 8.3 Troubleshooting
 

@@ -2,6 +2,7 @@ export {
   RoomKitHelper,
   type RoomKitHelperEvents,
   type RoomKitHelperOptions,
+  type TriggerAndWaitOptions,
 } from './helper.js';
 export type {
   HelperRenderClaims,

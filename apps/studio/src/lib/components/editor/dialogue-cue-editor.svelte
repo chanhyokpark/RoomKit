@@ -168,59 +168,48 @@
 
 {#if dialogue !== null}
 	<div class="mt-3 w-full">
-		<p class="text-xs font-medium">라인 사이 커맨드</p>
-		<p class="text-xs text-muted-foreground">
-			커맨드를 추가한 지점에서 대사가 잠시 멈추고, 커맨드가 순서대로 실행된 뒤 다음 라인이
-			재생됩니다.
-		</p>
-		{#if lines.length < 2}
-			<p class="mt-1 text-xs text-muted-foreground">
-				라인이 2개 이상인 대사에서만 사용할 수 있습니다.
-			</p>
-		{:else}
-			<div class="mt-2 flex flex-col gap-1 rounded-lg border bg-muted/30 p-2">
-				{#each lines as line, index (line.id)}
-					{@const cue = cueFor(line.id)}
-					<div class="flex min-w-0 items-center gap-2">
-						<span class="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-							{index + 1}
-						</span>
-						<span class="truncate text-xs text-muted-foreground">{lineLabel(line, index)}</span>
-					</div>
-					{#if index < lines.length - 1}
-						<div class="mb-1 ml-7 flex flex-col gap-1.5">
-							{#if cue && cue.sequence.length > 0}
-								<div class="flex items-start gap-1.5">
-									<CornerDownRightIcon class="mt-2 size-3.5 shrink-0 text-muted-foreground" />
-									<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-										{@render cueCommands(cue)}
-										<Button
-											variant="ghost"
-											size="sm"
-											class="h-6 w-fit px-2 text-xs text-muted-foreground"
-											onclick={() => openPalette(line.id)}
-										>
-											<PlusIcon data-icon="inline-start" />
-											커맨드 추가
-										</Button>
-									</div>
+		<div class="mt-2 flex flex-col gap-1 rounded-lg border bg-muted/30 p-2">
+			{#each lines as line, index (line.id)}
+				{@const cue = cueFor(line.id)}
+				<div class="flex min-w-0 items-center gap-2">
+					<span class="w-5 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+						{index + 1}
+					</span>
+					<span class="truncate text-xs text-muted-foreground">{lineLabel(line, index)}</span>
+				</div>
+				{#if index < lines.length - 1}
+					<div class="mb-1 ml-7 flex flex-col gap-1.5">
+						{#if cue && cue.sequence.length > 0}
+							<div class="flex items-start gap-1.5">
+								<CornerDownRightIcon class="mt-2 size-3.5 shrink-0 text-muted-foreground" />
+								<div class="flex min-w-0 flex-1 flex-col gap-1.5">
+									{@render cueCommands(cue)}
+									<Button
+										variant="ghost"
+										size="sm"
+										class="h-6 w-fit px-2 text-xs text-muted-foreground"
+										onclick={() => openPalette(line.id)}
+									>
+										<PlusIcon data-icon="inline-start" />
+										커맨드 추가
+									</Button>
 								</div>
-							{:else}
-								<Button
-									variant="ghost"
-									size="sm"
-									class="h-6 w-fit border border-dashed px-2 text-xs text-muted-foreground"
-									onclick={() => openPalette(line.id)}
-								>
-									<PlusIcon data-icon="inline-start" />
-									커맨드 추가
-								</Button>
-							{/if}
-						</div>
-					{/if}
-				{/each}
-			</div>
-		{/if}
+							</div>
+						{:else}
+							<Button
+								variant="ghost"
+								size="sm"
+								class="h-6 w-fit border border-dashed px-2 text-xs text-muted-foreground"
+								onclick={() => openPalette(line.id)}
+							>
+								<PlusIcon data-icon="inline-start" />
+								커맨드 추가
+							</Button>
+						{/if}
+					</div>
+				{/if}
+			{/each}
+		</div>
 		{#each orphanCues as cue (cue.afterLineId)}
 			<div class="mt-2 rounded-lg border border-amber-500/50 p-2">
 				<div class="flex items-center gap-2">

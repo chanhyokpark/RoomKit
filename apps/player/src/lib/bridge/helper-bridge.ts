@@ -32,6 +32,11 @@ export class HelperBridge {
 	private buffered: PlayerToHelper[] = [];
 	private readonly targetOrigin: string;
 	private readonly cleanups: (() => void)[] = [];
+	/** Awaited messages (`awaitHandled`) whose message:done hasn't arrived yet. */
+	private readonly pendingMessages = new Map<
+		string,
+		{ resolve: () => void; reject: (err: Error) => void }
+	>();
 
 	constructor(
 		private readonly iframe: HTMLIFrameElement,
@@ -60,20 +65,41 @@ export class HelperBridge {
 			if (!this.helloSinceLoad) {
 				this.ready = false;
 				stage.dropHelperClaims();
+				// Awaited messages already delivered to the old document will never
+				// be answered — fail them so the server sequence isn't left waiting.
+				// Ones still buffered stay pending; they flush to the new page.
+				this.failDeliveredPending('helper page went away');
 			}
 			this.helloSinceLoad = false;
 		};
 		iframe.addEventListener('load', onLoad);
 		this.cleanups.push(() => iframe.removeEventListener('load', onLoad));
 
-		const onMessage = (payload: Record<string, JsonValue>, envelope: WireMessage) =>
+		const onMessage = (payload: Record<string, JsonValue>, envelope: WireMessage) => {
+			if (!envelope.awaitHandled) {
+				this.send({
+					source: PLAYER_SOURCE,
+					type: 'message',
+					messageId: envelope.messageId,
+					messageName: envelope.messageName,
+					payload
+				});
+				return;
+			}
+			// Awaited message: forward the delivery id and hold the client's ack
+			// (via the returned promise) until the helper reports message:done.
 			this.send({
 				source: PLAYER_SOURCE,
 				type: 'message',
 				messageId: envelope.messageId,
 				messageName: envelope.messageName,
-				payload
+				payload,
+				commandId: envelope.id
 			});
+			return new Promise<void>((resolve, reject) => {
+				this.pendingMessages.set(envelope.id, { resolve, reject });
+			});
+		};
 		const onHint = (hint: HintShow) => this.send({ source: PLAYER_SOURCE, type: 'hint:show', hint });
 		const onHintError = (error: HintError) =>
 			this.send({ source: PLAYER_SOURCE, type: 'hint:error', error });
@@ -87,6 +113,27 @@ export class HelperBridge {
 		for (const cleanup of this.cleanups.splice(0)) cleanup();
 		this.buffered = [];
 		stage.dropHelperClaims();
+		for (const [id, pending] of this.pendingMessages) {
+			this.pendingMessages.delete(id);
+			pending.reject(new Error('bridge destroyed'));
+		}
+	}
+
+	/**
+	 * Reject pending awaited messages that already reached the (now gone) page.
+	 * Ones still sitting in the buffer keep waiting — they will be flushed to
+	 * the next page's hello and can still be answered.
+	 */
+	private failDeliveredPending(reason: string): void {
+		const buffered = new Set<string>();
+		for (const m of this.buffered) {
+			if (m.type === 'message' && m.commandId !== undefined) buffered.add(m.commandId);
+		}
+		for (const [id, pending] of this.pendingMessages) {
+			if (buffered.has(id)) continue;
+			this.pendingMessages.delete(id);
+			pending.reject(new Error(reason));
+		}
 	}
 
 	/** Current subtitle for a claimed subtitle slot; null clears. */
@@ -135,9 +182,24 @@ export class HelperBridge {
 				for (const queued of this.buffered.splice(0)) this.post(queued);
 				return;
 			}
-			case 'trigger':
-				this.client.trigger(msg.event, msg.payload);
+			case 'trigger': {
+				const { requestId } = msg;
+				if (requestId === undefined) {
+					this.client.trigger(msg.event, msg.payload);
+					return;
+				}
+				// Awaited trigger: relay the server's completion ack (or its failure)
+				// back to the helper as a trigger:result.
+				this.client
+					.triggerAndWait(msg.event, msg.payload)
+					.then(() =>
+						this.send({ source: PLAYER_SOURCE, type: 'trigger:result', requestId, ok: true })
+					)
+					.catch(() =>
+						this.send({ source: PLAYER_SOURCE, type: 'trigger:result', requestId, ok: false })
+					);
 				return;
+			}
 			case 'hint:submit':
 				this.client.submitHint(msg.code);
 				return;
@@ -153,6 +215,14 @@ export class HelperBridge {
 			case 'video:error':
 				stage.videoDelegate?.error(msg.commandId);
 				return;
+			case 'message:done': {
+				const pending = this.pendingMessages.get(msg.commandId);
+				if (!pending) return;
+				this.pendingMessages.delete(msg.commandId);
+				if (msg.ok) pending.resolve();
+				else pending.reject(new Error('message handler failed'));
+				return;
+			}
 		}
 	}
 

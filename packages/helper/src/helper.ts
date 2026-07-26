@@ -2,6 +2,7 @@ import type {
   HelperHello,
   HelperHintNext,
   HelperHintSubmit,
+  HelperMessageDone,
   HelperRenderClaims,
   HelperTimerGet,
   HelperTrigger,
@@ -29,6 +30,8 @@ import { Emitter } from './emitter.js';
 const HELPER_SOURCE = 'roomkit-helper';
 const PLAYER_SOURCE = 'roomkit-player';
 const TIMER_TIMEOUT_MS = 10_000;
+/** Event runs can be long (waits, videos) — the trigger wait is generous. */
+const TRIGGER_TIMEOUT_MS = 600_000;
 const HELLO_RETRY_MS = 800;
 const HELLO_RETRY_MAX = 25;
 
@@ -66,6 +69,11 @@ export interface RoomKitHelperOptions {
   renders?: Partial<HelperRenderClaims>;
 }
 
+export interface TriggerAndWaitOptions {
+  /** Reply timeout; the promise rejects when it elapses. Default 600000ms. */
+  timeoutMs?: number;
+}
+
 export interface GetRemainingTimeOptions {
   /**
    * Ask the player to resynchronize its snapshot with the server before
@@ -78,7 +86,12 @@ export interface GetRemainingTimeOptions {
 }
 
 export interface RoomKitHelperEvents extends Record<string, unknown[]> {
-  /** Payload of a "send message to device" command, relayed by the player. */
+  /**
+   * Payload of a "send message to device" command, relayed by the player.
+   * Listeners may return a promise: when the command was sent with
+   * waitUntilEnd, the server sequence waits until every listener's promise
+   * settles (a rejection fails the command; the sequence still continues).
+   */
   message: [Record<string, JsonValue>, PlayerMessage];
   /** A hint step to render (reply to submitHint/requestHintStep, or a push). */
   hint: [HintShow];
@@ -117,6 +130,15 @@ export class RoomKitHelper {
   private readonly pendingTimers = new Map<
     string,
     { resolve: (remainingMs: number | null) => void; timeout: ReturnType<typeof setTimeout> }
+  >();
+  /** In-flight awaited triggers, keyed by requestId. */
+  private readonly pendingTriggers = new Map<
+    string,
+    {
+      resolve: () => void;
+      reject: (err: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }
   >();
 
   constructor(options: RoomKitHelperOptions = {}) {
@@ -181,6 +203,37 @@ export class RoomKitHelper {
     const msg: HelperTrigger = { source: HELPER_SOURCE, type: 'trigger', event };
     if (payload !== undefined) msg.payload = payload;
     this.post(msg);
+  }
+
+  /**
+   * Report a game event and resolve once the server has completely finished
+   * every event run it started (the player relays the server's trigger ack).
+   * A command failing inside a run does not reject — the run still finishes.
+   * Rejects when the player reports the wait failed (device offline, server
+   * predating trigger acks) or when no reply arrives within `timeoutMs`
+   * (default 600000ms — e.g. the page runs outside the player).
+   */
+  triggerAndWait(
+    event: string,
+    payload?: JsonValue,
+    options: TriggerAndWaitOptions = {},
+  ): Promise<void> {
+    const id = requestId();
+    const msg: HelperTrigger = {
+      source: HELPER_SOURCE,
+      type: 'trigger',
+      event,
+      requestId: id,
+    };
+    if (payload !== undefined) msg.payload = payload;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingTriggers.delete(id);
+        reject(new Error('trigger wait timed out'));
+      }, options.timeoutMs ?? TRIGGER_TIMEOUT_MS);
+      this.pendingTriggers.set(id, { resolve, reject, timeout });
+      this.post(msg);
+    });
   }
 
   /** Submit a player-entered hint code; the result arrives as 'hint'/'hintError'. */
@@ -275,6 +328,13 @@ export class RoomKitHelper {
       pending.resolve(null);
     }
     this.pendingTimers.clear();
+    // Unlike timers (null is a valid answer), a destroyed wait cannot claim
+    // the runs finished — reject so awaiters don't proceed on a lie.
+    for (const pending of this.pendingTriggers.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('helper destroyed'));
+    }
+    this.pendingTriggers.clear();
   }
 
   private post(
@@ -285,7 +345,8 @@ export class RoomKitHelper {
       | HelperHintNext
       | HelperTimerGet
       | HelperVideoEnded
-      | HelperVideoError,
+      | HelperVideoError
+      | HelperMessageDone,
   ): void {
     // '*': the player's (tauri) origin is unknowable from inside the iframe;
     // being embedded by the player is the trust anchor (see shared/helper.ts).
@@ -301,11 +362,26 @@ export class RoomKitHelper {
     switch (msg.type) {
       case 'message': {
         if (typeof msg.payload !== 'object' || msg.payload === null) return;
-        this.emitter.emit(
-          'message',
-          msg.payload as Record<string, JsonValue>,
-          msg as unknown as PlayerMessage,
-        );
+        const payload = msg.payload as Record<string, JsonValue>;
+        const envelope = msg as unknown as PlayerMessage;
+        // A commandId means the player awaits our handlers: collect listener
+        // return values and report message:done once they all settle.
+        if (typeof msg.commandId !== 'string') {
+          this.emitter.emit('message', payload, envelope);
+          return;
+        }
+        const commandId = msg.commandId;
+        const results = this.emitter.emitCollect('message', payload, envelope);
+        void Promise.allSettled(
+          results.filter((r): r is Promise<unknown> => r instanceof Promise),
+        ).then((settled) => {
+          this.post({
+            source: HELPER_SOURCE,
+            type: 'message:done',
+            commandId,
+            ok: settled.every((s) => s.status === 'fulfilled'),
+          } satisfies HelperMessageDone);
+        });
         return;
       }
       case 'hint:show': {
@@ -327,6 +403,16 @@ export class RoomKitHelper {
         this.pendingTimers.delete(msg.requestId);
         clearTimeout(pending.timeout);
         pending.resolve(remainingMs);
+        return;
+      }
+      case 'trigger:result': {
+        if (typeof msg.requestId !== 'string') return;
+        const pending = this.pendingTriggers.get(msg.requestId);
+        if (!pending) return;
+        this.pendingTriggers.delete(msg.requestId);
+        clearTimeout(pending.timeout);
+        if (msg.ok === true) pending.resolve();
+        else pending.reject(new Error('trigger failed'));
         return;
       }
       case 'subtitle': {

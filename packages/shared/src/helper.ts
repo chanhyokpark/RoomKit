@@ -51,6 +51,12 @@ export const HelperTriggerSchema = z.object({
   type: z.literal('trigger'),
   event: z.string().min(1),
   payload: JsonValueSchema.optional(),
+  /**
+   * Set to request a `trigger:result` reply once the server has completely
+   * finished every event run the trigger started (triggerAndWait). Absent =
+   * fire-and-forget.
+   */
+  requestId: z.uuid().optional(),
 });
 export type HelperTrigger = z.infer<typeof HelperTriggerSchema>;
 
@@ -98,6 +104,19 @@ export const HelperVideoErrorSchema = z.object({
 });
 export type HelperVideoError = z.infer<typeof HelperVideoErrorSchema>;
 
+/**
+ * The site's `message` handlers settled for an awaited message (the player
+ * forwarded a `commandId`). `ok: false` = a handler rejected or threw; the
+ * message command is acked as failed.
+ */
+export const HelperMessageDoneSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('message:done'),
+  commandId: z.uuid(),
+  ok: z.boolean(),
+});
+export type HelperMessageDone = z.infer<typeof HelperMessageDoneSchema>;
+
 export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperHelloSchema,
   HelperTriggerSchema,
@@ -106,18 +125,25 @@ export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperTimerGetSchema,
   HelperVideoEndedSchema,
   HelperVideoErrorSchema,
+  HelperMessageDoneSchema,
 ]);
 export type HelperToPlayer = z.infer<typeof HelperToPlayerSchema>;
 
 // ── player → helper ────────────────────────────────────────────────────────
 
-/** Subset of `WireMessage` — the delivery id stays player-side. */
+/**
+ * Subset of `WireMessage`. The delivery id stays player-side unless the wire
+ * carried `awaitHandled` — then it is forwarded as `commandId` and the helper
+ * MUST answer with `message:done` (same commandId) once its handlers settle;
+ * the message command is only acked then.
+ */
 export const PlayerMessageSchema = z.object({
   source: z.literal(PLAYER_SOURCE),
   type: z.literal('message'),
   messageId: z.uuid(),
   messageName: z.string(),
   payload: z.record(z.string(), JsonValueSchema),
+  commandId: z.uuid().optional(),
 });
 export type PlayerMessage = z.infer<typeof PlayerMessageSchema>;
 
@@ -147,6 +173,19 @@ export const PlayerTimerSchema = z.object({
   remainingMs: z.number().int().nonnegative().nullable(),
 });
 export type PlayerTimer = z.infer<typeof PlayerTimerSchema>;
+
+/**
+ * Reply to an awaited trigger (`requestId` set): the server finished every
+ * event run the trigger started. `ok: false` means the wait failed — device
+ * offline, ack timeout, or a server predating trigger acks.
+ */
+export const PlayerTriggerResultSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('trigger:result'),
+  requestId: z.uuid(),
+  ok: z.boolean(),
+});
+export type PlayerTriggerResult = z.infer<typeof PlayerTriggerResultSchema>;
 
 /** Current subtitle for a claimed subtitle slot; null clears the overlay. */
 export const PlayerSubtitleSchema = z.object({
@@ -231,6 +270,7 @@ export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerHintShowSchema,
   PlayerHintErrorSchema,
   PlayerTimerSchema,
+  PlayerTriggerResultSchema,
   PlayerSubtitleSchema,
   PlayerHintCodeSchema,
   PlayerVideoPlaySchema,

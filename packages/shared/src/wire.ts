@@ -12,7 +12,8 @@ import { JsonValueSchema } from './json.js';
  *
  * Ack contract: apply-type commands (stop/navigate/reset/message/hintCode) are
  * acked immediately on apply; play commands are acked when playback finishes.
- * Looping BGM acks on playback start.
+ * Looping BGM acks on playback start. Exception: a `message` wire with
+ * `awaitHandled` is acked only once the consumer's message handlers settle.
  *
  * `id` is the delivery id — redeliveries reuse it, clients dedupe on it.
  */
@@ -191,6 +192,12 @@ export const WireMessageSchema = z.object({
   messageId: z.uuid(),
   messageName: z.string(),
   payload: z.record(z.string(), JsonValueSchema),
+  /**
+   * Defer the ack until every `message` listener's returned promise settles
+   * ('failed' if any rejected). Absent/false = ack immediately on apply.
+   * Set by the sendMessage command's waitUntilEnd (the sequence awaits it).
+   */
+  awaitHandled: z.boolean().optional(),
 });
 export type WireMessage = z.infer<typeof WireMessageSchema>;
 

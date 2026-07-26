@@ -355,7 +355,11 @@ export class SessionEngine {
 
   // ── triggers & events ────────────────────────────────────────────────────
 
-  /** Device (or eval) trigger by name; fire-and-forget for all matching events. */
+  /**
+   * Device (or eval) trigger by name. Resolves once every admitted event run
+   * has completely finished (immediately when nothing listened) — callers
+   * that don't care simply void the promise. Never rejects.
+   */
   async handleTrigger(
     name: string,
     source: string,
@@ -397,6 +401,7 @@ export class SessionEngine {
       void this.log('warn', 'trigger', `No event listens to trigger "${name}"`);
       return;
     }
+    const runs: Promise<void>[] = [];
     for (const event of events) {
       const rejection = this.admit(event);
       if (rejection) {
@@ -407,8 +412,10 @@ export class SessionEngine {
         );
         continue;
       }
-      void this.executeRun(event, 0, payload);
+      // executeRun never rejects (it catches internally), so awaiting is safe.
+      runs.push(this.executeRun(event, 0, payload));
     }
+    await Promise.all(runs);
   }
 
   /** REST manual trigger; admission failures surface as errors to the admin. */

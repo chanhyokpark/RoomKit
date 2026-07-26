@@ -218,6 +218,16 @@
 	{:else if entry.type === 'sendMessage'}
 		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
 		<AssetSelect kind="message" label="메시지" bind:id={entry.messageId} {onchanged} />
+		<label class="flex h-8 items-center gap-2 text-xs">
+			<Switch
+				checked={entry.waitUntilEnd}
+				onCheckedChange={(checked) => {
+					if (entry.type === 'sendMessage') entry.waitUntilEnd = checked;
+					onchanged();
+				}}
+			/>
+			끝날 때까지 대기
+		</label>
 		<div class="w-full">
 			<MessageValuesFields messageId={entry.messageId} values={entry.values} {onchanged} />
 			<p class="mt-1 text-xs text-muted-foreground">

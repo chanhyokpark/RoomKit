@@ -340,23 +340,21 @@ export class CommandResolver {
       case 'sendMessage': {
         const device = await this.getDevice(themeId, cmd.deviceId, opts);
         const message = await this.getAsset(themeId, cmd.messageId, 'message');
+        const wire = {
+          id: randomUUID(),
+          type: 'message' as const,
+          messageId: message.id,
+          messageName: message.name,
+          payload: buildMessagePayload(message.data, cmd.values, scopeOf(opts)),
+          ...(cmd.waitUntilEnd ? { awaitHandled: true } : {}),
+        };
         return {
-          deliveries: [
-            {
-              deviceId: device.id,
-              wire: {
-                id: randomUUID(),
-                type: 'message',
-                messageId: message.id,
-                messageName: message.name,
-                payload: buildMessagePayload(
-                  message.data,
-                  cmd.values,
-                  scopeOf(opts),
-                ),
-              },
-            },
-          ],
+          deliveries: [{ deviceId: device.id, wire }],
+          // With waitUntilEnd the device defers its ack until the site's
+          // message handlers settle, so the sequence waits on the handler.
+          ...(cmd.waitUntilEnd
+            ? { awaitAckOf: { deviceId: device.id, commandId: wire.id } }
+            : {}),
         };
       }
       default:

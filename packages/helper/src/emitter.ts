@@ -20,4 +20,21 @@ export class Emitter<Events extends Record<string, unknown[]>> {
       (listener as (...a: Events[K]) => void)(...args);
     }
   }
+
+  /**
+   * Like emit, but collects each listener's return value (promises included).
+   * A listener that throws synchronously contributes a rejected promise
+   * instead of aborting the remaining listeners.
+   */
+  emitCollect<K extends keyof Events>(event: K, ...args: Events[K]): unknown[] {
+    const results: unknown[] = [];
+    for (const listener of this.listeners.get(event) ?? []) {
+      try {
+        results.push((listener as (...a: Events[K]) => unknown)(...args));
+      } catch (err) {
+        results.push(Promise.reject(err));
+      }
+    }
+    return results;
+  }
 }

@@ -80,6 +80,45 @@ describe('RoomKitHelper', () => {
     expect(HelperToPlayerSchema.parse(bare)).not.toHaveProperty('payload');
   });
 
+  it('triggerAndWait posts a requestId trigger and resolves on an ok result', async () => {
+    const { helper, posted, inject } = env();
+    const promise = helper.triggerAndWait('door-open', { count: 1 });
+    const request = HelperToPlayerSchema.parse(posted[1]);
+    expect(request).toMatchObject({
+      source: 'roomkit-helper',
+      type: 'trigger',
+      event: 'door-open',
+      payload: { count: 1 },
+    });
+    const requestId = (request as { requestId: string }).requestId;
+    inject({ source: 'roomkit-player', type: 'trigger:result', requestId, ok: true });
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('triggerAndWait rejects on ok:false, ignores other requests, times out', async () => {
+    vi.useFakeTimers();
+    try {
+      const { helper, posted, inject } = env();
+      const failing = helper.triggerAndWait('a');
+      const requestId = (HelperToPlayerSchema.parse(posted[1]) as { requestId: string })
+        .requestId;
+      inject({ source: 'roomkit-player', type: 'trigger:result', requestId, ok: false });
+      await expect(failing).rejects.toThrow('trigger failed');
+
+      const timingOut = helper.triggerAndWait('b', undefined, { timeoutMs: 1000 });
+      inject({
+        source: 'roomkit-player',
+        type: 'trigger:result',
+        requestId: '33333333-3333-4333-8333-333333333333',
+        ok: true,
+      });
+      vi.advanceTimersByTime(1000);
+      await expect(timingOut).rejects.toThrow('trigger wait timed out');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('posts hint submit/next envelopes that parse against the shared schema', () => {
     const { helper, posted } = env();
     helper.submitHint('0417');
@@ -113,6 +152,98 @@ describe('RoomKitHelper', () => {
       { door: 'north', open: true },
       envelope,
     );
+  });
+
+  describe('awaited messages (commandId set)', () => {
+    const commandId = '66666666-6666-4666-8666-666666666666';
+    const awaited: PlayerMessage = {
+      source: 'roomkit-player',
+      type: 'message',
+      messageId: '22222222-2222-4222-8222-222222222222',
+      messageName: 'unlock',
+      payload: { door: 'north' },
+      commandId,
+    };
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('posts message:done ok:true only after every async handler resolves', async () => {
+      const { helper, posted, inject } = env();
+      let releaseA!: () => void;
+      let releaseB!: () => void;
+      helper.on('message', () => new Promise<void>((r) => (releaseA = r)));
+      helper.on('message', () => new Promise<void>((r) => (releaseB = r)));
+      inject(awaited);
+      releaseA();
+      await flush();
+      expect(posted).toHaveLength(1); // hello only — B still pending
+      releaseB();
+      await flush();
+      expect(HelperToPlayerSchema.parse(posted[1])).toEqual({
+        source: 'roomkit-helper',
+        type: 'message:done',
+        commandId,
+        ok: true,
+      });
+    });
+
+    it('sync handlers (and no handlers) settle immediately with ok:true', async () => {
+      const { helper, posted, inject } = env();
+      const sync = () => undefined;
+      helper.on('message', sync);
+      inject(awaited);
+      await flush();
+      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
+        type: 'message:done',
+        ok: true,
+      });
+      helper.off('message', sync);
+      inject(awaited);
+      await flush();
+      // No listeners: still answered, immediately ok.
+      expect(HelperToPlayerSchema.parse(posted[2])).toMatchObject({
+        type: 'message:done',
+        ok: true,
+      });
+    });
+
+    it('a rejecting handler posts ok:false without blocking other handlers', async () => {
+      const { helper, posted, inject } = env();
+      const other = vi.fn();
+      helper.on('message', () => Promise.reject(new Error('boom')));
+      helper.on('message', other);
+      inject(awaited);
+      await flush();
+      expect(other).toHaveBeenCalledOnce();
+      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
+        type: 'message:done',
+        commandId,
+        ok: false,
+      });
+    });
+
+    it('a synchronously throwing handler posts ok:false, later handlers still run', async () => {
+      const { helper, posted, inject } = env();
+      const other = vi.fn();
+      helper.on('message', () => {
+        throw new Error('boom');
+      });
+      helper.on('message', other);
+      inject(awaited);
+      await flush();
+      expect(other).toHaveBeenCalledOnce();
+      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
+        type: 'message:done',
+        ok: false,
+      });
+    });
+
+    it('posts nothing for messages without a commandId', async () => {
+      const { helper, posted, inject } = env();
+      helper.on('message', () => Promise.resolve());
+      inject({ ...awaited, commandId: undefined });
+      await flush();
+      expect(posted).toHaveLength(1); // hello only
+    });
   });
 
   it('dispatches hint:show and hint:error', () => {

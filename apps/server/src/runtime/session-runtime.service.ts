@@ -148,14 +148,15 @@ export class SessionRuntimeService
 
   // ── gateway entry points ─────────────────────────────────────────────────
 
-  handleDeviceTrigger(
+  /** Resolves once every event run the trigger started has finished. */
+  async handleDeviceTrigger(
     sessionId: string,
     deviceId: string,
     trigger: Trigger,
-  ): void {
+  ): Promise<void> {
     const engine = this.engines.get(sessionId);
     if (!engine) return;
-    void engine.handleTrigger(
+    await engine.handleTrigger(
       trigger.event,
       `device ${deviceId}`,
       trigger.payload ?? null,

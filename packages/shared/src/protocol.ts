@@ -18,7 +18,11 @@ export const DeviceEvents = {
   command: 'command',
   /** C→S: command completion report; resolves waitUntilEnd. */
   ack: 'ack',
-  /** C→S: device reports a game event (sensor, button, ...). */
+  /**
+   * C→S: device reports a game event (sensor, button, ...). May carry a
+   * socket.io ack (`TriggerAck`), answered once every event run the trigger
+   * started has completely finished.
+   */
   trigger: 'trigger',
   /**
    * C→S from the speaker device as each dialogue line starts;
@@ -127,6 +131,15 @@ export const TriggerSchema = z.object({
   payload: JsonValueSchema.optional(),
 });
 export type Trigger = z.infer<typeof TriggerSchema>;
+
+/**
+ * socket.io ack for `trigger`, sent only when the client requested one: every
+ * event run the trigger started has completely finished (immediately when
+ * nothing listened or was admitted). A command failing inside a run does not
+ * turn the ack into an error — the run still finishes.
+ */
+export const TriggerAckSchema = z.object({ done: z.literal(true) });
+export type TriggerAck = z.infer<typeof TriggerAckSchema>;
 
 export const HintSubmitSchema = z.object({ code: z.string().min(1) });
 export type HintSubmit = z.infer<typeof HintSubmitSchema>;
