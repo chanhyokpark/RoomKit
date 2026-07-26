@@ -19,7 +19,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "prepare": "tsup",
+    "prepare": "[ ! -f tsup.config.ts ] || tsup",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
