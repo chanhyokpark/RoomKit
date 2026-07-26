@@ -101,7 +101,7 @@
 		TEST ▾
 	</button>
 {:else}
-	<div class="absolute inset-x-0 top-0 z-40 bg-neutral-950/80 text-xs text-neutral-300">
+	<div class="z-40 w-full shrink-0 bg-neutral-950/80 text-xs text-neutral-300">
 		<div class="flex items-center gap-3 px-4 py-2">
 			<span class="font-semibold text-amber-400">TEST</span>
 			<span>

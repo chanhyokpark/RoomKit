@@ -72,27 +72,29 @@
 		알 수 없는 디바이스입니다. 런처에서 다시 열어주세요.
 	</div>
 {:else}
-	<div class="relative h-full w-full overflow-hidden bg-black">
-		{#if stage.iframeUrl}
-			<WebsiteFrame client={connection.client} />
-		{/if}
-		{#if stage.videoSrc}
-			<!-- svelte-ignore a11y_media_has_caption -->
-			<video
-				class="absolute z-10 bg-black object-contain"
-				style={videoFrameStyle}
-				src={stage.videoSrc}
-				autoplay
-				onended={() => engine?.video.handleEnded()}
-				onerror={() => engine?.video.handleError()}
-			></video>
-		{/if}
-		<PlaceholderOverlay />
-		<SubtitleOverlay />
-		<HintCodeOverlay />
+	<div class="relative flex h-full w-full flex-col overflow-hidden bg-black">
 		{#if connection.isTest}
 			<TestOverlay />
 		{/if}
-		<ConnectionBadge />
+		<div class="relative min-h-0 w-full flex-1 overflow-hidden">
+			{#if stage.iframeUrl}
+				<WebsiteFrame client={connection.client} />
+			{/if}
+			{#if stage.videoSrc}
+				<!-- svelte-ignore a11y_media_has_caption -->
+				<video
+					class="absolute z-10 bg-black object-contain"
+					style={videoFrameStyle}
+					src={stage.videoSrc}
+					autoplay
+					onended={() => engine?.video.handleEnded()}
+					onerror={() => engine?.video.handleError()}
+				></video>
+			{/if}
+			<PlaceholderOverlay />
+			<SubtitleOverlay />
+			<HintCodeOverlay />
+			<ConnectionBadge />
+		</div>
 	</div>
 {/if}
