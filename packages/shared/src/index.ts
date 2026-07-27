@@ -13,3 +13,4 @@ export * from './logs.js';
 export * from './uploads.js';
 export * from './website-test.js';
 export * from './theme-export.js';
+export * from './version.js';

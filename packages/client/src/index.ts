@@ -6,6 +6,7 @@ export {
   type RoomKitClientOptions,
 } from './client.js';
 export { testCodeKey, type CodeStorage } from './storage.js';
+export { CLIENT_VERSION } from './version.js';
 export type {
   DeviceAssetEntry,
   DeviceAssetManifest,

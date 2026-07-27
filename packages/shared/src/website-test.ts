@@ -53,6 +53,16 @@ export const WebsiteTestRunSchema = z.object({
   code: z.string(),
   phaseId: z.uuid().nullable(),
   deviceOnline: z.boolean(),
+  /**
+   * @roomkit/client version of the attached device window: null = the client
+   * sent none (predates reporting), absent = not attached yet (or old server).
+   */
+  clientVersion: z.string().nullable().optional(),
+  /**
+   * @roomkit/helper version of the site under test: null = a helper said
+   * hello without a version, absent = no helper detected (yet).
+   */
+  helperVersion: z.string().nullable().optional(),
   /** False once stopped — the terminal state broadcast. */
   active: z.boolean(),
   timerState: TimerStateSchema.nullable(),

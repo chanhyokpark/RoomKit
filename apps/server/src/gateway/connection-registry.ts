@@ -14,6 +14,18 @@ export interface DeviceSocketData {
   lobby?: Omit<LobbyEntry, 'socket'>;
   /** Attach belongs to a website-test run, not a session (attach.sessionId = runId). */
   websiteTest?: boolean;
+  /** @roomkit/client version from auth; absent = a client predating reporting. */
+  clientVersion?: string;
+}
+
+/**
+ * Component versions detected for one attached device. A key with a null
+ * value means the component was seen but predates version reporting; an
+ * absent key means nothing was detected (no helper loaded, old server path).
+ */
+export interface DeviceVersions {
+  clientVersion?: string | null;
+  helperVersion?: string | null;
 }
 
 export type DeviceSocket = Socket<
@@ -41,6 +53,8 @@ export interface LobbyEntry {
 export class ConnectionRegistry {
   private readonly sockets = new Map<string, Set<Socket>>();
   private readonly lobby = new Map<string, LobbyEntry>();
+  /** `${sessionId}:${deviceId}` → detected component versions. */
+  private readonly versions = new Map<string, DeviceVersions>();
 
   /** Returns true when this is the device's first live socket (went online). */
   add(sessionId: string, deviceId: string, socket: Socket): boolean {
@@ -58,9 +72,24 @@ export class ConnectionRegistry {
     if (!set?.delete(socket)) return false;
     if (set.size === 0) {
       this.sockets.delete(key);
+      this.versions.delete(key);
       return true;
     }
     return false;
+  }
+
+  /** Merge detected component versions for a device (freshest report wins). */
+  setVersions(
+    sessionId: string,
+    deviceId: string,
+    patch: DeviceVersions,
+  ): void {
+    const key = `${sessionId}:${deviceId}`;
+    this.versions.set(key, { ...this.versions.get(key), ...patch });
+  }
+
+  versionsFor(sessionId: string, deviceId: string): DeviceVersions {
+    return this.versions.get(`${sessionId}:${deviceId}`) ?? {};
   }
 
   isOnline(sessionId: string, deviceId: string): boolean {

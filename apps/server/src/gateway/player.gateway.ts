@@ -66,13 +66,19 @@ export class PlayerGateway
   handleConnection(socket: PlayerSocket): void {
     const player = socket.data.player;
     if (!player) return;
-    this.players.add(player.playerId, player.playerName, socket);
+    this.players.add(
+      player.playerId,
+      player.playerName,
+      socket,
+      player.version ?? null,
+    );
     // Broadcast on every connect (not just first-socket): a rename reconnects
     // with the same playerId and admins upsert by id, so this refreshes the name.
     this.admin.broadcastPlayerStatus({
       playerId: player.playerId,
       playerName: player.playerName,
       online: true,
+      version: player.version ?? null,
     });
   }
 
@@ -84,6 +90,7 @@ export class PlayerGateway
         playerId: player.playerId,
         playerName: player.playerName,
         online: false,
+        version: player.version ?? null,
       });
     }
   }

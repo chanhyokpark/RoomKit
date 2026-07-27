@@ -1,9 +1,19 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
 
+const pkg = JSON.parse(
+	readFileSync(new URL('./package.json', import.meta.url), 'utf8')
+) as { version: string };
+
 export default defineConfig({
+	// Reported in the /player handshake so studio can warn about outdated
+	// players; tauri.conf.json is kept on the same version for the installers.
+	define: {
+		__PLAYER_VERSION__: JSON.stringify(pkg.version)
+	},
 	resolve: {
 		alias: {
 			// Compile both workspace libs from source in dev AND build (same

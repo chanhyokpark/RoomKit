@@ -10,6 +10,8 @@ import type { Socket } from 'socket.io';
 
 interface PlayerEntry {
   playerName: string;
+  /** App version from the auth handshake; null = a player predating reporting. */
+  version: string | null;
   sockets: Set<Socket>;
 }
 
@@ -24,13 +26,22 @@ export class PlayerRegistry {
   private readonly players = new Map<string, PlayerEntry>();
 
   /** Returns true when this is the player's first live socket (went online). */
-  add(playerId: string, playerName: string, socket: Socket): boolean {
+  add(
+    playerId: string,
+    playerName: string,
+    socket: Socket,
+    version: string | null,
+  ): boolean {
     let entry = this.players.get(playerId);
     if (!entry) {
-      this.players.set(playerId, (entry = { playerName, sockets: new Set() }));
+      this.players.set(
+        playerId,
+        (entry = { playerName, version, sockets: new Set() }),
+      );
     }
-    // A rename reconnects with the same playerId — freshest name wins.
+    // A rename (or update) reconnects with the same playerId — freshest wins.
     entry.playerName = playerName;
+    entry.version = version;
     entry.sockets.add(socket);
     return entry.sockets.size === 1;
   }
@@ -56,6 +67,7 @@ export class PlayerRegistry {
       playerId,
       playerName: entry.playerName,
       online: true,
+      version: entry.version,
     }));
   }
 

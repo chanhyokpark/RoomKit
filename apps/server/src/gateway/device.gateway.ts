@@ -15,6 +15,7 @@ import {
   DeviceAuthSchema,
   DeviceDataSchema,
   DeviceEvents,
+  HelperInfoSchema,
   HintNextSchema,
   HintSubmitSchema,
   PlaybackProgressSchema,
@@ -31,6 +32,7 @@ import { DeviceAssetsService } from '../assets/device-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { WebsiteTestService } from '../website-test/website-test.service';
+import { AdminGateway } from './admin.gateway';
 import {
   ConnectionRegistry,
   type AttachedDevice,
@@ -76,6 +78,7 @@ export class DeviceGateway
     private readonly registry: ConnectionRegistry,
     private readonly deviceAssets: DeviceAssetsService,
     private readonly websiteTest: WebsiteTestService,
+    private readonly admin: AdminGateway,
   ) {}
 
   afterInit(): void {
@@ -90,6 +93,7 @@ export class DeviceGateway
   private async authenticate(socket: DeviceSocket): Promise<void> {
     const parsed = DeviceAuthSchema.safeParse(socket.handshake.auth);
     if (!parsed.success) throw new Error('invalid_code');
+    socket.data.clientVersion = parsed.data.clientVersion;
     const code = parsed.data.deviceCode;
 
     // Website-test codes are in-memory only and checked before everything
@@ -211,6 +215,17 @@ export class DeviceGateway
       attach.deviceId,
       socket,
     );
+    // Studio warns about outdated components; null = a client predating
+    // version reporting.
+    const clientVersion = socket.data.clientVersion ?? null;
+    this.registry.setVersions(attach.sessionId, attach.deviceId, {
+      clientVersion,
+    });
+    if (websiteTest) {
+      this.websiteTest.deviceVersionsChanged(attach.sessionId, {
+        clientVersion,
+      });
+    }
     const session = websiteTest
       ? this.websiteTest.getSessionState(attach.sessionId)
       : this.runtime.getSessionState(attach.sessionId);
@@ -347,6 +362,38 @@ export class DeviceGateway
       parsed.data,
     );
     return { done: true };
+  }
+
+  /**
+   * The player reports the helper bundle version of the website loaded in
+   * this device window. Stored per device and pushed to studio: website-test
+   * runs get a run-state broadcast, sessions a device:status refresh (the
+   * admin gateway attaches the registry's versions to every device:status).
+   */
+  @SubscribeMessage(DeviceEvents.helperInfo)
+  onHelperInfo(
+    @ConnectedSocket() socket: DeviceSocket,
+    @MessageBody() body: unknown,
+  ): void {
+    const attach = socket.data.attach;
+    if (!attach) return;
+    const parsed = HelperInfoSchema.safeParse(body);
+    if (!parsed.success) return;
+    this.registry.setVersions(attach.sessionId, attach.deviceId, {
+      helperVersion: parsed.data.version,
+    });
+    if (socket.data.websiteTest) {
+      this.websiteTest.deviceVersionsChanged(attach.sessionId, {
+        helperVersion: parsed.data.version,
+      });
+      return;
+    }
+    this.admin.broadcastDeviceStatus({
+      sessionId: attach.sessionId,
+      deviceId: attach.deviceId,
+      deviceName: attach.deviceName,
+      online: this.registry.isOnline(attach.sessionId, attach.deviceId),
+    });
   }
 
   @SubscribeMessage(DeviceEvents.progress)

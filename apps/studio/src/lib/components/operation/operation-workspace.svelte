@@ -7,6 +7,7 @@
 	import * as Empty from '$lib/components/ui/empty';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
+	import VersionWarningBanner from '$lib/components/version-warning-banner.svelte';
 	import { provideOperationData } from './operation-data.svelte';
 	import LogPanel from './log-panel.svelte';
 	import SessionDashboard from './session-dashboard.svelte';
@@ -32,6 +33,7 @@
 			서버 연결이 끊어졌습니다 — 재연결 중…
 		</div>
 	{/if}
+	<VersionWarningBanner warnings={data.versionWarnings} />
 	<div class="flex min-h-0 flex-1">
 		<!-- Mobile is master-detail: the list and the dashboard swap in the same space. -->
 		{#if !isMobile.current || !data.selected}

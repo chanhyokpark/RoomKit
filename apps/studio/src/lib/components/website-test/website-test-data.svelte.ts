@@ -33,6 +33,7 @@ import {
 	updateWebsiteTest
 } from '$lib/api/website-test';
 import { auth } from '$lib/stores/auth.svelte';
+import { versionWarning } from '$lib/version';
 import type { EventAsset, PhaseAsset } from '$lib/components/editor/editor-data.svelte';
 import type { DeviceAsset } from '$lib/components/operation/operation-data.svelte';
 
@@ -86,6 +87,27 @@ export class WebsiteTestData {
 	players = $derived(
 		[...this.playersById.values()].toSorted((a, b) => a.playerName.localeCompare(b.playerName))
 	);
+
+	/**
+	 * Outdated-component warnings for the active run: the run's player app,
+	 * and the client/helper versions detected on the test device window.
+	 */
+	versionWarnings = $derived.by<string[]>(() => {
+		const run = this.run;
+		if (!run) return [];
+		const warnings: string[] = [];
+		const player = this.playersById.get(run.playerId);
+		if (player) {
+			const warning = versionWarning('player', player.version, `플레이어 "${player.playerName}"`);
+			if (warning) warnings.push(warning);
+		}
+		const subject = `장치 창 "${run.displayName || run.deviceName}"`;
+		const client = versionWarning('client', run.clientVersion, subject);
+		if (client) warnings.push(client);
+		const helper = versionWarning('helper', run.helperVersion, subject);
+		if (helper) warnings.push(helper);
+		return warnings;
+	});
 
 	constructor(themeId: string) {
 		this.themeId = themeId;

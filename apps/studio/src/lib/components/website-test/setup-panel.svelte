@@ -7,6 +7,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import { Spinner } from '$lib/components/ui/spinner';
+	import { versionWarning } from '$lib/version';
 	import { normalizeUrl, useWebsiteTestData } from './website-test-data.svelte';
 
 	const data = useWebsiteTestData();
@@ -31,6 +32,11 @@
 
 	const selectedPlayer = $derived(playerId === null ? null : data.playersById.get(playerId));
 	const selectedDevice = $derived(data.devices.find((d) => d.id === deviceId));
+	const playerVersionWarning = $derived(
+		selectedPlayer
+			? versionWarning('player', selectedPlayer.version, `플레이어 "${selectedPlayer.playerName}"`)
+			: null
+	);
 
 	function websiteUrl(assetId: string): string {
 		const website = data.websites.find((w) => w.id === assetId);
@@ -101,6 +107,9 @@
 					</Select.Group>
 				</Select.Content>
 			</Select.Root>
+			{#if playerVersionWarning}
+				<p class="text-xs text-amber-600 dark:text-amber-500">{playerVersionWarning}</p>
+			{/if}
 		</div>
 		<div class="flex flex-col gap-1">
 			<span class="text-xs text-muted-foreground">장치</span>

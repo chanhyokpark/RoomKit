@@ -16,6 +16,7 @@ import {
 	SessionRunsSchema,
 	SessionStateSchema,
 	type Asset,
+	type DeviceStatus,
 	type PlayerStatus,
 	type RunningEvent,
 	type Session,
@@ -29,6 +30,7 @@ import { listAssets } from '$lib/api/assets';
 import { listLogs } from '$lib/api/logs';
 import { listSessions } from '$lib/api/sessions';
 import { auth } from '$lib/stores/auth.svelte';
+import { versionWarning } from '$lib/version';
 import type { EventAsset, PhaseAsset } from '$lib/components/editor/editor-data.svelte';
 
 export type DeviceAsset = Extract<Asset, { kind: 'device' }>;
@@ -67,8 +69,8 @@ export class OperationData {
 
 	restSessions = $state<Session[]>([]);
 	readonly live = new SvelteMap<string, LiveSnapshot>();
-	/** `${sessionId}:${deviceId}` → online */
-	readonly deviceStatus = new SvelteMap<string, boolean>();
+	/** `${sessionId}:${deviceId}` → latest device:status (online + versions). */
+	readonly deviceStatus = new SvelteMap<string, DeviceStatus>();
 	/** sessionId → in-flight event runs (server sends full snapshots). */
 	readonly runs = new SvelteMap<string, RunningEvent[]>();
 	/** sessionId → playing media/websites (server sends full snapshots). */
@@ -131,6 +133,28 @@ export class OperationData {
 	players = $derived(
 		[...this.playersById.values()].toSorted((a, b) => a.playerName.localeCompare(b.playerName))
 	);
+
+	/**
+	 * Outdated-component warnings: connected players below the expected player
+	 * version, and this theme's online devices whose client/helper versions
+	 * fall below expectations. Absent version info (old server) never warns.
+	 */
+	versionWarnings = $derived.by<string[]>(() => {
+		const warnings: string[] = [];
+		for (const player of this.players) {
+			const warning = versionWarning('player', player.version, `플레이어 "${player.playerName}"`);
+			if (warning) warnings.push(warning);
+		}
+		for (const status of this.deviceStatus.values()) {
+			if (!status.online || !this.#sessionInTheme(status.sessionId)) continue;
+			const subject = `장치 "${status.deviceName || status.deviceId}"`;
+			const client = versionWarning('client', status.clientVersion, subject);
+			if (client) warnings.push(client);
+			const helper = versionWarning('helper', status.helperVersion, subject);
+			if (helper) warnings.push(helper);
+		}
+		return [...new Set(warnings)];
+	});
 
 	constructor(themeId: string) {
 		this.themeId = themeId;
@@ -260,7 +284,7 @@ export class OperationData {
 			const parsed = DeviceStatusSchema.safeParse(payload);
 			if (!parsed.success) return;
 			const { sessionId, deviceId, deviceName, online } = parsed.data;
-			this.deviceStatus.set(`${sessionId}:${deviceId}`, online);
+			this.deviceStatus.set(`${sessionId}:${deviceId}`, parsed.data);
 			// The server only emits offline on a real drop; an ended session
 			// disconnects every device on purpose, so that flood stays silent.
 			if (
@@ -304,7 +328,7 @@ export class OperationData {
 	}
 
 	isDeviceOnline(sessionId: string, deviceId: string): boolean {
-		return this.deviceStatus.get(`${sessionId}:${deviceId}`) ?? false;
+		return this.deviceStatus.get(`${sessionId}:${deviceId}`)?.online ?? false;
 	}
 
 	runsFor(sessionId: string): RunningEvent[] {

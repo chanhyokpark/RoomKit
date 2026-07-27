@@ -39,7 +39,7 @@ class PlayerStore {
 		this.status = 'connecting';
 		const socket = io(`${serverUrl}${PLAYER_NAMESPACE}`, {
 			transports: ['websocket', 'polling'],
-			auth: { playerId: config.playerId, playerName }
+			auth: { playerId: config.playerId, playerName, version: __PLAYER_VERSION__ }
 		});
 		this.#socket = socket;
 		vlog('launcher', 'connecting', { serverUrl: `${serverUrl}${PLAYER_NAMESPACE}`, playerName });

@@ -4,6 +4,7 @@ export {
   type RoomKitHelperOptions,
   type TriggerAndWaitOptions,
 } from './helper.js';
+export { HELPER_VERSION } from './version.js';
 export type {
   HelperRenderClaims,
   HintError,

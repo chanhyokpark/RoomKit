@@ -85,17 +85,18 @@ describe('Player gateway (e2e)', () => {
     await waitForEvent(admin, 'connect');
 
     const onlinePromise = waitForEvent<PlayerStatus>(admin, 'player:status');
-    const player = track(connectPlayer(url, playerId, '플레이어-abcd'));
+    const player = track(connectPlayer(url, playerId, '플레이어-abcd', '9.9.9'));
     expect(await onlinePromise).toEqual({
       playerId,
       playerName: '플레이어-abcd',
       online: true,
+      version: '9.9.9',
     });
 
     // A fresh admin connection gets the online player in its initial dump.
     const admin2 = track(connectAdmin(url, token));
     const dumped = await waitForEvent<PlayerStatus>(admin2, 'player:status');
-    expect(dumped).toMatchObject({ playerId, online: true });
+    expect(dumped).toMatchObject({ playerId, online: true, version: '9.9.9' });
 
     const offlinePromise = waitForEvent<PlayerStatus>(admin, 'player:status');
     player.disconnect();

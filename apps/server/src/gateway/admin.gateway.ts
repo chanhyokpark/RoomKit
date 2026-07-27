@@ -85,14 +85,30 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
       });
       const nameById = new Map(devices.map((d) => [d.id, d.name]));
       for (const o of online) {
-        socket.emit(AdminEvents.deviceStatus, {
-          sessionId: o.sessionId,
-          deviceId: o.deviceId,
-          deviceName: nameById.get(o.deviceId) ?? '',
-          online: true,
-        } satisfies DeviceStatus);
+        socket.emit(
+          AdminEvents.deviceStatus,
+          this.withVersions({
+            sessionId: o.sessionId,
+            deviceId: o.deviceId,
+            deviceName: nameById.get(o.deviceId) ?? '',
+            online: true,
+          }),
+        );
       }
     }
+  }
+
+  /**
+   * Attach the registry's detected component versions to a device:status so
+   * studio can warn about outdated clients/helpers. Centralized here because
+   * every status broadcast (engine transport, gateway refreshes, the initial
+   * dump) funnels through this gateway.
+   */
+  private withVersions(status: DeviceStatus): DeviceStatus {
+    return {
+      ...status,
+      ...this.registry.versionsFor(status.sessionId, status.deviceId),
+    };
   }
 
   broadcastSessionState(state: SessionState): void {
@@ -104,7 +120,9 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
   }
 
   broadcastDeviceStatus(status: DeviceStatus): void {
-    this.server.to(ADMINS_ROOM).emit(AdminEvents.deviceStatus, status);
+    this.server
+      .to(ADMINS_ROOM)
+      .emit(AdminEvents.deviceStatus, this.withVersions(status));
   }
 
   broadcastPlayerStatus(status: PlayerStatus): void {

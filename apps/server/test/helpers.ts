@@ -44,9 +44,10 @@ export function connectPlayer(
   url: string,
   playerId: string,
   playerName: string,
+  version?: string,
 ): Socket {
   return io(`${url}${PLAYER_NAMESPACE}`, {
-    auth: { playerId, playerName },
+    auth: version === undefined ? { playerId, playerName } : { playerId, playerName, version },
     transports: ['websocket'],
     reconnection: false,
   });

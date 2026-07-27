@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import VersionWarningBanner from '$lib/components/version-warning-banner.svelte';
 	import { provideEditorData } from '$lib/components/editor/editor-data.svelte';
 	import { provideWebsiteTestData } from './website-test-data.svelte';
 	import ActivityLogCard from './activity-log-card.svelte';
@@ -33,6 +34,7 @@
 			서버 연결이 끊어졌습니다 — 재연결 중…
 		</div>
 	{/if}
+	<VersionWarningBanner warnings={data.versionWarnings} />
 	<div class="min-h-0 flex-1 overflow-y-auto p-4">
 		{#if data.loading}
 			<div class="mx-auto flex max-w-lg flex-col gap-2">

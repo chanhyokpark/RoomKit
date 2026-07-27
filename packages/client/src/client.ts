@@ -28,6 +28,7 @@ import {
 } from '@roomkit/shared';
 import { Emitter } from './emitter.js';
 import { defaultStorage, testCodeKey, type CodeStorage } from './storage.js';
+import { CLIENT_VERSION } from './version.js';
 
 export type ConnectionStatus =
   | 'idle'
@@ -191,7 +192,11 @@ export class RoomKitClient {
     this.setStatus('connecting');
 
     const socket = io(`${this.options.serverUrl}${DEVICE_NAMESPACE}`, {
-      auth: { deviceCode: this.usedCode, deviceName: this.options.deviceName },
+      auth: {
+        deviceCode: this.usedCode,
+        deviceName: this.options.deviceName,
+        clientVersion: CLIENT_VERSION,
+      },
       transports: ['websocket', 'polling'],
     });
     this.socket = socket;
@@ -332,6 +337,16 @@ export class RoomKitClient {
           resolve();
         });
     });
+  }
+
+  /**
+   * Player-internal: report the `@roomkit/helper` version of the website
+   * loaded in this device window (null = the helper sent no version). The
+   * server relays it to studio, which warns about outdated helpers.
+   */
+  reportHelperInfo(version: string | null): void {
+    this.log('helper info', version);
+    this.socket?.emit(DeviceEvents.helperInfo, { version });
   }
 
   /**

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   HelperToPlayerSchema,
@@ -6,6 +7,7 @@ import {
   type PlayerMessage,
 } from '@roomkit/shared';
 import { RoomKitHelper, type RoomKitHelperOptions } from './helper.js';
+import { HELPER_VERSION } from './version.js';
 
 type Listener = (event: { data: unknown }) => void;
 
@@ -46,6 +48,7 @@ describe('RoomKitHelper', () => {
         source: 'roomkit-helper',
         type: 'hello',
         renders: { subtitle: false, hintCode: false, video: false },
+        version: HELPER_VERSION,
       },
     ]);
     expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({ type: 'hello' });
@@ -57,7 +60,15 @@ describe('RoomKitHelper', () => {
       source: 'roomkit-helper',
       type: 'hello',
       renders: { subtitle: true, hintCode: false, video: true },
+      version: HELPER_VERSION,
     });
+  });
+
+  it('HELPER_VERSION matches package.json', () => {
+    const pkg = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    expect(HELPER_VERSION).toBe(pkg.version);
   });
 
   it('posts trigger envelopes that parse against the shared schema', () => {

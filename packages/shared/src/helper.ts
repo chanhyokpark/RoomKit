@@ -42,6 +42,8 @@ export const HelperHelloSchema = z.object({
   type: z.literal('hello'),
   /** Claims reset on navigation — each page re-declares them in its hello. */
   renders: HelperRenderClaimsSchema.default({ subtitle: false, hintCode: false, video: false }),
+  /** Helper bundle version; absent on bundles predating version reporting. */
+  version: z.string().optional(),
 });
 export type HelperHello = z.infer<typeof HelperHelloSchema>;
 

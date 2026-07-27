@@ -117,6 +117,10 @@ interface RunState {
   code: string;
   phaseId: string | null;
   deviceOnline: boolean;
+  /** @roomkit/client version of the attached window; undefined until attach. */
+  clientVersion?: string | null;
+  /** @roomkit/helper version of the site under test; undefined until a hello. */
+  helperVersion?: string | null;
   active: boolean;
   createdAt: number;
   /** Stable across redeliveries (client dedupes); regenerated on url/reload. */
@@ -336,6 +340,35 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
       level: online ? 'info' : 'warn',
       message: online ? '장치 연결됨' : '장치 연결 끊김',
     });
+  }
+
+  /**
+   * Component versions detected on the run's device window (client version
+   * from auth, helper version relayed by the player). Null = the component
+   * was seen but predates version reporting.
+   */
+  deviceVersionsChanged(
+    runId: string,
+    versions: { clientVersion?: string | null; helperVersion?: string | null },
+  ): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    let changed = false;
+    if (
+      versions.clientVersion !== undefined &&
+      run.clientVersion !== versions.clientVersion
+    ) {
+      run.clientVersion = versions.clientVersion;
+      changed = true;
+    }
+    if (
+      versions.helperVersion !== undefined &&
+      run.helperVersion !== versions.helperVersion
+    ) {
+      run.helperVersion = versions.helperVersion;
+      changed = true;
+    }
+    if (changed) this.broadcastRunState(run);
   }
 
   /** Redeliver the navigate on every (re)connect — the client dedupes on id. */
@@ -973,6 +1006,8 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
       code: run.code,
       phaseId: run.phaseId,
       deviceOnline: run.deviceOnline,
+      clientVersion: run.clientVersion,
+      helperVersion: run.helperVersion,
       active: run.active,
       timerState: timer.timerState,
       timerRemainingMs: timer.timerRemainingMs,

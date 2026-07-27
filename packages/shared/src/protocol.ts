@@ -52,6 +52,11 @@ export const DeviceEvents = {
    * Works while attached to a session and while lobby-parked.
    */
   assetManifest: 'assets:manifest',
+  /**
+   * C→S: the player reports the `@roomkit/helper` version of the website
+   * loaded in this device window (`HelperInfo`), sent on every helper hello.
+   */
+  helperInfo: 'helper:info',
 } as const;
 
 /** Events on the /admin namespace (studio). */
@@ -98,6 +103,8 @@ export const PlayerEvents = {
 export const PlayerAuthSchema = z.object({
   playerId: z.uuid(),
   playerName: z.string().min(1),
+  /** Player app version; absent on players predating version reporting. */
+  version: z.string().optional(),
 });
 export type PlayerAuth = z.infer<typeof PlayerAuthSchema>;
 
@@ -106,6 +113,11 @@ export const PlayerStatusSchema = z.object({
   playerId: z.uuid(),
   playerName: z.string(),
   online: z.boolean(),
+  /**
+   * Player app version: null = the player sent none (predates reporting),
+   * absent = the server predates version relaying.
+   */
+  version: z.string().nullable().optional(),
 });
 export type PlayerStatus = z.infer<typeof PlayerStatusSchema>;
 
@@ -113,6 +125,8 @@ export type PlayerStatus = z.infer<typeof PlayerStatusSchema>;
 export const DeviceAuthSchema = z.object({
   deviceCode: z.string().min(1),
   deviceName: z.string().optional(),
+  /** @roomkit/client version; absent on clients predating version reporting. */
+  clientVersion: z.string().optional(),
 });
 export type DeviceAuth = z.infer<typeof DeviceAuthSchema>;
 
@@ -128,6 +142,14 @@ export const AckSchema = z.object({
   status: z.enum(['done', 'failed']),
 });
 export type Ack = z.infer<typeof AckSchema>;
+
+/**
+ * `helper:info` payload — the helper bundle version of the website loaded in
+ * a player device window. Null = the helper's hello carried no version (a
+ * bundle predating version reporting).
+ */
+export const HelperInfoSchema = z.object({ version: z.string().nullable() });
+export type HelperInfo = z.infer<typeof HelperInfoSchema>;
 
 export const TriggerSchema = z.object({
   event: z.string().min(1),
@@ -339,5 +361,16 @@ export const DeviceStatusSchema = z.object({
   deviceId: z.uuid(),
   deviceName: z.string(),
   online: z.boolean(),
+  /**
+   * @roomkit/client version of the device's socket: null = the client sent
+   * none (predates reporting), absent = the server predates version relaying.
+   */
+  clientVersion: z.string().nullable().optional(),
+  /**
+   * @roomkit/helper version of the website loaded on the device (relayed by
+   * the player via `helper:info`): null = a helper said hello without a
+   * version, absent = no helper detected (or old server).
+   */
+  helperVersion: z.string().nullable().optional(),
 });
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;

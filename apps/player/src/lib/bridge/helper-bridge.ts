@@ -37,6 +37,12 @@ export class HelperBridge {
 		string,
 		{ resolve: () => void; reject: (err: Error) => void }
 	>();
+	/**
+	 * Helper version from the last hello (null = old bundle without one),
+	 * undefined until any hello arrived. Re-reported on every welcome — a full
+	 * reconnect re-attaches the device and drops server-side version state.
+	 */
+	private helperVersion: string | null | undefined;
 
 	constructor(
 		private readonly iframe: HTMLIFrameElement,
@@ -103,9 +109,20 @@ export class HelperBridge {
 		const onHint = (hint: HintShow) => this.send({ source: PLAYER_SOURCE, type: 'hint:show', hint });
 		const onHintError = (error: HintError) =>
 			this.send({ source: PLAYER_SOURCE, type: 'hint:error', error });
-		this.client.on('message', onMessage).on('hint', onHint).on('hintError', onHintError);
+		const onWelcome = () => {
+			if (this.helperVersion !== undefined) this.client.reportHelperInfo(this.helperVersion);
+		};
+		this.client
+			.on('message', onMessage)
+			.on('hint', onHint)
+			.on('hintError', onHintError)
+			.on('welcome', onWelcome);
 		this.cleanups.push(() => {
-			this.client.off('message', onMessage).off('hint', onHint).off('hintError', onHintError);
+			this.client
+				.off('message', onMessage)
+				.off('hint', onHint)
+				.off('hintError', onHintError)
+				.off('welcome', onWelcome);
 		});
 	}
 
@@ -172,6 +189,10 @@ export class HelperBridge {
 				this.ready = true;
 				this.helloSinceLoad = true;
 				stage.helperRenders = { ...msg.renders };
+				// Studio warns about outdated helper bundles; null = a bundle
+				// predating version reporting.
+				this.helperVersion = msg.version ?? null;
+				this.client.reportHelperInfo(this.helperVersion);
 				// Replied to every hello so a reloaded page learns it again; test
 				// mode keeps the site's context menu usable (devtools).
 				this.post({

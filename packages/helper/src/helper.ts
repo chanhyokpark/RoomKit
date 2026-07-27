@@ -19,6 +19,7 @@ import type {
   SessionMode,
 } from '@roomkit/shared';
 import { Emitter } from './emitter.js';
+import { HELPER_VERSION } from './version.js';
 
 /*
  * The shared schemas define the envelopes (packages/shared/src/helper.ts),
@@ -158,6 +159,7 @@ export class RoomKitHelper {
         hintCode: options.renders?.hintCode ?? false,
         video: options.renders?.video ?? false,
       },
+      version: HELPER_VERSION,
     };
     this.post(hello);
     // The player's bridge may not be listening yet (created after this frame
