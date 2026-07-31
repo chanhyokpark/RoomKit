@@ -38,7 +38,7 @@
 	const videoFrameStyle = $derived(
 		stage.videoFrame
 			? `left:${stage.videoFrame.x}%;top:${stage.videoFrame.y}%;width:${stage.videoFrame.width}%;height:${stage.videoFrame.height}%`
-			: 'inset:0'
+			: 'left:0;top:0;width:100%;height:100%'
 	);
 
 	// Hide the cursor while a real video plays; test sessions keep it so the
@@ -87,6 +87,7 @@
 					style={videoFrameStyle}
 					src={stage.videoSrc}
 					autoplay
+					oncontextmenu={(e) => e.preventDefault()}
 					onended={() => engine?.video.handleEnded()}
 					onerror={() => engine?.video.handleError()}
 				></video>
