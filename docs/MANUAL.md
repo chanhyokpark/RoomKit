@@ -243,6 +243,7 @@ Playback commands target a **플레이어** asset (speaker/screen pair); device 
 | **모든 장치 리셋** | 장치 | — | Reset every device in the session. |
 | **웹사이트 이동** | 장치 | 장치, 웹사이트, **쿼리 파라미터** | Navigates the device to the website (Player: shows it in the stage iframe). Query params (key/value pairs, **쿼리 파라미터 추가**) are appended to the site URL; values support `{{vars.이름}}` / `{{payload.이름}}` interpolation (§4.5 session vars / trigger payload). The device acks once the site actually loaded, so the next command can assume readiness. |
 | **메시지 전송** | 장치 | 장치, 메시지, values, **끝날 때까지 대기** | Values are entered per the message asset's field schema; delivered to the device (Player relays it into the iframe for the helper). String values support `{{vars.이름}}` / `{{payload.이름}}` interpolation — a value that is exactly one template keeps the variable's JSON type (number, boolean, …). With **끝날 때까지 대기** the sequence waits until the site's `message` handlers finish — an async handler's returned promise gates the ack. |
+| **웹사이트에 요청 전송** | 장치 | 웹사이트, path, HTTP method, body, headers, **끝날 때까지 대기** | Sends an HTTP request from the RoomKit server to a URL resolved from the website asset and path. Path, body, and header names/values support `{{vars.이름}}` / `{{payload.이름}}` interpolation. GET/HEAD ignore the body. With **끝날 때까지 대기**, the sequence waits until the complete response body is received; network and non-2xx failures are logged and do not stop the sequence. |
 | **힌트 코드 표시** | 장치 | 힌트, 장치 | Shows the hint's entry code as an overlay on the device — the default overlay styled by the device's 힌트 코드 CSS, or the embedded website when it has claimed hint-code rendering (§6). |
 | **힌트 코드 숨김** | 장치 | 장치, **모든 장치** | Hides the overlay. |
 | **대기** | 흐름 | 시간 (ms) | Server-side timer; pauses together with session pause. |
@@ -361,6 +362,7 @@ Rules:
 | `stopBgm` / `stopSfx` / `stopVideo` / `stopDialogue` `[<player>\|all]` | Stop the channel — on every player when the player is omitted or `all`. |
 | `navigate <device> <website> [key=value ...]` | 웹사이트 이동 with optional query params. |
 | `sendMessage <device> <message> [{"key":"value"}]` | 메시지 전송 — the trailing JSON object supplies the field values. |
+| `sendWebsiteRequest <website> <method> <path> [wait] [body=<text>] [header=Name:Value ...]` | 웹사이트에 요청 전송. Quote options that contain spaces. |
 | `resetDevice <device>` · `resetAllDevices` | Device reset. |
 | `showHintCode <hint> <device>` · `hideHintCode [<device>\|all]` | Hint-code overlay. |
 | `switchPhase <phase>` · `callEvent <event> [wait]` | Phase switch / run an event's sequence. |

@@ -11,6 +11,8 @@ import {
   type MessageData,
   type PlayChannel,
   type PlayerData,
+  type WebsiteData,
+  type WebsiteRequestMethod,
   type WireCommand,
   type WireDialogueLine,
 } from '@roomkit/shared';
@@ -50,6 +52,8 @@ export interface ResolveOptions {
 
 export interface Resolution {
   deliveries: Delivery[];
+  /** Server-side HTTP request produced by sendWebsiteRequest. */
+  websiteRequest?: ResolvedWebsiteRequest;
   /** Set when the authoring command has waitUntilEnd: whose ack ends the wait. */
   awaitAckOf?: { deviceId: string; commandId: string };
   /**
@@ -80,6 +84,16 @@ export interface Resolution {
   };
 }
 
+export interface ResolvedWebsiteRequest {
+  websiteId: string;
+  websiteName: string;
+  url: string;
+  method: WebsiteRequestMethod;
+  body: string;
+  headers: Array<{ key: string; value: string }>;
+  waitUntilEnd: boolean;
+}
+
 type ParsedAsset<K extends AssetKind> = {
   id: string;
   name: string;
@@ -101,9 +115,8 @@ export class CommandResolver {
   }
 
   /**
-   * Resolves one authoring command into wire deliveries. Only device-directed
-   * commands come through here; wait/eval/switchPhase/callEvent/adjustTimer
-   * are interpreted by the engine itself.
+   * Resolves one authoring command into device wire deliveries or a server-side
+   * website request. Flow commands are interpreted by the engine itself.
    */
   async resolve(
     themeId: string,
@@ -312,10 +325,7 @@ export class CommandResolver {
       case 'navigate': {
         const device = await this.getDevice(themeId, cmd.deviceId, opts);
         const website = await this.getAsset(themeId, cmd.websiteId, 'website');
-        let url =
-          website.data.mode === 'hosted'
-            ? `${this.publicServerUrl}/api/sites/${website.id}/`
-            : website.data.url;
+        let url = this.websiteUrl(website.id, website.data);
         const params = new URLSearchParams();
         for (const { key, value } of cmd.query) {
           if (key === '') continue;
@@ -355,6 +365,47 @@ export class CommandResolver {
           ...(cmd.waitUntilEnd
             ? { awaitAckOf: { deviceId: device.id, commandId: wire.id } }
             : {}),
+        };
+      }
+      case 'sendWebsiteRequest': {
+        const website = await this.getAsset(themeId, cmd.websiteId, 'website');
+        const scope = scopeOf(opts);
+        const baseUrl = this.websiteUrl(website.id, website.data);
+        let base: URL;
+        let url: URL;
+        try {
+          base = new URL(baseUrl);
+          const path = interpolateString(cmd.path, scope);
+          url = path === '' ? base : new URL(path, base);
+        } catch {
+          throw new ResolutionError(
+            `website request path "${cmd.path}" is invalid`,
+          );
+        }
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          throw new ResolutionError(
+            `website request URL must use http or https (got ${url.protocol})`,
+          );
+        }
+        if (url.origin !== base.origin) {
+          throw new ResolutionError(
+            'website request path must stay on the website origin',
+          );
+        }
+        return {
+          deliveries: [],
+          websiteRequest: {
+            websiteId: website.id,
+            websiteName: website.name,
+            url: url.toString(),
+            method: cmd.method,
+            body: interpolateString(cmd.body, scope),
+            headers: cmd.headers.map(({ key, value }) => ({
+              key: interpolateString(key, scope),
+              value: interpolateString(value, scope),
+            })),
+            waitUntilEnd: cmd.waitUntilEnd,
+          },
         };
       }
       default:
@@ -557,6 +608,12 @@ export class CommandResolver {
 
   private mediaUrl(fileKey: string): Promise<string> {
     return this.storage.presignGet(fileKey, MEDIA_URL_EXPIRES_IN);
+  }
+
+  private websiteUrl(websiteId: string, data: WebsiteData): string {
+    return data.mode === 'hosted'
+      ? `${this.publicServerUrl}/api/sites/${websiteId}/`
+      : data.url;
   }
 
   /**

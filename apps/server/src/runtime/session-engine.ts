@@ -35,6 +35,7 @@ import { CountdownTimer } from './countdown-timer';
 import { runEval } from './eval-sandbox';
 import type { HintService, ResolvedHint } from './hint.service';
 import type { RuntimeTransport } from './runtime-transport';
+import { performWebsiteRequest } from './website-request';
 
 export const ACK_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 export const CALL_EVENT_DEPTH_LIMIT = 8;
@@ -968,6 +969,16 @@ export class SessionEngine {
         });
       }
     }
+    if (resolution.websiteRequest) {
+      const request = resolution.websiteRequest;
+      const promise = this.sendWebsiteRequest(request, run?.runId);
+      if (request.waitUntilEnd) {
+        await promise;
+        this.checkAborted();
+      } else {
+        void promise;
+      }
+    }
     const online = new Map<string, boolean>();
     for (const delivery of resolution.deliveries) {
       online.set(
@@ -994,6 +1005,56 @@ export class SessionEngine {
           `${cmd.type} reported failed by device ${deviceId}`,
         );
       }
+    }
+  }
+
+  private async sendWebsiteRequest(
+    request: NonNullable<Resolution['websiteRequest']>,
+    runId?: string,
+  ): Promise<void> {
+    const controller = new AbortController();
+    const abortRequest = () => {
+      if (
+        this.abort.signal.aborted ||
+        (runId !== undefined && this.abortedRunIds.has(runId))
+      ) {
+        controller.abort();
+      }
+    };
+    this.abort.signal.addEventListener('abort', abortRequest, { once: true });
+    this.emitter.on('runsAborted', abortRequest);
+    abortRequest();
+    void this.log(
+      'info',
+      'command',
+      `sendWebsiteRequest sent: ${request.method} ${request.url}`,
+      {
+        websiteId: request.websiteId,
+      },
+    );
+    const result = await performWebsiteRequest(request, controller.signal);
+    this.abort.signal.removeEventListener('abort', abortRequest);
+    this.emitter.off('runsAborted', abortRequest);
+    if (controller.signal.aborted) return;
+    if (result.status === 'done') {
+      void this.log(
+        'info',
+        'command',
+        `sendWebsiteRequest completed: HTTP ${result.statusCode}`,
+        {
+          websiteId: request.websiteId,
+          url: request.url,
+        },
+      );
+    } else {
+      const detail =
+        'error' in result
+          ? result.error
+          : `HTTP ${result.statusCode}${result.statusText ? ` ${result.statusText}` : ''}`;
+      void this.log('warn', 'command', `sendWebsiteRequest failed: ${detail}`, {
+        websiteId: request.websiteId,
+        url: request.url,
+      });
     }
   }
 

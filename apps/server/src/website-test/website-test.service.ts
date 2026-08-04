@@ -32,6 +32,7 @@ import {
   ResolutionError,
   type Resolution,
 } from '../runtime/command-resolver';
+import { performWebsiteRequest } from '../runtime/website-request';
 import {
   NOOP_WEBSITE_TEST_TRANSPORT,
   type WebsiteTestTransport,
@@ -745,12 +746,13 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
         ...meta,
       });
     }
-    if (kept.length === 0) return;
+    if (kept.length === 0 && !resolution.websiteRequest) return;
     const awaited = this.dispatch(
       run,
       entry.type,
       { ...resolution, deliveries: kept },
       meta,
+      opts.signal,
     );
     if (awaited && opts.signal) {
       await Promise.race([awaited, abortedPromise(opts.signal)]);
@@ -768,6 +770,7 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
     commandType: string,
     resolution: Resolution,
     meta: CommandMeta,
+    signal?: AbortSignal,
   ): Promise<unknown> | null {
     if (resolution.dialogueCues) {
       const { commandId, byLine, dropped } = resolution.dialogueCues;
@@ -789,6 +792,36 @@ export class WebsiteTestService implements OnModuleInit, OnModuleDestroy {
       }
     }
     let awaited: Promise<unknown> | null = null;
+    if (resolution.websiteRequest) {
+      const request = resolution.websiteRequest;
+      this.emitActivity(run, {
+        kind: 'command',
+        level: 'info',
+        message: `${commandType} 전송됨 — ${request.method} ${request.url}`,
+        commandType,
+        status: 'sent',
+        ...meta,
+      });
+      const promise = performWebsiteRequest(request, signal).then((result) => {
+        if (signal?.aborted) return result;
+        const done = result.status === 'done';
+        const detail =
+          'error' in result
+            ? result.error
+            : `HTTP ${result.statusCode}${result.statusText ? ` ${result.statusText}` : ''}`;
+        this.emitActivity(run, {
+          kind: 'command',
+          level: done ? 'info' : 'error',
+          message: `${commandType} ${done ? '완료' : '실패'} — ${detail}`,
+          commandType,
+          status: done ? 'done' : 'failed',
+          ...meta,
+        });
+        return result;
+      });
+      if (request.waitUntilEnd) awaited = promise;
+      else void promise;
+    }
     for (const delivery of resolution.deliveries) {
       const sent = this.transport.sendCommand(
         run.runId,

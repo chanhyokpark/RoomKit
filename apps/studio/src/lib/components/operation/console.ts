@@ -1,4 +1,4 @@
-import type { Asset, AssetKind, Command } from '@roomkit/shared';
+import type { Asset, AssetKind, Command, WebsiteRequestMethod } from '@roomkit/shared';
 import type { OperationData } from './operation-data.svelte';
 
 /**
@@ -30,6 +30,7 @@ const HELP: string[] = [
 	'  stopBgm|stopSfx|stopVideo|stopDialogue [<player>|all] — 생략 시 전체 정지',
 	'  navigate <device> <website> [key=value ...]',
 	'  sendMessage <device> <message> [{"key":"value"}]',
+	'  sendWebsiteRequest <website> <method> <path> [wait] [body=<text>] [header=Name:Value ...]',
 	'  resetDevice <device> · resetAllDevices',
 	'  showHintCode <hint> <device> · hideHintCode [<device>|all]',
 	'  switchPhase <phase> · callEvent <event> [wait]',
@@ -155,6 +156,51 @@ export function parseConsole(input: string, data: OperationData, sessionId: stri
 				messageId: message.id,
 				values: values as never,
 				waitUntilEnd: false
+			});
+		}
+		case 'sendwebsiterequest': {
+			const flags = takeFlags(args, ['wait']);
+			const [websiteToken, methodToken, path, ...options] = args;
+			const method = methodToken?.toUpperCase();
+			const allowed: WebsiteRequestMethod[] = [
+				'GET',
+				'HEAD',
+				'POST',
+				'PUT',
+				'PATCH',
+				'DELETE',
+				'OPTIONS'
+			];
+			if (!method || !allowed.includes(method as WebsiteRequestMethod)) {
+				throw new ConsoleError(`지원하지 않는 HTTP 메서드입니다: ${methodToken ?? '(없음)'}`);
+			}
+			if (path === undefined) {
+				throw new ConsoleError('사용법: sendWebsiteRequest <웹사이트> <메서드> <경로>');
+			}
+			let body = '';
+			const headers: Array<{ key: string; value: string }> = [];
+			for (const option of options) {
+				if (option.startsWith('body=')) {
+					body = option.slice('body='.length);
+					continue;
+				}
+				if (option.startsWith('header=')) {
+					const header = option.slice('header='.length);
+					const colon = header.indexOf(':');
+					if (colon < 1) throw new ConsoleError(`header=Name:Value 형식이 아닙니다: ${option}`);
+					headers.push({ key: header.slice(0, colon), value: header.slice(colon + 1) });
+					continue;
+				}
+				throw new ConsoleError(`알 수 없는 요청 옵션입니다: ${option}`);
+			}
+			return command({
+				type: 'sendWebsiteRequest',
+				websiteId: findAsset(data, 'website', websiteToken).id,
+				path,
+				method: method as WebsiteRequestMethod,
+				body,
+				headers,
+				waitUntilEnd: flags.has('wait')
 			});
 		}
 		case 'resetdevice':

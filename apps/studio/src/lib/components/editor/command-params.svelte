@@ -235,6 +235,129 @@
 				변수의 타입(숫자·불리언 등)이 그대로 전달됩니다.
 			</p>
 		</div>
+	{:else if entry.type === 'sendWebsiteRequest'}
+		<AssetSelect kind="website" label="웹사이트" bind:id={entry.websiteId} {onchanged} />
+		<div class="flex min-w-28 flex-col gap-1">
+			<span class="text-xs text-muted-foreground">메서드</span>
+			<Select.Root
+				type="single"
+				value={entry.method}
+				onValueChange={(value) => {
+					if (entry.type === 'sendWebsiteRequest')
+						entry.method = value as
+							'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
+					onchanged();
+				}}
+			>
+				<Select.Trigger size="sm" class="w-full" aria-label="HTTP 메서드">
+					{entry.method}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Group>
+						{#each ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as method (method)}
+							<Select.Item value={method} label={method}>{method}</Select.Item>
+						{/each}
+					</Select.Group>
+				</Select.Content>
+			</Select.Root>
+		</div>
+		<div class="flex min-w-64 flex-1 flex-col gap-1">
+			<span class="text-xs text-muted-foreground">경로</span>
+			<Input
+				class="h-8 font-mono text-xs"
+				placeholder="/api/action"
+				value={entry.path}
+				aria-label="요청 경로"
+				oninput={(inputEvent) => {
+					if (entry.type === 'sendWebsiteRequest') entry.path = inputEvent.currentTarget.value;
+					onchanged();
+				}}
+			/>
+		</div>
+		<label class="flex h-8 items-center gap-2 text-xs">
+			<Switch
+				checked={entry.waitUntilEnd}
+				onCheckedChange={(checked) => {
+					if (entry.type === 'sendWebsiteRequest') entry.waitUntilEnd = checked;
+					onchanged();
+				}}
+			/>
+			끝날 때까지 대기
+		</label>
+		<div class="flex w-full flex-col gap-1">
+			<span class="text-xs text-muted-foreground">본문</span>
+			<Textarea
+				class="min-h-20 font-mono text-xs"
+				rows={3}
+				placeholder={'{"key":"value"}'}
+				value={entry.body}
+				disabled={entry.method === 'GET' || entry.method === 'HEAD'}
+				aria-label="요청 본문"
+				oninput={(inputEvent) => {
+					if (entry.type === 'sendWebsiteRequest') entry.body = inputEvent.currentTarget.value;
+					onchanged();
+				}}
+			/>
+			{#if entry.method === 'GET' || entry.method === 'HEAD'}
+				<p class="text-xs text-muted-foreground">GET/HEAD 요청에는 본문을 보내지 않습니다.</p>
+			{/if}
+		</div>
+		<div class="flex w-full flex-col gap-1.5">
+			<span class="text-xs text-muted-foreground">헤더</span>
+			{#each entry.headers as header, index (index)}
+				<div class="flex items-center gap-2">
+					<Input
+						class="h-8 w-48 font-mono text-xs"
+						placeholder="Content-Type"
+						value={header.key}
+						aria-label="헤더 이름"
+						oninput={(inputEvent) => {
+							header.key = inputEvent.currentTarget.value;
+							onchanged();
+						}}
+					/>
+					<Input
+						class="h-8 flex-1 font-mono text-xs"
+						placeholder="application/json"
+						value={header.value}
+						aria-label="헤더 값"
+						oninput={(inputEvent) => {
+							header.value = inputEvent.currentTarget.value;
+							onchanged();
+						}}
+					/>
+					<Button
+						variant="ghost"
+						size="icon"
+						class="size-8 shrink-0"
+						aria-label="헤더 삭제"
+						onclick={() => {
+							if (entry.type === 'sendWebsiteRequest') entry.headers.splice(index, 1);
+							onchanged();
+						}}
+					>
+						<XIcon class="size-4" />
+					</Button>
+				</div>
+			{/each}
+			<div>
+				<Button
+					variant="outline"
+					size="sm"
+					class="h-7 text-xs"
+					onclick={() => {
+						if (entry.type === 'sendWebsiteRequest') entry.headers.push({ key: '', value: '' });
+						onchanged();
+					}}
+				>
+					<PlusIcon class="size-3.5" />
+					헤더 추가
+				</Button>
+			</div>
+			<p class="text-xs text-muted-foreground">
+				경로, 본문, 헤더에는 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환을 쓸 수 있습니다.
+			</p>
+		</div>
 	{:else if entry.type === 'switchPhase'}
 		<AssetSelect kind="phase" label="페이즈" bind:id={entry.phaseId} {onchanged} />
 	{:else if entry.type === 'callEvent'}

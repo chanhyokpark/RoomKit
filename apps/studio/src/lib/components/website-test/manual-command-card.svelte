@@ -28,6 +28,7 @@
 		'resetDevice',
 		'resetAllDevices',
 		'sendMessage',
+		'sendWebsiteRequest',
 		'showHintCode',
 		'hideHintCode'
 	];

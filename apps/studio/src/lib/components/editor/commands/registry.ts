@@ -105,6 +105,19 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 			waitUntilEnd: false
 		})
 	},
+	sendWebsiteRequest: {
+		label: '웹사이트에 요청 전송',
+		icon: GlobeIcon,
+		create: () => ({
+			type: 'sendWebsiteRequest',
+			websiteId: null,
+			path: '',
+			method: 'GET',
+			body: '',
+			headers: [],
+			waitUntilEnd: false
+		})
+	},
 	wait: {
 		label: '대기',
 		icon: HourglassIcon,
@@ -178,6 +191,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
 			'resetAllDevices',
 			'navigate',
 			'sendMessage',
+			'sendWebsiteRequest',
 			'showHintCode',
 			'hideHintCode'
 		]
@@ -239,6 +253,8 @@ export function commandRefs(cmd: Command): CommandRef[] {
 				{ kind: 'device', id: cmd.deviceId },
 				{ kind: 'message', id: cmd.messageId }
 			];
+		case 'sendWebsiteRequest':
+			return [{ kind: 'website', id: cmd.websiteId }];
 		case 'switchPhase':
 			return [{ kind: 'phase', id: cmd.phaseId }];
 		case 'callEvent':

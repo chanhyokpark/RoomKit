@@ -9,6 +9,25 @@ import { JsonValueSchema } from './json.js';
  */
 const assetRef = z.uuid().nullable();
 
+/** HTTP verbs supported by the server-side website request command. */
+export const WebsiteRequestMethodSchema = z.enum([
+  'GET',
+  'HEAD',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+]);
+export type WebsiteRequestMethod = z.infer<typeof WebsiteRequestMethodSchema>;
+
+/** Key/value input kept as pairs so the editor can preserve duplicate headers. */
+export const WebsiteRequestHeaderSchema = z.object({
+  key: z.string(),
+  value: z.string(),
+});
+export type WebsiteRequestHeader = z.infer<typeof WebsiteRequestHeaderSchema>;
+
 /**
  * Sequence command definitions. The runtime (M2) executes these on the server;
  * the editor (M3) authors them. Stored as a JSON array on Event.sequence.
@@ -92,6 +111,18 @@ const nonDialogueOptions = [
      * Await the device's message handlers before continuing: the ack is
      * deferred until every `message` listener's returned promise settles.
      */
+    waitUntilEnd: z.boolean().default(false),
+  }),
+  z.object({
+    type: z.literal('sendWebsiteRequest'),
+    websiteId: assetRef,
+    /** Resolved against the website asset URL using normal URL semantics. */
+    path: z.string(),
+    method: WebsiteRequestMethodSchema,
+    /** Raw request body. Ignored for GET and HEAD requests. */
+    body: z.string(),
+    headers: z.array(WebsiteRequestHeaderSchema).default([]),
+    /** Await the complete response body before continuing the sequence. */
     waitUntilEnd: z.boolean().default(false),
   }),
   z.object({ type: z.literal('switchPhase'), phaseId: assetRef }),
@@ -195,6 +226,7 @@ export const COMMAND_ASSET_REFS = {
   wait: [],
   navigate: ['deviceId', 'websiteId'],
   sendMessage: ['deviceId', 'messageId'],
+  sendWebsiteRequest: ['websiteId'],
   switchPhase: ['phaseId'],
   callEvent: ['eventId'],
   resetAllDevices: [],
