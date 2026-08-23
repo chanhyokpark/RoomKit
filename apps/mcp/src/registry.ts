@@ -48,7 +48,7 @@ export function createServer(
   ctx: ToolContext,
 ): Server {
   const server = new Server(
-    { name: 'roomkit', version: '0.1.0' },
+    { name: 'roomkit', version: '0.2.0' },
     { capabilities: { tools: {}, resources: {} } },
   );
 
