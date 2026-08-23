@@ -42,7 +42,7 @@
 				{/if}
 				{#each group.kinds as kind (kind)}
 					{@const meta = KIND_META[kind]}
-					<Tabs.Trigger value={kind}>
+					<Tabs.Trigger value={kind} class="h-7 flex-none">
 						<meta.icon />
 						{meta.label}
 					</Tabs.Trigger>
