@@ -21,16 +21,26 @@ pnpm infra
 
 It starts the application Docker profile. Defaults are Server `http://localhost:3000`, Studio `http://localhost:5173`, administrator `admin/roomkit`, PostgreSQL host port `5433`, MinIO API `9000`, and console `9001`.
 
-For host development, start only infrastructure and then applications:
+For host development, start only infrastructure, initialize Server configuration, and apply migrations:
 
 ```sh
-docker compose up postgres minio
+docker compose up -d
+./init.sh
+pnpm --filter server exec prisma migrate deploy
+cp -n apps/studio/.env.example apps/studio/.env
+```
+
+Then run the applications in separate terminals:
+
+```sh
 pnpm dev:server
 pnpm --filter studio dev
 pnpm dev:player
 ```
 
-The server applies Prisma migrations and uses `/api` as the REST prefix. Player stores its server URL, stable launcher ID/name, device configuration, and cache under the platform application-data directory.
+`./init.sh` creates `apps/server/.env`, prompts for the administrator password, generates a random JWT secret, and stores a bcrypt hash. It refuses to overwrite an existing file unless `--force` is explicitly used; a password argument makes it non-interactive. Docker Server startup applies Prisma migrations automatically, but host `pnpm dev:server` does not, so run the explicit migration command after schema changes or against a new database.
+
+The server uses `/api` as the REST prefix. Player stores its server URL, stable launcher ID/name, device configuration, and cache under the platform application-data directory. Player is not part of the Docker application profile and runs separately.
 
 ## Library installation from GitHub
 
@@ -49,7 +59,9 @@ Then install the required package:
 pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
 ```
 
-Pin production consumers to a tag or commit using `#<ref>&path:packages/helper`. Package `prepare` scripts build distributable ESM/CJS/types during installation.
+Pin production consumers to a tag or commit using `#<ref>&path:packages/helper`. Package `prepare` scripts build each package's distributable JavaScript and type declarations during installation.
+
+The same allow-list rule applies to `@roomkit/hintphone-svelte`. The React and Svelte hintphone packages bundle their internal controller transport, so consumers install the UI package they use rather than a separate core package.
 
 ## Website builds
 
@@ -68,5 +80,7 @@ The repository contains Docker and Kubernetes examples, not a hosted control pla
 - a private administrator password and restricted Studio access;
 - a server URL resolvable and reachable from every Player/custom device;
 - storage CORS/presigned URL behavior compatible with Player media downloads.
+
+Studio reads `PUBLIC_API_URL` as a build-time public value. It reads optional `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` at runtime under adapter-node; these override the shared minimums used by operation/website-test version warnings.
 
 Do not expose PostgreSQL or MinIO administration ports publicly. The Kubernetes manifests under `k8s/` show the expected services, ingress, and build/deploy flow.

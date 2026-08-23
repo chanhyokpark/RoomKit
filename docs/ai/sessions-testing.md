@@ -34,11 +34,13 @@ Virtual devices acknowledge every command immediately. They accurately test targ
 
 Website tests are in-memory and require a connected Player launcher plus player ID. Select a device and URL, then use manual commands or authored event sequences. The harness supplies a simulated timer and captures triggers rather than executing them automatically. It can expose a test device code so a direct Client page joins the same harness.
 
-Use website test to verify Helper hello/claims, messages, hints, subtitle/video delegation, trigger names, timer requests, and acknowledgment. Runs expire after twelve hours and disappear on server restart.
+Use website test to verify Helper hello/claims, messages, hint submission/error plumbing, subtitle/video delegation, trigger names, timer requests, and acknowledgment. Website-test hint requests are logged but deliberately return `session_not_running`; use a running test session for successful hint steps, explicit answers, and operator push. Runs expire after twelve hours and disappear on server restart.
 
 ## Operations behavior
 
-The operation dashboard provides current phase, timer, manual events, hint push, device state/playback, live runs, logs, test codes, and ended-session summary. Operators can stop individual playback channels or abort an event run.
+The operation dashboard provides current phase, session-level and timer-only pause controls, manual events, device state/playback, live runs, logs, test codes, an inline one-off command console, component-version warnings, and ended-session summary. Operators can stop individual playback channels or abort an event run. The hint-push REST/MCP action is implemented, but its Studio dashboard card is currently hidden.
+
+The log console accepts asset names/IDs, exposes `help` and `list`, and dispatches the same command union as event sequences outside a run. It is an operator override and remains usable before start or while paused. Its local input/output is interleaved with durable server logs; only server log entries persist.
 
 Stopping playback is normal completion: a sequence waiting on that playback continues. Aborting a run cancels its waits and remaining commands. Restarting a phase aborts runs for the phase, fires leave/enter again, and clears its once-event history. A plain phase switch does not reset once history.
 

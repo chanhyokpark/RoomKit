@@ -5,6 +5,7 @@
 ## 서버와 Studio
 
 - Studio가 서버에 연결되지 않으면 `http://localhost:3000/api`가 응답하는지와 프록시의 WebSocket 설정을 확인해 주세요.
+- 호스트에서 처음 실행할 때 환경변수 오류가 나면 루트에서 `./init.sh`를 실행했는지, 테이블 오류가 나면 `pnpm --filter server exec prisma migrate deploy`를 실행했는지 확인해 주세요.
 - 데이터베이스 오류가 발생하면 PostgreSQL이 `5433` 포트에서 실행 중인지 확인해 주세요.
 - 업로드가 실패하면 MinIO의 `9000` 포트, 버킷 설정과 Server의 S3 환경변수를 확인해 주세요.
 - 공유 타입을 변경한 뒤 컴파일 오류가 발생하면 `pnpm --filter @roomkit/shared build`를 먼저 실행해 주세요.
@@ -37,5 +38,11 @@
 - 자막이 맞지 않으면 스피커가 라인마다 `sendProgress()`를 보내고 스크린이 `progress`에서 렌더링하는지 확인해 주세요.
 - 반복 BGM은 종료되지 않으므로 재생 시작 직후 완료 응답을 보내 주세요.
 - 미디어 정지 시 이전 event listener, timer와 object URL을 함께 정리해 주세요.
+- Player 캐시 동기화가 실패해도 URL 스트리밍으로 재생되어야 합니다. 둘 다 실패하면 장치가 접근하는 `S3_PUBLIC_ENDPOINT`, 스토리지 CORS와 presigned URL의 호스트를 확인해 주세요.
+
+## 버전 경고
+
+- 운영·웹 테스트 화면의 노란 경고는 연결된 Player, Client 또는 Helper가 Studio의 기대 버전보다 낮다는 뜻입니다. 해당 앱/라이브러리를 함께 업데이트해 주세요.
+- 배포 환경에서 의도적으로 다른 최소 버전을 사용할 때는 Studio의 `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, `PUBLIC_EXPECTED_HELPER_VERSION`을 설정해 주세요.
 
 문제가 계속되면 세션 로그, 장치 콘솔과 사용 중인 Client/Helper 버전을 함께 확인해 주세요.

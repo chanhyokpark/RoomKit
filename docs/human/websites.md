@@ -19,12 +19,12 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
 ```
 
 ```ts
-import { RoomKitHelper } from '@roomkit/helper';
+import { RoomKitHelper } from "@roomkit/helper";
 
 const roomkit = new RoomKitHelper();
-roomkit.trigger('keypad:correct', { digits: '0417' });
-roomkit.on('message', async (payload, message) => {
-  if (message.messageName === 'set-screen') await updateScreen(payload);
+roomkit.trigger("keypad:correct", { digits: "0417" });
+roomkit.on("message", async (payload, message) => {
+  if (message.messageName === "set-screen") await updateScreen(payload);
 });
 ```
 
@@ -45,7 +45,7 @@ const roomkit = new RoomKitHelper({
 비디오를 맡으면 사이트가 오디오를 포함한 재생 전체를 책임집니다.
 
 ```ts
-roomkit.on('videoPlay', (video) => {
+roomkit.on("videoPlay", (video) => {
   if (!video.url) return; // 플레이스홀더는 Player가 시간에 맞춰 완료 처리합니다.
   element.src = video.url;
   element.onended = () => roomkit.videoEnded(video.commandId);
@@ -53,7 +53,7 @@ roomkit.on('videoPlay', (video) => {
   void element.play();
 });
 
-roomkit.on('videoStop', () => element.pause());
+roomkit.on("videoStop", () => element.pause());
 ```
 
 정상 종료나 오류 보고를 빠뜨리면 **끝날 때까지 대기** 중인 시퀀스가 멈춥니다. 새 비디오나 stop 이벤트가 오면 이전 핸들러와 재생 상태를 정리해 주세요.
@@ -61,6 +61,8 @@ roomkit.on('videoStop', () => element.pause());
 ## 개발과 배포
 
 Studio의 **웹 테스트**에서 Player와 장치를 선택하고 Vite 개발 서버 URL을 입력해 주세요. HMR로 페이지가 다시 로드되면 Helper가 새 hello를 보내고 슬롯을 다시 선언합니다. 활동 로그에서 트리거, 메시지 처리와 완료 응답을 확인하실 수 있습니다.
+
+웹 테스트의 트리거는 실행되지 않고 일치하는 이벤트만 기록됩니다. 힌트 요청도 실제 세션 없이 `session_not_running`으로 응답합니다. 전체 이벤트 흐름과 성공한 힌트 단계를 확인할 때는 테스트 세션을 사용해 주세요.
 
 배포할 때는 다음 중 하나를 선택해 주세요.
 

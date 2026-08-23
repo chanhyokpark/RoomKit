@@ -6,6 +6,8 @@
 
 Verify Server origin rather than Studio origin, credentials, and `/api/auth/login`. MCP accepts a URL with or without `/api`. After login, inspect returned themes and use exact UUID/name. Ambiguous partial names are rejected.
 
+For a host-development Server, configuration failures usually mean `./init.sh` has not created `apps/server/.env`; missing-table failures mean Prisma migrations were not applied with `pnpm --filter server exec prisma migrate deploy`. Docker Server startup applies migrations automatically.
+
 ## Device is disconnected or reports `invalid_code`
 
 Confirm whether the code is a permanent device asset code or test-session code. Test codes are valid only for their non-ended session. A pre-booted production device may need `retryOnFatalError`. Shared browser storage can cause multiple devices to reuse one stored test code; disable persistence or provide scoped storage.
@@ -37,6 +39,12 @@ It is likely running outside Player, was constructed before/without the current 
 ## Hosted site assets are 404
 
 Confirm `index.html` is at ZIP root, Vite uses `base: './'`, and imports are relative. Re-upload after a clean build. External site failures are network/CORS/availability issues outside hosted-site extraction.
+
+## Player cache or version warning is wrong
+
+Cache sync should fall back to playback wire URLs. If both paths fail, inspect `S3_PUBLIC_ENDPOINT`, storage CORS, the presigned URL host as seen from the device, and expiry. A corrupt/missing local entry is invalidated and retried from the network.
+
+Studio warns only for detected Player/Client/Helper versions. Update the component or intentionally override the three `PUBLIC_EXPECTED_*_VERSION` values in Studio. An absent version field means no component was detected (or an older server) and does not warn; `null` means a detected pre-reporting component and counts as outdated.
 
 ## MCP documentation read fails
 

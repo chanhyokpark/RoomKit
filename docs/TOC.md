@@ -6,18 +6,21 @@ RoomKit은 방탈출 게임의 제작, 테스트, 운영과 장치 연동을 한
 
 1. [RoomKit 이해하기](./human/overview.md) — 구성 요소와 핵심 용어를 먼저 살펴보세요.
 2. [설치하고 실행하기](./human/getting-started.md) — 서버, Studio, Player를 실행해 보세요.
-3. [테마 제작하기](./human/authoring.md) — 애셋, 페이즈, 이벤트와 커맨드를 구성하세요.
-4. [테스트하고 운영하기](./human/operations.md) — 테스트 세션부터 실제 운영까지 확인하세요.
+3. [Player 설정하기](./human/player.md) — 장치 창, 캐시, 테스트 도구와 키오스크 모드를 설정하세요.
+4. [테마 제작하기](./human/authoring.md) — 애셋, 페이즈, 이벤트와 커맨드를 구성하세요.
+5. [테스트하고 운영하기](./human/operations.md) — 웹 테스트와 테스트 세션부터 실제 운영까지 확인하세요.
 
 ## 기능별 문서
 
-| 하시려는 일 | 문서 |
-| --- | --- |
-| Player 안에서 실행되는 퍼즐 웹사이트 만들기 | [Helper로 웹사이트 만들기](./human/websites.md) |
-| 별도 키오스크나 하드웨어 장치 연결하기 | [커스텀 장치 만들기](./human/custom-devices.md) |
-| React로 힌트폰 만들기 | [힌트폰 만들기](./human/hintphone.md) |
-| AI에게 테마 제작과 테스트 맡기기 | [AI와 MCP 사용하기](./human/ai-and-mcp.md) |
-| 오류 원인 찾기 | [문제 해결](./human/troubleshooting.md) |
+| 하시려는 일                                    | 문서                                                   |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| 테마를 복제하거나 다른 서버로 옮기기           | [테마 제작하기](./human/authoring.md#테마와-애셋-관리) |
+| Player에서 여러 장치·키오스크·Android 구성하기 | [Player 설정하기](./human/player.md)                   |
+| Player 안에서 실행되는 퍼즐 웹사이트 만들기    | [Helper로 웹사이트 만들기](./human/websites.md)        |
+| 별도 키오스크나 하드웨어 장치 연결하기         | [커스텀 장치 만들기](./human/custom-devices.md)        |
+| React 또는 Svelte로 힌트폰 만들기              | [힌트폰 만들기](./human/hintphone.md)                  |
+| AI에게 테마 제작과 테스트 맡기기               | [AI와 MCP 사용하기](./human/ai-and-mcp.md)             |
+| 오류 원인 찾기                                 | [문제 해결](./human/troubleshooting.md)                |
 
 ## 바로 실행할 수 있는 예제
 

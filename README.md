@@ -4,16 +4,19 @@
 
 ## 기능
 
-- 애셋 통합 관리
-- 비주얼 에디터
-- 운영 및 테스트
-- 키오스크 기능이 포함된 앱
+- 태그, ZIP 일괄 업로드, 테마 복제·내보내기·가져오기를 포함한 애셋 통합 관리
+- 페이즈, 트리거, 커맨드 시퀀스를 구성하는 비주얼 에디터
+- 웹 테스트, 테스트/프로덕션 세션, 실시간 로그와 운영 콘솔
+- 미디어 캐시, 다중 장치 창, 테스트 오버레이와 키오스크 잠금을 제공하는 Player 앱
+- 커스텀 장치, Player 내 웹사이트, React/Svelte 힌트폰용 라이브러리
+- 테마 제작과 가상 장치 테스트를 자동화하는 MCP 서버
 
 ## 서버 실행
 
 - Node.js, pnpm, Docker 필요
-- `pnpm infra`로 데이터베이스, 스토리지, 서버, 스튜디오 실행(스튜디오 url: localhost:5173)
+- `pnpm infra`로 데이터베이스, 스토리지, 서버, Studio 실행(Studio: http://localhost:5173)
 - 기본 로그인 계정: admin/roomkit
+- Player는 별도 앱이며 `pnpm dev:player`로 실행
 
 자세한 내용은 [RoomKit 문서](./docs/TOC.md)를 참고해 주세요.
 
@@ -58,7 +61,11 @@ MCP 클라이언트 설정(`.mcp.json`) 예시:
   "mcpServers": {
     "roomkit": {
       "command": "pnpm",
-      "args": ["--allow-build=@roomkit/mcp", "dlx", "github:chanhyokpark/RoomKit#path:apps/mcp"]
+      "args": [
+        "--allow-build=@roomkit/mcp",
+        "dlx",
+        "github:chanhyokpark/RoomKit#path:apps/mcp"
+      ]
     }
   }
 }

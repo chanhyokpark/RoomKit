@@ -2,23 +2,24 @@
 
 [AI documentation index](../TOC_AI.md)
 
-Exact payload schemas live in `packages/shared`; server DTOs and MCP schema-description tools are authoritative. This page describes route and protocol responsibilities.
+Exact payload schemas live in `packages/shared`; server DTOs and MCP schema-description tools are authoritative. This page describes route and protocol responsibilities. Route names below match the current NestJS controllers.
 
 ## REST API families
 
-All administrator routes use `/api` and bearer authentication except public media/site delivery.
+All routes use the `/api` prefix. Administrator routes require bearer authentication; login, health, media, and hosted-site delivery are public.
 
-- `/api/auth/login`: issue administrator JWT.
-- `/api/themes`: list/create themes; individual theme routes update, delete, duplicate, export, and import.
-- `/api/themes/:themeId/assets`: CRUD heterogeneous assets; upload/import routes support files, media ZIPs, and hosted sites.
-- `/api/tags`: theme-scoped organization labels.
-- `/api/sessions`: create/list sessions and operate lifecycle, phase, timer, hints, manual commands, logs, runs, and summary.
-- `/api/players`: connected launcher discovery and test-window dispatch.
-- `/api/website-tests`: create and control ephemeral website test runs.
-- `/api/media/:assetId`: public stable image/file asset response, including generated image placeholders.
-- `/api/sites/:assetId/`: public hosted static-site tree.
+- `/api/auth/login` and `/api/auth/me`: issue and inspect the administrator JWT; `/api/health` is the public health check.
+- `/api/themes`: list/create themes. `/:id` updates/deletes, `/:id/duplicate` deep-copies, `/:id/export` downloads a portable archive, and `/import` restores an archive as a new theme.
+- `/api/themes/:themeId/assets`: CRUD heterogeneous assets. `/api/themes/:themeId/tags` manages organization labels.
+- `/api/themes/:themeId/uploads` and `/api/files/url`: presigned single-file upload/download flows. `/api/themes/:themeId/imports/:kind` imports media ZIPs and `/imports/site` extracts a hosted-site ZIP.
+- `/api/sessions`: create/list sessions and operate lifecycle, phase, timer, hints, one-off commands, logs, live runs, and ended-session summary.
+- `/api/website-test`: create/list and control ephemeral website-test runs. The route family is singular.
+- `/api/media/:assetId`: public stable response for file-backed image/file/video/BGM/SFX assets. A fileless image returns a generated ratio placeholder; other fileless kinds return 404.
+- `/api/sites/:assetId/`: public hosted static-site tree; the trailing slash preserves relative asset resolution.
 
 Upload flows usually request a presigned target and send bytes directly to S3. Playback URLs are short-lived. Hosted ZIP extraction is server mediated.
+
+There is no `/api/players` REST family. Connected launcher discovery is streamed on the authenticated admin namespace, and test creation accepts a selected `playerId`; the server dispatches window requests over `/player`.
 
 ## Device namespace
 
@@ -30,7 +31,7 @@ Command delivery is at-least-once. Client acknowledgment payload includes comman
 
 ## Admin and player namespaces
 
-The authenticated admin namespace streams session state, device presence, logs, and live run snapshots to Studio. It accepts session controls, manual triggers, timer/phase changes, reset, and run abortion.
+The authenticated admin namespace streams session state, device presence, playback/website state, logs, live runs, connected launchers, operator notifications, and website-test state/activity to Studio. Session controls themselves use the REST routes above.
 
 The player launcher namespace advertises a stable player ID/name and receives requests to open stage windows for test sessions and website tests. Do not confuse launcher player IDs with player asset IDs.
 

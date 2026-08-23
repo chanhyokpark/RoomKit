@@ -1,42 +1,34 @@
-# sv
+# RoomKit Studio
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+SvelteKit web application for theme authoring, asset/tag and archive management, event-sequence editing, website tests, and live session operation.
 
-## Creating a project
+User workflows start at the [RoomKit documentation index](../../docs/TOC.md). Implementation-level behavior is covered by [architecture](../../docs/ai/architecture.md), [theme authoring](../../docs/ai/authoring.md), and [sessions/testing](../../docs/ai/sessions-testing.md).
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Local development
 
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
+Start RoomKit Server first, then run from the repository root:
 
 ```sh
-# recreate this project
-pnpm dlx sv@0.16.3 create --template minimal --types ts --add prettier eslint tailwindcss="plugins:none" mcp="ide:claude-code+setup:local" --install pnpm .
+pnpm --filter @roomkit/shared build
+cp -n apps/studio/.env.example apps/studio/.env
+pnpm --filter studio dev
 ```
 
-## Developing
+Studio opens at `http://localhost:5173`. `PUBLIC_API_URL` must be the RoomKit Server origin as reachable from the operator's browser, without `/api` or a trailing slash.
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+## Public environment values
+
+- `PUBLIC_API_URL` is imported statically and therefore baked into production client bundles.
+- `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` are optional runtime overrides for the minimums shown in operation and website-test warning banners.
+
+See [`.env.example`](./.env.example) for defaults. The Docker and Kubernetes builds pass `PUBLIC_API_URL` as a build argument.
+
+## Checks
 
 ```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+pnpm --filter studio check
+pnpm --filter studio lint
+pnpm --filter studio build
 ```
 
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+`lint` checks formatting and ESLint without rewriting files. `build` produces the adapter-node application used by the Studio container.

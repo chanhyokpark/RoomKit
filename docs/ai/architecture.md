@@ -4,18 +4,18 @@
 
 ## Components
 
-| Component | Responsibility |
-| --- | --- |
-| `apps/server` | NestJS REST API, Socket.io gateways, sequence runtime, timer, eval sandbox, media/site delivery, and persistence orchestration. |
-| `apps/studio` | SvelteKit authoring and operation SPA. It uses REST for CRUD and admin sockets for live session state. |
-| `apps/player` | Tauri launcher and stage windows. It uses `@roomkit/client`, owns media playback, embeds websites, and bridges Helper messages. |
-| `apps/mcp` | Stdio MCP server that exposes Studio operations to AI agents through REST and virtual device sockets. |
-| `packages/shared` | Zod schemas and shared protocol types; the source of truth for asset, command, helper, and wire shapes. |
-| `packages/client` | Direct Socket.io device client with validation, command dedupe, acknowledgment, and reconnect behavior. |
-| `packages/helper` | Small browser bridge for websites inside Player; communicates only with the parent frame. |
-| `packages/hintphone-*` | Transport-independent hint state/controller plus React and Svelte UI bindings. |
+| Component              | Responsibility                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/server`          | NestJS REST API, Socket.io gateways, sequence runtime, timer, eval sandbox, media/site delivery, and persistence orchestration. |
+| `apps/studio`          | SvelteKit authoring and operation SPA. It uses REST for CRUD and admin sockets for live session state.                          |
+| `apps/player`          | Tauri launcher and stage windows. It uses `@roomkit/client`, owns media playback, embeds websites, and bridges Helper messages. |
+| `apps/mcp`             | Stdio MCP server that exposes Studio operations to AI agents through REST and virtual device sockets.                           |
+| `packages/shared`      | Zod schemas and shared protocol types; the source of truth for asset, command, helper, and wire shapes.                         |
+| `packages/client`      | Direct Socket.io device client with validation, command dedupe, acknowledgment, and reconnect behavior.                         |
+| `packages/helper`      | Small browser bridge for websites inside Player; communicates only with the parent frame.                                       |
+| `packages/hintphone-*` | Transport-independent hint state/controller plus React and Svelte UI bindings.                                                  |
 
-PostgreSQL stores durable metadata and session state. S3-compatible storage holds uploaded files and hosted-site trees. The server issues presigned URLs for private playback media and exposes stable public routes for website image/file assets and hosted sites.
+PostgreSQL stores durable metadata and session state. S3-compatible storage holds uploaded files and hosted-site trees. The server issues presigned URLs for playback/cache delivery and exposes stable public routes for file-backed image/file/video/BGM/SFX assets and hosted sites.
 
 ## End-to-end data flow
 
@@ -46,6 +46,8 @@ Theme duplication deep-copies all asset metadata and remaps cross-asset referenc
 Bulk ZIP media import always creates assets. Dialogue files ending in `_N` are grouped and ordered into one dialogue. Junk entries and unsupported files are skipped and reported.
 
 Hosted websites are extracted to an immutable storage prefix. Re-upload extracts to a new prefix and then swaps metadata, avoiding partially updated sites.
+
+Theme export writes a portable ZIP containing `manifest.json` plus every referenced media, hint image, and hosted-site object. Import always creates a new theme, mints fresh database IDs and storage keys, and remaps internal references. Missing direct file/image keys become null references (a placeholder only where that asset kind supports one); a missing hosted-site object remains a 404 within the newly assigned site prefix. Unlike duplication, imported bytes belong to the new theme.
 
 ## Trust and security boundaries
 

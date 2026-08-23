@@ -22,8 +22,9 @@ When using MCP, call `describe_asset_kind` before creating an unfamiliar kind. `
 - **bgm**: optional file, placeholder duration, fade-in, and fade-out. Loop is chosen by the command.
 - **sfx**: optional file and placeholder duration.
 - **video**: optional file, placeholder duration, full-screen or percentage frame, and arbitrary params for a delegated renderer.
-- **dialogue**: ordered lines with stable IDs, optional file and duration, subtitle HTML, optional `holdBefore`, keep-subtitle flag, and arbitrary params.
-- **image/file**: public website resource. A fileless image can provide a generated layout placeholder.
+- **dialogue**: ordered lines with stable IDs, optional file and duration, subtitle HTML, keep-subtitle flag, and arbitrary params. `holdBefore` is derived on the playback wire from `playDialogue.lineCues`; it is not authored in dialogue asset data.
+- **image**: public website resource. A fileless image serves a generated layout placeholder using `placeholderRatio`.
+- **file**: arbitrary public website resource; it returns 404 until `fileKey` is set.
 - **website**: external URL or hosted-site storage metadata.
 - **message**: display name plus fields (`key`, `label`, `type`, `required`). Concrete values belong to send-message commands.
 - **hint**: unique code, ordered HTML/image steps, optional explicit answer, and arbitrary params.
@@ -35,6 +36,8 @@ When using MCP, call `describe_asset_kind` before creating an unfamiliar kind. `
 MCP `upload_file` accepts an absolute local path, obtains a presigned upload target, and returns a file key. Put that key in the relevant asset data. `get_file_url` returns a short-lived URL for private media. Website image/file assets instead have a stable public `/api/media/{assetId}` route.
 
 For early logic tests, prefer placeholders over invented file keys. The server recognizes a placeholder only when `fileKey` is null and supplies duration-based playback data to clients.
+
+`/api/media/{assetId}` is a stable public route for file-backed image, file, video, BGM, and SFX assets. Fileless images produce a generated SVG using `placeholderRatio`; other fileless kinds return 404. Dialogue lines do not have one asset-level public route. Treat these URLs and hosted sites as public capability URLs, not protected content.
 
 ## Phases and events
 
@@ -49,3 +52,11 @@ Broken asset references do not invalidate the entire saved sequence. Runtime ski
 Hosted website ZIPs must contain static output with `index.html` at root. Re-upload atomically replaces the active prefix. External URLs are stored as navigation targets only.
 
 Bulk import supports media ZIPs. Each accepted BGM/SFX/video file becomes a new asset. Dialogue names ending in `_1`, `_2`, and so on group into ordered lines. Import does not deduplicate existing assets, so inspect the result before retrying a partially successful upload.
+
+## Theme lifecycle and transfer
+
+Tags are theme-scoped, have unique names, and may be attached to any asset for Studio filtering. Codes are unique by theme and coded kind: device codes cannot duplicate other device codes, and hint codes cannot duplicate other hint codes, but a device and hint may share the same text.
+
+Theme duplication copies tags and assets, remaps player/event/sequence references, preserves dialogue line IDs and sequence identity where required, and shares immutable storage keys with the source. Use it for another room instance or an editable snapshot on the same server.
+
+Theme export/import is the portable path between servers. The archive contains the theme, tags, assets, and every referenced file/site object. Import creates a new theme with fresh database IDs and storage keys, remaps manifest references, and never overwrites an existing theme. Missing direct file/image references become null (a placeholder only for supporting kinds); missing objects inside an otherwise remapped hosted-site prefix remain 404s. The current MCP tool set supports theme duplication but does not expose archive import/export or bulk/site ZIP import; use Studio or the authenticated REST routes for those operations.

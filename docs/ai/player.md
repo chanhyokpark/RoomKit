@@ -1,0 +1,35 @@
+# Player Runtime Contract
+
+[AI documentation index](../TOC_AI.md) · [Direct client contract](./client.md) · [Helper contract](./helper.md)
+
+RoomKit Player is a Tauri launcher plus one stage webview per configured device on desktop. It is the reference `@roomkit/client` consumer: stages own default media playback and overlays, embed navigated websites, and bridge Helper envelopes. Player is not started by `pnpm infra`.
+
+## Launcher and windows
+
+The launcher persists the server origin, a stable launcher UUID/name, and manual device entries in the platform app-data directory. It registers on Socket.io `/player`; Studio can then send test-session and website-test start requests. Auto-opened test windows carry temporary codes in their URL and do not mutate manual launcher entries.
+
+Desktop window labels are stable per manual device, so reopening focuses the existing stage. Test/website-test labels also include the session/run scope and replace stale windows whose codes have expired. Android is single-window: the first open request replaces the launcher, additional devices in the same batch are dropped, and returning to the launcher requires restarting the app.
+
+## Stage ownership
+
+A stage opens one `RoomKitClient` connection and constructs one playback engine. Player handles:
+
+- BGM looping/fades and the lowest active dialogue/SFX duck factor;
+- independent SFX, dialogue speaker/screen/both roles, subtitle progress, and line-cue holds;
+- video placement, completion/error, replacement, and stop;
+- website navigation in an iframe, structured messages, reset, placeholders, hint-code overlay, and connection status;
+- Helper render claims for subtitle, hint code, and video.
+
+Helper claims suppress only the claimed default renderer. Claims reset on navigation and are restored by the new document's hello. Real delegated video must report end/error; fileless delegated video remains timed by Player.
+
+## Media cache
+
+In Tauri, every welcome triggers a role-scoped `fetchAssetManifest()` sync. Speaker devices cache all theme BGM/SFX/dialogue files; screen devices cache all video files. Immutable `fileKey` presence is the freshness check. Downloads are streaming, use atomic replacement, run with concurrency two, and unreferenced keys are pruned after reconciliation.
+
+Cache failure degrades to the presigned URL on the wire. A cache miss during playback starts a background download. Player-native renderers consume local asset/loopback URLs; an HTTPS Helper claiming video receives cached bytes through `postMessage`, which Helper converts to a same-origin `blob:` URL. Browser-only Vite development does not use the native cache.
+
+## Test and kiosk behavior
+
+Test stages show a collapsible bar with session/timer/verdict/cache/connection state, a payload-less trigger sender with per-device recent names, and skip controls for active dialogue/video. Skip settles playback normally, so an awaiting sequence continues. Production stages omit these controls.
+
+Manual launcher entries can enable kiosk mode. It requests fullscreen and always-on-top, prevents close requests and common browser shortcuts, and unlocks through `Ctrl+Shift+Alt+F12` plus confirmation. It is not an OS security boundary and is disabled for auto-opened test windows.

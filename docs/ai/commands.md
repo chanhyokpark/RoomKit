@@ -4,6 +4,14 @@
 
 Always use MCP `describe_commands` or `packages/shared/src/commands.ts` for the exact current JSON Schema. This document describes semantics that cannot be inferred from field types alone.
 
+The current command type inventory is:
+
+- playback: `playDialogue`, `stopDialogue`, `playSfx`, `stopSfx`, `playVideo`, `stopVideo`, `playBgm`, `stopBgm`;
+- device: `resetDevice`, `resetAllDevices`, `navigate`, `sendMessage`, `sendWebsiteRequest`, `showHintCode`, `hideHintCode`;
+- flow/operation: `wait`, `switchPhase`, `callEvent`, `eval`, `endTheme`, `adjustTimer`, `notify`.
+
+Every type except `playDialogue` may also appear inside a dialogue line cue. `describe_commands` remains authoritative if this inventory and an installed binary ever differ.
+
 ## Playback commands
 
 Dialogue, SFX, video, and BGM play commands reference a media asset and player asset. Their stop commands target one player or all players. `waitUntilEnd` blocks the sequence on device acknowledgment.
@@ -42,15 +50,15 @@ Do not use interpolation for asset IDs. Resolve assets before writing the sequen
 ## Eval context
 
 ```js
-ctx.vars;                 // mutable, session-persisted object
-ctx.payload;              // current trigger JSON or null
-ctx.phase;                // current phase name or null
-ctx.trigger(name);        // trigger matching eligible events
-ctx.log(message);         // append a session log
-ctx.switchPhase(name);    // queue an action
-ctx.notify(message);      // queue an action
-ctx.adjustTimer(value);   // signed ms, 'pause', or 'resume'
-ctx.endTheme(verdict);    // 'success' or 'fail'
+ctx.vars; // mutable, session-persisted object
+ctx.payload; // current trigger JSON or null
+ctx.phase; // current phase name or null
+ctx.trigger(name); // trigger matching eligible events
+ctx.log(message); // append a session log
+ctx.switchPhase(name); // queue an action
+ctx.notify(message); // queue an action
+ctx.adjustTimer(value); // signed ms, 'pause', or 'resume'
+ctx.endTheme(verdict); // 'success' or 'fail'
 ```
 
 Queued actions validate arguments immediately but execute after the script returns, in call order. Exceptions fail the eval command and prevent remaining script statements. `return false` is the supported guard idiom.

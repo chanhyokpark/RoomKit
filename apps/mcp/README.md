@@ -1,9 +1,10 @@
 # @roomkit/mcp
 
-MCP (Model Context Protocol) server exposing the full RoomKit studio feature
-set to AI agents: theme/asset management, sequence (scenario) editing as JSON,
+MCP (Model Context Protocol) server exposing RoomKit authoring and testing to
+AI agents: theme/asset management, sequence (scenario) editing as JSON,
 launching and observing test sessions, website tests, and headless virtual
-devices.
+devices. Theme archive import/export and bulk/site ZIP import remain Studio or
+REST-only operations.
 
 It is a thin client over the server's REST API (`/api/*`) plus socket.io for
 virtual devices — no direct database access. For the canonical AI guide, see
@@ -20,6 +21,12 @@ Output: `apps/mcp/dist/index.js` (self-contained ESM bundle).
 
 ## Registering with an AI client
 
+Run the bundled package directly from GitHub without cloning the repository:
+
+```sh
+pnpm --allow-build=@roomkit/mcp dlx "github:chanhyokpark/RoomKit#path:apps/mcp"
+```
+
 No environment variables or config are needed — the agent logs in at runtime
 via the `login` tool (you give it the server URL and admin credentials in the
 conversation).
@@ -27,7 +34,7 @@ conversation).
 Claude Code:
 
 ```sh
-claude mcp add roomkit -- node /path/to/RoomKit/apps/mcp/dist/index.js
+claude mcp add roomkit -- pnpm --allow-build=@roomkit/mcp dlx "github:chanhyokpark/RoomKit#path:apps/mcp"
 ```
 
 Or any client that reads `.mcp.json`-style config:
@@ -37,18 +44,23 @@ Or any client that reads `.mcp.json`-style config:
   "mcpServers": {
     "roomkit": {
       "type": "stdio",
-      "command": "node",
-      "args": ["/path/to/RoomKit/apps/mcp/dist/index.js"]
+      "command": "pnpm",
+      "args": [
+        "--allow-build=@roomkit/mcp",
+        "dlx",
+        "github:chanhyokpark/RoomKit#path:apps/mcp"
+      ]
     }
   }
 }
 ```
 
+For a checked-out build, use `node /path/to/RoomKit/apps/mcp/dist/index.js`.
 For development without rebuilding, point the command at tsx instead:
 `pnpm --dir apps/mcp exec tsx src/index.ts` (requires the workspace installed
 and `@roomkit/shared` built).
 
-## Tools (40)
+## Tools (43)
 
 - **Connection**: `login`, `select_theme`, `get_context` — stateful; after
   `select_theme`, theme-scoped tools no longer need `themeId`.
@@ -59,7 +71,8 @@ and `@roomkit/shared` built).
 - **Discovery**: `get_started`, `describe_commands`, `describe_asset_kind`
   (self-documenting schemas; command schema is also exposed as
   `roomkit://schema/commands`).
-- **Themes**: `list/create/update/delete/duplicate_theme`.
+- **Themes**: `list_themes`, `create_theme`, `update_theme`, `delete_theme`,
+  `duplicate_theme`.
 - **Tags**: `list_tags`, `manage_tag`.
 - **Assets**: `list_assets` (token-lean summaries), `get_asset`,
   `create_asset`, `update_asset`, `delete_asset`.
@@ -80,6 +93,11 @@ and `@roomkit/shared` built).
   devices that ack every command immediately, enabling full test loops with
   no player app or hardware.
 
+Connected Player launchers are observed by Studio's admin socket and do not
+have a listing tool. A real website test therefore needs a `playerId` copied
+from Player/Studio. Theme archive transfer, media ZIP import, and hosted-site
+ZIP import are also not exposed by the current 43 tools.
+
 ## Smoke test
 
 Drives the built server as a real MCP client through the whole loop
@@ -87,7 +105,12 @@ Drives the built server as a real MCP client through the whole loop
 session with a virtual device → trigger → logs → cleanup):
 
 ```sh
-./compose.sh && pnpm dev:server        # infra + server
+pnpm infra
+```
+
+In a second terminal:
+
+```sh
 pnpm --filter @roomkit/mcp build
 ROOMKIT_PASSWORD=... pnpm --filter @roomkit/mcp smoke
 ```

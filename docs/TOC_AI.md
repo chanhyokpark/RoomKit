@@ -7,9 +7,10 @@ This is the canonical documentation index returned by the RoomKit MCP `docs_list
 1. [System model](./ai/system-model.md) — entities, ownership, state, and invariants.
 2. [Architecture](./ai/architecture.md) — components, data flow, persistence, and trust boundaries.
 3. [Environment and deployment](./ai/environment.md) — development and production setup.
-4. [Theme authoring](./ai/authoring.md) — asset kinds, phases, events, and authoring order.
-5. [Sequence commands](./ai/commands.md) — runtime behavior, waits, interpolation, and eval.
-6. [Sessions and testing](./ai/sessions-testing.md) — lifecycle, virtual devices, website tests, and operations.
+4. [Player runtime](./ai/player.md) — launcher/stage behavior, caching, test windows, kiosk mode, and platform limits.
+5. [Theme authoring](./ai/authoring.md) — asset kinds, phases, events, transfer, and authoring order.
+6. [Sequence commands](./ai/commands.md) — runtime behavior, waits, interpolation, and eval.
+7. [Sessions and testing](./ai/sessions-testing.md) — lifecycle, virtual devices, website tests, and operations.
 
 ## Integration contracts
 

@@ -1,6 +1,6 @@
 # 설치하고 실행하기
 
-[문서 홈](../TOC.md) · [이전: RoomKit 이해하기](./overview.md) · [다음: 테마 제작하기](./authoring.md)
+[문서 홈](../TOC.md) · [이전: RoomKit 이해하기](./overview.md) · [다음: Player 설정하기](./player.md)
 
 ## 준비 사항
 
@@ -32,18 +32,25 @@ pnpm infra
 
 ## 서버 코드를 개발할 때
 
-인프라만 Docker로 실행하고 서버를 호스트에서 실행하실 수 있습니다.
+인프라만 Docker로 실행하고 Server와 Studio를 호스트에서 실행하실 수 있습니다. 처음 한 번은 Server 환경 파일을 만들고 데이터베이스 마이그레이션을 적용해 주세요.
 
 ```sh
-docker compose up postgres minio
+docker compose up -d
+./init.sh
+pnpm --filter server exec prisma migrate deploy
 pnpm dev:server
 ```
+
+`./init.sh`는 관리자 비밀번호를 물어보고 무작위 JWT secret과 bcrypt 비밀번호 해시가 포함된 `apps/server/.env`를 만듭니다. 비대화식 환경에서는 `./init.sh 원하는-비밀번호`를 사용할 수 있습니다. 이미 파일이 있으면 덮어쓰지 않으며, 의도적으로 다시 만들 때만 `--force`를 사용해 주세요.
 
 Studio는 별도 터미널에서 실행해 주세요.
 
 ```sh
+cp -n apps/studio/.env.example apps/studio/.env
 pnpm --filter studio dev
 ```
+
+기본 `PUBLIC_API_URL`은 `http://localhost:3000`입니다. 다른 컴퓨터에서 Studio나 Player를 열 때는 브라우저와 장치가 실제로 접근할 수 있는 주소로 바꿔 주세요.
 
 공유 스키마를 변경한 뒤에는 `@roomkit/shared`와 이를 사용하는 패키지를 다시 빌드해 주세요.
 
@@ -66,6 +73,8 @@ Player 런처에서 다음 값을 설정해 주세요.
 4. 테스트 세션에서는 Studio가 발급한 테스트 코드를 사용해 주세요.
 
 한 컴퓨터에서 여러 장치를 실행할 때는 런처가 장치별 스테이지 창을 열어 줍니다. 설정과 캐시는 앱 데이터 디렉터리에 저장됩니다.
+
+캐시, 테스트 바, 키오스크 잠금과 Android의 단일 창 제한은 [Player 설정하기](./player.md)를 참고해 주세요.
 
 ## 배포 개요
 

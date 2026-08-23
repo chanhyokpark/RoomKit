@@ -17,16 +17,16 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/client"
 ```
 
 ```ts
-import { RoomKitClient } from '@roomkit/client';
+import { RoomKitClient } from "@roomkit/client";
 
 const roomkit = new RoomKitClient({
-  serverUrl: 'http://localhost:3000',
-  deviceCode: 'screen-main',
-  deviceName: '메인 화면',
+  serverUrl: "http://localhost:3000",
+  deviceCode: "screen-main",
+  deviceName: "메인 화면",
   retryOnFatalError: true,
 });
 
-roomkit.on('status', (status, detail) => console.log(status, detail));
+roomkit.on("status", (status, detail) => console.log(status, detail));
 roomkit.connect();
 ```
 
@@ -42,6 +42,14 @@ roomkit.connect();
 - `progress`: 대사 라인의 자막 동기화 또는 라인 사이 커맨드의 재개 신호입니다.
 - `sessionState`, `hint`, `hintError`, `hintCode`: 운영 상태와 힌트 UI를 갱신해 주세요.
 
+## 장치가 호출할 수 있는 기능
+
+- `trigger(name, payload?)`는 즉시 트리거를 보내고, `triggerAndWait()`는 그 트리거가 시작한 모든 이벤트 실행이 끝날 때까지 기다립니다.
+- `submitHint(code)`와 `requestHintStep(hintId, step)`은 힌트 장치에서 사용합니다. 명시적인 정답은 일반 단계 수와 같은 `step` 번호입니다.
+- `getRemainingTime({ resync: true })`은 서버에 최신 상태를 요청한 뒤 남은 시간을 계산합니다. 요청이 실패하면 마지막 로컬 상태를 사용하며, 타이머 없는 테마나 아직 상태를 받지 못한 경우 `null`입니다.
+- `fetchAssetManifest()`는 이 장치가 스피커·스크린으로 참여하는 플레이어 애셋을 기준으로 캐시할 미디어와 약 6시간 유효한 URL을 반환합니다. `fileKey`를 캐시 키로 사용하고 `urlExpiresAt` 전에 다시 요청해 주세요.
+- `disconnect()`는 재시도 타이머와 소켓을 정리합니다. 화면을 제거하거나 장치 설정을 바꿀 때 호출해 주세요.
+
 ## 재생 계약
 
 Client는 미디어를 직접 재생하지 않습니다. `url`이 `null`이면 플레이스홀더이며 `durationMs`만큼 기다린 뒤 완료해 주세요.
@@ -51,5 +59,6 @@ Client는 미디어를 직접 재생하지 않습니다. `url`이 `null`이면 �
 - `holdBefore` 라인은 재생 전에 `sendProgress(commandId, lineIndex, true)`를 보내고 서버의 일반 progress 응답을 기다려 주세요.
 - 대사 스크린 역할은 progress에 맞춰 자막을 표시하고 play 커맨드에는 즉시 완료해 주세요. 서버는 스피커 완료를 기다립니다.
 - `done('failed')`도 시퀀스를 중단하지는 않으며 실패 로그를 남기고 다음 커맨드로 진행합니다.
+- stop을 받으면 해당 채널의 보관 중인 play `done()`도 정확히 한 번 완료해 주세요. stop 커맨드 자체의 응답은 Client가 자동으로 보내지만, 기존 play 응답을 끝내야 그 재생을 기다리던 시퀀스가 진행합니다.
 
 완성형 브라우저 구현은 [`templates/web_custom`](../../templates/web_custom/README.md)을 참고해 주세요.
