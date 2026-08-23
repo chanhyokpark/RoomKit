@@ -114,7 +114,7 @@ Hint-device only: submit the code the team typed. The result arrives as a `hint`
 
 ### `requestHintStep(hintId, step)` → void
 
-Stateless step navigation: request the exact 0-based step to display for an already-shown hint (`hintId` from the `hint` event). The server validates bounds (`invalid_step`) — so "next" is simply `requestHintStep(h.hintId, h.step + 1)` and "previous" is `h.step - 1`.
+Stateless step navigation: request the exact 0-based step to display for an already-shown hint (`hintId` from the `hint` event). The server validates bounds (`invalid_step`) — so "next" is simply `requestHintStep(h.hintId, h.step + 1)` and "previous" is `h.step - 1`. When the hint has an explicit answer (`h.hasAnswer`), requesting step `h.stepCount` reveals it (`isAnswer: true` in the reply).
 
 ### `getRemainingTime(options?)` → Promise\<number | null\>
 
@@ -208,7 +208,7 @@ rk.on('videoStop', ({ commandId }) => video.pause());
 | Event | Listener args | When |
 |---|---|---|
 | `message` | `(payload, envelope)` | A **메시지 전송** command reached this device. `payload` is `Record<string, JsonValue>` keyed by the message asset's field keys; `envelope.messageId` / `envelope.messageName` identify the message asset. Listeners may return a promise: when the command was authored with **끝날 때까지 대기**, the server sequence waits until every listener's promise settles (a rejection fails the command's ack; the sequence still continues). |
-| `hint` | `(hint)` | A hint step to render — the reply to `submitHint`/`requestHintStep`, or an operator push from the 힌트 전송 card. `hint: { hintId, code, step, stepCount, textHtml, imageUrl }` (`imageUrl` null when the step has no image; presigned, time-limited). |
+| `hint` | `(hint)` | A hint step to render — the reply to `submitHint`/`requestHintStep`, or an operator push from the 힌트 전송 card. `hint: { hintId, code, step, stepCount, hasAnswer, isAnswer, textHtml, imageUrl }` (`imageUrl` null when the step has no image; presigned, time-limited). |
 | `hintError` | `(err)` | A hint request was rejected. `err.reason`: `unknown_code` (submit matched nothing; `err.code` echoes it), `unknown_hint` / `invalid_step` (bad `requestHintStep`), `not_hint_device`, `session_not_running` (paused, ended, or not live). |
 | `subtitle` | `(s \| null)` | Claimed subtitle slot only — §5.1. |
 | `hintCode` | `(h \| null)` | Claimed hintCode slot only — §5.2. |

@@ -19,25 +19,29 @@
 
 ## 라이브러리 설치
 
-`@roomkit/client`와 `@roomkit/helper`는 npm 레지스트리 없이 GitHub에서 바로 설치할 수 있습니다.
+`@roomkit/client`, `@roomkit/helper`와 힌트폰 컴포넌트 라이브러리(`@roomkit/hintphone-react`, `@roomkit/hintphone-svelte`)는 npm 레지스트리 없이 GitHub에서 바로 설치할 수 있습니다.
 pnpm 10부터 git 의존성의 빌드 스크립트 실행을 허용해야 하므로, 사용하는 프로젝트의 `pnpm-workspace.yaml`에 먼저 추가하세요:
 
 ```yaml
 onlyBuiltDependencies:
   - "@roomkit/client"
   - "@roomkit/helper"
+  - "@roomkit/hintphone-react"
+  - "@roomkit/hintphone-svelte"
 ```
 
 ```sh
 pnpm add "github:chanhyokpark/RoomKit#path:packages/client"
 pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
+pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-react"
+pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-svelte"
 ```
 
 - 설치 시점에 저장소를 클론해 자동으로 빌드합니다(`prepare` 스크립트).
 - 특정 브랜치/태그에 고정하려면 `github:chanhyokpark/RoomKit#<ref>&path:packages/client` 형태를 사용하세요.
 - private 저장소인 경우 git 인증(ssh 키 등)이 필요합니다.
 
-사용법은 [클라이언트 문서](./docs/CLIENT.md)와 [헬퍼 문서](./docs/HELPER.md) 참조
+사용법은 [클라이언트 문서](./docs/CLIENT.md), [헬퍼 문서](./docs/HELPER.md), [힌트폰 컴포넌트 문서](./docs/HINTPHONE.md) 참조
 
 ### MCP 서버
 

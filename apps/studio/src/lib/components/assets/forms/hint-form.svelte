@@ -16,10 +16,12 @@
 	let {
 		themeId,
 		steps = $bindable(),
+		answer = $bindable(),
 		paramsText = $bindable()
 	}: {
 		themeId: string;
 		steps: HintStep[];
+		answer: HintStep | null;
 		paramsText: string;
 	} = $props();
 
@@ -101,6 +103,55 @@
 		<PlusIcon data-icon="inline-start" />
 		단계 추가
 	</Button>
+</Field.Field>
+
+<Field.Field>
+	<Field.FieldLabel>정답 (마지막 단계 이후 공개)</Field.FieldLabel>
+	{#if answer}
+		<Card.Root class="gap-3 py-3">
+			<Card.Header class="px-3">
+				<Card.Title class="text-xs text-muted-foreground">정답</Card.Title>
+				<Card.Action>
+					<Button type="button" variant="ghost" size="icon-sm" onclick={() => (answer = null)}>
+						<Trash2Icon />
+						<span class="sr-only">정답 삭제</span>
+					</Button>
+				</Card.Action>
+			</Card.Header>
+			<Card.Content class="flex flex-col gap-2 px-3">
+				<Textarea bind:value={answer.textHtml} rows={3} placeholder="정답 내용 (HTML 허용)" />
+				{#if answer.imageKey}
+					<MediaPreview fileKey={answer.imageKey} media="image" />
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="self-start"
+						onclick={() => {
+						if (answer) answer.imageKey = null;
+					}}
+					>
+						<XIcon data-icon="inline-start" />
+						이미지 제거
+					</Button>
+				{:else}
+					<FileUpload {themeId} bind:fileKey={answer.imageKey} accept="image/*" />
+				{/if}
+			</Card.Content>
+		</Card.Root>
+	{:else}
+		<p class="text-sm text-muted-foreground">
+			정답을 추가하면 힌트폰에서 마지막 단계 다음에 정답을 열어 볼 수 있습니다.
+		</p>
+		<Button
+			type="button"
+			variant="outline"
+			onclick={() => (answer = { textHtml: '', imageKey: null })}
+		>
+			<PlusIcon data-icon="inline-start" />
+			정답 추가
+		</Button>
+	{/if}
 </Field.Field>
 
 <JsonParamsField id="hint-params" bind:paramsText />

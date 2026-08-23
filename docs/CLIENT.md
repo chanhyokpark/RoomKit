@@ -95,7 +95,7 @@ Speaker-role dialogue only (see §6.3):
 
 ### `submitHint(code)` / `requestHintStep(hintId, step)` → void
 
-Hint-device only. `submitHint` submits a team-entered code; the reply is a `hint` event (step 0) or `hintError`. `requestHintStep` is stateless step navigation: ask for the exact 0-based step (`step + 1` for next, `step - 1` for back); out-of-range yields `hintError { reason: 'invalid_step' }`.
+Hint-device only. `submitHint` submits a team-entered code; the reply is a `hint` event (step 0) or `hintError`. `requestHintStep` is stateless step navigation: ask for the exact 0-based step (`step + 1` for next, `step - 1` for back); out-of-range yields `hintError { reason: 'invalid_step' }`. When the hint has an explicit answer (`hint.hasAnswer`), requesting step `stepCount` reveals it — the reply comes back with `isAnswer: true` and `step === stepCount`.
 
 ### `getRemainingTime(options?)` → Promise\<number | null\>
 
@@ -138,7 +138,7 @@ Subscribe/unsubscribe; chainable. Events in §5.
 | `progress` | `(p)` | — | `{ commandId, lineIndex, waiting }` — dialogue line sync relayed from the speaker (screen role), or the go-ahead ending a line-cue hold (speaker role). §6.3. |
 | `sessionState` | `(s)` | — | `{ sessionId, themeId, mode, phaseId, state, verdict, timerState, timerRemainingMs }`. `state`: `created \| running \| paused \| ended`. Broadcast on every change — pause/resume, phase switches, timer adjustments, verdict. Tick the timer locally while `timerState === 'running'` (no per-second broadcasts); or just use `getRemainingTime()`. |
 | `status` | `(status, detail?)` | — | Connection lifecycle — §3. |
-| `hint` | `(hint)` | — | `{ hintId, code, step, stepCount, textHtml, imageUrl }` — reply to `submitHint`/`requestHintStep` or an operator push. Mirrored to every socket of the hint device. |
+| `hint` | `(hint)` | — | `{ hintId, code, step, stepCount, hasAnswer, isAnswer, textHtml, imageUrl }` — reply to `submitHint`/`requestHintStep` or an operator push. Mirrored to every socket of the hint device. |
 | `hintError` | `(err)` | — | `{ reason, code?, hintId? }`; `reason`: `unknown_code \| unknown_hint \| invalid_step \| not_hint_device \| session_not_running`. |
 | `hintCode` | `(cmd)` | auto | **힌트 코드 표시/숨김**: show the entry-code overlay (`cmd.code` set, styled by `cmd.css`, plus the hint asset's `cmd.params`) or hide it (`cmd.code === null`). One code at a time — a newer show replaces the previous. |
 

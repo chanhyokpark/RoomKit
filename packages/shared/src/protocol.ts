@@ -172,7 +172,10 @@ export type HintSubmit = z.infer<typeof HintSubmitSchema>;
 /** Stateless step advance: the client asks for the exact step it wants next. */
 export const HintNextSchema = z.object({
   hintId: z.uuid(),
-  /** 0-based step being requested; server validates bounds. */
+  /**
+   * 0-based step being requested; server validates bounds. `stepCount`
+   * requests the hint's explicit answer (when it has one).
+   */
   step: z.number().int().nonnegative(),
 });
 export type HintNext = z.infer<typeof HintNextSchema>;
@@ -181,9 +184,13 @@ export const HintShowSchema = z.object({
   hintId: z.uuid(),
   /** Theme-unique hint code (also shown for admin-pushed hints). */
   code: z.string(),
-  /** 0-based step index. */
+  /** 0-based step index; equals stepCount when this is the answer. */
   step: z.number().int().nonnegative(),
   stepCount: z.number().int().positive(),
+  /** The hint has an explicit answer, requestable as step `stepCount`. */
+  hasAnswer: z.boolean().default(false),
+  /** This payload is the explicit answer, not a regular step. */
+  isAnswer: z.boolean().default(false),
   textHtml: z.string(),
   imageUrl: z.url().nullable(),
 });

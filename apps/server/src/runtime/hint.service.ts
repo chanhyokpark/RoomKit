@@ -73,14 +73,25 @@ export class HintService {
       .map((row) => row.id);
   }
 
-  /** Caller must have validated `step` against `data.steps.length`. */
+  /**
+   * Highest step index a device may request: regular steps are
+   * 0..steps.length-1; the explicit answer (when present) is steps.length.
+   */
+  static stepBound(data: HintData): number {
+    return data.steps.length + (data.answer ? 1 : 0);
+  }
+
+  /** Caller must have validated `step` against {@link HintService.stepBound}. */
   async buildShow(hint: ResolvedHint, step: number): Promise<HintShow> {
-    const s = hint.data.steps[step];
+    const isAnswer = step === hint.data.steps.length;
+    const s = isAnswer ? hint.data.answer! : hint.data.steps[step];
     return {
       hintId: hint.id,
       code: hint.code,
       step,
       stepCount: hint.data.steps.length,
+      hasAnswer: hint.data.answer !== null,
+      isAnswer,
       textHtml: s.textHtml,
       imageUrl: s.imageKey
         ? await this.storage.presignGet(s.imageKey, MEDIA_URL_EXPIRES_IN)

@@ -141,6 +141,7 @@
 					return {
 						kind: 'hint',
 						steps: asset.data.steps.map((step) => ({ ...step })),
+						answer: asset.data.answer ? { ...asset.data.answer } : null,
 						paramsText: paramsToText(asset.data.params)
 					};
 				case 'player':
@@ -212,7 +213,12 @@
 					paramsText: ''
 				};
 			case 'hint':
-				return { kind: 'hint', steps: [{ textHtml: '', imageKey: null }], paramsText: '' };
+				return {
+					kind: 'hint',
+					steps: [{ textHtml: '', imageKey: null }],
+					answer: null,
+					paramsText: ''
+				};
 			case 'player':
 				return {
 					kind: 'player',
@@ -380,6 +386,7 @@
 			case 'hint':
 				return {
 					steps: draft.steps.map((step) => ({ ...step })),
+					answer: draft.answer ? { ...draft.answer } : null,
 					params: parseParamsText(draft.paramsText) ?? {}
 				};
 			case 'player':
@@ -545,7 +552,12 @@
 				bind:paramsText={draft.paramsText}
 			/>
 		{:else if draft.kind === 'hint'}
-			<HintForm {themeId} bind:steps={draft.steps} bind:paramsText={draft.paramsText} />
+			<HintForm
+				{themeId}
+				bind:steps={draft.steps}
+				bind:answer={draft.answer}
+				bind:paramsText={draft.paramsText}
+			/>
 		{:else if draft.kind === 'player'}
 			<PlayerForm
 				{themeId}

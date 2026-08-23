@@ -33,7 +33,7 @@ import {
 } from './command-resolver';
 import { CountdownTimer } from './countdown-timer';
 import { runEval } from './eval-sandbox';
-import type { HintService, ResolvedHint } from './hint.service';
+import { HintService, type ResolvedHint } from './hint.service';
 import type { RuntimeTransport } from './runtime-transport';
 import { performWebsiteRequest } from './website-request';
 
@@ -631,7 +631,7 @@ export class SessionEngine {
     if (gate) return gate;
     const hint = await this.deps.hints.findById(this.themeId, req.hintId);
     if (!hint) return { reason: 'unknown_hint', hintId: req.hintId };
-    if (req.step >= hint.data.steps.length) {
+    if (req.step >= HintService.stepBound(hint.data)) {
       return { reason: 'invalid_step', hintId: req.hintId };
     }
     return this.showHint(hint, req.step, 'next step');
@@ -641,7 +641,7 @@ export class SessionEngine {
   async pushHint(hintId: string, step: number): Promise<void> {
     const hint = await this.deps.hints.findById(this.themeId, hintId);
     if (!hint) throw new EngineStateError('Hint not found in theme');
-    if (step >= hint.data.steps.length) {
+    if (step >= HintService.stepBound(hint.data)) {
       throw new EngineStateError(
         `Hint has ${hint.data.steps.length} step(s); step ${step} is out of range`,
       );
@@ -667,8 +667,8 @@ export class SessionEngine {
       void this.log(
         'info',
         'hint',
-        `Hint "${hint.code}" step ${step + 1}/${show.stepCount} pushed by admin`,
-        { hintId, step },
+        `Hint "${hint.code}" ${hintStepLabel(show)} pushed by admin`,
+        { hintId, step, isAnswer: show.isAnswer },
       );
     }
   }
@@ -698,8 +698,8 @@ export class SessionEngine {
     void this.log(
       'info',
       'hint',
-      `Hint "${hint.code}" step ${step + 1}/${show.stepCount} shown (${source})`,
-      { hintId: hint.id, code: hint.code, step },
+      `Hint "${hint.code}" ${hintStepLabel(show)} shown (${source})`,
+      { hintId: hint.id, code: hint.code, step, isAnswer: show.isAnswer },
     );
     return show;
   }
@@ -1763,4 +1763,9 @@ export class SessionEngine {
 
 function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Log label for a hint payload; session-summary greps the surrounding message. */
+function hintStepLabel(show: HintShow): string {
+  return show.isAnswer ? 'answer' : `step ${show.step + 1}/${show.stepCount}`;
 }

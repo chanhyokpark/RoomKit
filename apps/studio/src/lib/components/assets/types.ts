@@ -49,7 +49,7 @@ export type Draft =
 			lines: DraftDialogueLine[];
 			paramsText: string;
 	  }
-	| { kind: 'hint'; steps: HintStep[]; paramsText: string }
+	| { kind: 'hint'; steps: HintStep[]; answer: HintStep | null; paramsText: string }
 	| {
 			kind: 'player';
 			speakerDeviceId: string;

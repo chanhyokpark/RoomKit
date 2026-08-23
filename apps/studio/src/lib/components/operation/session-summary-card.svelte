@@ -225,7 +225,10 @@
 							<li class="flex items-center gap-2 text-sm">
 								<span class="truncate">{hintName(hint.hintId, hint.code)}</span>
 								<span class="ml-auto shrink-0 text-xs text-muted-foreground">
-									표시 {hint.shows}회 · 최대 {hint.maxStep + 1}단계{hint.adminPushes > 0
+									<!-- The answer is logged as step stepCount, so it caps maxStep. -->
+									표시 {hint.shows}회 · 최대 {hint.answerShows > 0
+										? '정답'
+										: `${hint.maxStep + 1}단계`}{hint.adminPushes > 0
 										? ` · 관리자 푸시 ${hint.adminPushes}회`
 										: ''}
 								</span>

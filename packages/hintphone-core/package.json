@@ -1,0 +1,38 @@
+{
+  "name": "@roomkit/hintphone-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepare": "[ ! -f tsup.config.ts ] || tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.3",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@roomkit/client": "workspace:*",
+    "@roomkit/helper": "workspace:*",
+    "@roomkit/shared": "workspace:*",
+    "tsup": "^8.5.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -21,8 +21,10 @@ export const HintUsageSchema = z.object({
   /** Times shown via player code entry. */
   shows: z.number().int().nonnegative(),
   adminPushes: z.number().int().nonnegative(),
-  /** Highest 0-based step seen. */
+  /** Highest 0-based step seen (the answer counts as step `stepCount`). */
   maxStep: z.number().int().nonnegative(),
+  /** Times the explicit answer was shown (defaulted for older servers). */
+  answerShows: z.number().int().nonnegative().default(0),
   firstAt: z.coerce.date(),
 });
 export type HintUsage = z.infer<typeof HintUsageSchema>;

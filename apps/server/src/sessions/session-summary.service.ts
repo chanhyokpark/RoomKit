@@ -22,11 +22,14 @@ const HintShownDataSchema = z.object({
   hintId: z.string(),
   code: z.string(),
   step: z.number().int().nonnegative(),
+  /** Absent on logs from servers predating explicit answers. */
+  isAnswer: z.boolean().optional(),
 });
 
 const HintPushDataSchema = z.object({
   hintId: z.string(),
   step: z.number().int().nonnegative(),
+  isAnswer: z.boolean().optional(),
 });
 
 interface Interval {
@@ -239,6 +242,7 @@ function computeHints(logs: SessionLog[]): HintUsage[] {
         shows: 0,
         adminPushes: 0,
         maxStep: 0,
+        answerShows: 0,
         firstAt: at,
       };
       byHint.set(hintId, entry);
@@ -254,6 +258,7 @@ function computeHints(logs: SessionLog[]): HintUsage[] {
       const entry = bucket(parsed.data.hintId, log.at);
       entry.adminPushes += 1;
       entry.maxStep = Math.max(entry.maxStep, parsed.data.step);
+      if (parsed.data.isAnswer) entry.answerShows += 1;
     } else if (log.message.includes('shown')) {
       const parsed = HintShownDataSchema.safeParse(log.data);
       if (!parsed.success) continue;
@@ -261,6 +266,7 @@ function computeHints(logs: SessionLog[]): HintUsage[] {
       entry.shows += 1;
       entry.code = parsed.data.code;
       entry.maxStep = Math.max(entry.maxStep, parsed.data.step);
+      if (parsed.data.isAnswer) entry.answerShows += 1;
     }
   }
   return [...byHint.values()].sort(

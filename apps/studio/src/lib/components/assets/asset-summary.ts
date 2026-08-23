@@ -40,7 +40,7 @@ export function summarizeAsset(asset: Asset): string {
 				.join(' · ');
 		}
 		case 'hint':
-			return `${asset.data.steps.length}단계`;
+			return `${asset.data.steps.length}단계${asset.data.answer ? ' · 정답 있음' : ''}`;
 		case 'player':
 			return asset.data.subtitleCss ? '자막 CSS 있음' : '';
 		case 'website':

@@ -142,6 +142,11 @@ export type HintStep = z.infer<typeof HintStepSchema>;
 
 export const HintDataSchema = z.object({
   steps: z.array(HintStepSchema).min(1),
+  /**
+   * Explicit answer, revealed after the last step ("show answer"). On the
+   * wire it is addressed as step index `steps.length`. Null = no answer.
+   */
+  answer: HintStepSchema.nullable().default(null),
   /** Free-form JSON forwarded with the hint code wire for website-side rendering. */
   params: z.record(z.string(), JsonValueSchema).default({}),
 });

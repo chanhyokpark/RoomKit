@@ -19,9 +19,14 @@
 
 	const selectedHint = $derived(data.hints.find((h) => h.id === hintId) ?? null);
 	const stepCount = $derived(selectedHint?.data.steps.length ?? 0);
+	// The explicit answer is addressed as step index `stepCount`.
+	const hasAnswer = $derived(selectedHint?.data.answer != null);
 	const hasHintDevice = $derived(data.devices.some((d) => d.data.isHintDevice));
 	// Clamped defensively: the hint may have been edited to fewer steps.
-	const step = $derived(Math.min(Number(stepText), Math.max(0, stepCount - 1)));
+	const step = $derived(
+		Math.min(Number(stepText), Math.max(0, stepCount - 1 + (hasAnswer ? 1 : 0)))
+	);
+	const stepLabel = $derived(step === stepCount ? '정답' : `${step + 1}단계`);
 
 	function hintLabel(hint: (typeof data.hints)[number]): string {
 		return hint.code ? `${hint.code} · ${hint.name}` : hint.name;
@@ -70,7 +75,7 @@
 			<div class="flex items-center gap-2">
 				<Select.Root type="single" bind:value={stepText}>
 					<Select.Trigger class="flex-1" disabled={disabled || busy || !selectedHint}>
-						{selectedHint ? `${step + 1}단계` : '단계'}
+						{selectedHint ? stepLabel : '단계'}
 					</Select.Trigger>
 					<Select.Content>
 						{#each Array.from({ length: stepCount }, (_, i) => i) as index (index)}
@@ -78,6 +83,9 @@
 								{index + 1}단계
 							</Select.Item>
 						{/each}
+						{#if hasAnswer}
+							<Select.Item value={String(stepCount)} label="정답">정답</Select.Item>
+						{/if}
 					</Select.Content>
 				</Select.Root>
 				<Button size="sm" disabled={disabled || busy || !hintId} onclick={handlePush}>
