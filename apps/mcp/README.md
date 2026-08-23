@@ -6,8 +6,9 @@ launching and observing test sessions, website tests, and headless virtual
 devices.
 
 It is a thin client over the server's REST API (`/api/*`) plus socket.io for
-virtual devices — no direct database access. For the user-facing guide, see
-[`docs/AI.md`](../../docs/AI.md).
+virtual devices — no direct database access. For the canonical AI guide, see
+[`docs/TOC_AI.md`](../../docs/TOC_AI.md). The Korean user documentation starts
+at [`docs/TOC.md`](../../docs/TOC.md).
 
 ## Build
 
@@ -47,13 +48,17 @@ For development without rebuilding, point the command at tsx instead:
 `pnpm --dir apps/mcp exec tsx src/index.ts` (requires the workspace installed
 and `@roomkit/shared` built).
 
-## Tools (38)
+## Tools (40)
 
 - **Connection**: `login`, `select_theme`, `get_context` — stateful; after
   `select_theme`, theme-scoped tools no longer need `themeId`.
+- **Documentation**: `docs_list` reads the canonical AI table of contents from
+  repository `master`; `docs_read` reads a linked Markdown document. Neither
+  requires RoomKit login. `get_started` and `roomkit://guide` remain aliases for
+  the table of contents.
 - **Discovery**: `get_started`, `describe_commands`, `describe_asset_kind`
-  (self-documenting schemas; also exposed as `roomkit://guide` and
-  `roomkit://schema/commands` resources).
+  (self-documenting schemas; command schema is also exposed as
+  `roomkit://schema/commands`).
 - **Themes**: `list/create/update/delete/duplicate_theme`.
 - **Tags**: `list_tags`, `manage_tag`.
 - **Assets**: `list_assets` (token-lean summaries), `get_asset`,
@@ -94,6 +99,9 @@ Defaults: `ROOMKIT_URL=http://localhost:3000`, `ROOMKIT_ID=admin`,
 
 - stdio transport: never `console.log` in server code (it corrupts the MCP
   stream) — diagnostics go to stderr.
+- Documentation tools require outbound access to `raw.githubusercontent.com`,
+  use a 10-second timeout, and intentionally follow the latest `master` docs
+  rather than the installed MCP commit.
 - Tool input validation is done in-process with the zod schemas from
   `@roomkit/shared`; the SDK only ever sees pre-derived JSON Schema.
 - The admin JWT expires after 12h; the client re-logins automatically with

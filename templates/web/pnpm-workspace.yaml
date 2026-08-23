@@ -1,0 +1,6 @@
+packages:
+  - "."
+
+onlyBuiltDependencies:
+  - "@roomkit/helper"
+  - esbuild

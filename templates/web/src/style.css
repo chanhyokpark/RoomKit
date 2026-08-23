@@ -1,0 +1,28 @@
+:root { font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif; color: #e2e8f0; background: #020617; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; }
+button { font: inherit; cursor: pointer; }
+.stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; background: radial-gradient(circle at 30% 30%, #164e6355, transparent 42%), linear-gradient(135deg, #020617, #0f172a); }
+.stage::before { content: ""; position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(#38bdf822 1px, transparent 1px), linear-gradient(90deg, #38bdf822 1px, transparent 1px); background-size: 44px 44px; }
+.puzzle { position: relative; z-index: 1; width: min(720px, calc(100% - 48px)); margin: 10vh auto; padding: 40px; border: 1px solid #38bdf844; border-radius: 24px; background: #07111fd9; box-shadow: 0 30px 90px #0008; }
+.eyebrow { color: #22d3ee; font-size: 12px; font-weight: 800; letter-spacing: .2em; }
+h1 { margin: 8px 0; color: white; font-size: clamp(36px, 6vw, 64px); }
+.description { color: #94a3b8; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+.actions button { padding: 12px 16px; border: 1px solid #0891b2; border-radius: 10px; color: #cffafe; background: #164e63aa; }
+.timer { display: block; margin-top: 22px; font-size: 24px; color: #67e8f9; }
+.activity { position: absolute; z-index: 2; right: 20px; top: 20px; width: min(330px, calc(100% - 40px)); max-height: 32vh; overflow: auto; padding: 14px 18px; border: 1px solid #334155; border-radius: 14px; background: #020617dd; font-size: 12px; }
+.activity h2 { margin: 0 0 8px; font-size: 13px; color: #67e8f9; }
+.activity p { margin: 5px 0; color: #94a3b8; overflow-wrap: anywhere; }
+.custom-subtitle { position: absolute; z-index: 20; left: 5%; right: 5%; bottom: 5%; padding: 18px 24px; border: 1px solid #ffffff22; border-radius: 14px; background: #020617e8; text-align: center; box-shadow: 0 16px 60px #000a; }
+.custom-subtitle[data-align="left"] { text-align: left; }
+.custom-subtitle[data-align="right"] { text-align: right; }
+.custom-subtitle-speaker { color: #67e8f9; font-size: 13px; font-weight: 800; }
+.custom-subtitle-content { font-size: clamp(20px, 3vw, 34px); font-weight: 700; }
+.custom-subtitle-content p { margin: 8px 0; }
+.custom-subtitle small { color: #64748b; }
+.custom-video { position: absolute; z-index: 10; display: grid; overflow: hidden; background: black; box-shadow: 0 24px 70px #000a; }
+.custom-video video { width: 100%; height: 100%; }
+.video-placeholder { min-width: 240px; min-height: 160px; display: grid; place-content: center; gap: 8px; text-align: center; background: repeating-linear-gradient(135deg, #172554, #172554 16px, #1e3a8a 16px, #1e3a8a 32px); }
+.video-placeholder span { color: #bfdbfe; font-size: 12px; }
+@media (max-width: 700px) { .activity { top: auto; bottom: 20px; } .puzzle { margin-top: 22vh; padding: 24px; } }

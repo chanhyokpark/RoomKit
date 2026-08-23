@@ -32,4 +32,4 @@ After completing the code, ask the user if they want a playground link. Only cal
 
 ---
 
-Refer to ~/codes/RoomKit/docs/SPEC.md for project specifications.
+Refer to ~/codes/RoomKit/docs/ai/architecture.md and ~/codes/RoomKit/docs/TOC_AI.md for project specifications.

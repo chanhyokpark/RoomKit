@@ -1,5 +1,5 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { GUIDE } from './guide.js';
+import { readRemoteDoc } from './docs.js';
 import { ApiClient } from './http.js';
 import { createServer, type ResourceDef, type ToolContext } from './registry.js';
 import { commandsDoc } from './schemas.js';
@@ -9,6 +9,7 @@ import { assetTools } from './tools/assets.js';
 import { connectionTools } from './tools/connection.js';
 import { deviceTools } from './tools/devices.js';
 import { discoveryTools } from './tools/discovery.js';
+import { documentationTools } from './tools/docs.js';
 import { sequenceTools } from './tools/sequences.js';
 import { sessionTools } from './tools/sessions.js';
 import { tagTools } from './tools/tags.js';
@@ -24,6 +25,7 @@ const ctx: ToolContext = {
 };
 
 const tools = [
+  ...documentationTools,
   ...connectionTools,
   ...discoveryTools,
   ...themeTools,
@@ -40,9 +42,9 @@ const resources: ResourceDef[] = [
   {
     uri: 'roomkit://guide',
     name: 'RoomKit guide',
-    description: 'Concepts, authoring workflow, and test loops (same as get_started).',
+    description: 'Canonical AI documentation table of contents (same as docs_list/get_started).',
     mimeType: 'text/markdown',
-    text: () => GUIDE,
+    text: () => readRemoteDoc('TOC_AI.md'),
   },
   {
     uri: 'roomkit://schema/commands',

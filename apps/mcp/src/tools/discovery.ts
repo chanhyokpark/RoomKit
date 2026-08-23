@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AssetKindSchema } from '@roomkit/shared';
-import { GUIDE } from '../guide.js';
+import { readRemoteDoc } from '../docs.js';
 import { defineTool } from '../registry.js';
 import { assetKindDoc, commandsDoc } from '../schemas.js';
 
@@ -8,9 +8,9 @@ export const discoveryTools = [
   defineTool({
     name: 'get_started',
     description:
-      'RoomKit orientation for agents: core concepts (themes, assets, phases, events, sessions), the authoring workflow, and the test loops. Read this before authoring anything.',
+      'Backward-compatible alias for docs_list. Reads the canonical AI documentation table of contents from RoomKit master.',
     inputSchema: z.object({}),
-    handler: async () => GUIDE,
+    handler: async () => readRemoteDoc('TOC_AI.md'),
   }),
 
   defineTool({

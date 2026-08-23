@@ -15,7 +15,7 @@
 - `pnpm infra`로 데이터베이스, 스토리지, 서버, 스튜디오 실행(스튜디오 url: localhost:5173)
 - 기본 로그인 계정: admin/roomkit
 
-자세한 내용은 [매뉴얼](./docs/MANUAL_KO.md) 참조
+자세한 내용은 [RoomKit 문서](./docs/TOC.md)를 참고해 주세요.
 
 ## 라이브러리 설치
 
@@ -41,7 +41,7 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-svelte"
 - 특정 브랜치/태그에 고정하려면 `github:chanhyokpark/RoomKit#<ref>&path:packages/client` 형태를 사용하세요.
 - private 저장소인 경우 git 인증(ssh 키 등)이 필요합니다.
 
-사용법은 [클라이언트 문서](./docs/CLIENT.md), [헬퍼 문서](./docs/HELPER.md), [힌트폰 컴포넌트 문서](./docs/HINTPHONE.md) 참조
+사용법은 [커스텀 장치 문서](./docs/human/custom-devices.md), [Helper 웹사이트 문서](./docs/human/websites.md), [힌트폰 문서](./docs/human/hintphone.md)를 참고해 주세요. 바로 실행할 수 있는 프로젝트는 [React 템플릿](./templates/README.md)에 있습니다.
 
 ### MCP 서버
 
@@ -64,4 +64,4 @@ MCP 클라이언트 설정(`.mcp.json`) 예시:
 }
 ```
 
-자세한 내용은 [AI 연동 문서](./docs/AI.md) 참조
+자세한 내용은 [AI와 MCP 문서](./docs/human/ai-and-mcp.md)를 참고해 주세요. AI 에이전트용 상세 영문 문서는 [TOC_AI.md](./docs/TOC_AI.md)에서 시작합니다.

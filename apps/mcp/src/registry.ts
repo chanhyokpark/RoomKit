@@ -34,7 +34,7 @@ export interface ResourceDef {
   name: string;
   description: string;
   mimeType: string;
-  text: () => string;
+  text: () => string | Promise<string>;
 }
 
 /**
@@ -82,7 +82,12 @@ export function createServer(
         content: [
           {
             type: 'text' as const,
-            text: result === undefined ? 'OK' : JSON.stringify(result, null, 2),
+            text:
+              result === undefined
+                ? 'OK'
+                : typeof result === 'string'
+                  ? result
+                  : JSON.stringify(result, null, 2),
           },
         ],
       };
@@ -100,12 +105,12 @@ export function createServer(
     })),
   }));
 
-  server.setRequestHandler(ReadResourceRequestSchema, (req) => {
+  server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const resource = resources.find((r) => r.uri === req.params.uri);
     if (!resource) throw new Error(`Unknown resource: ${req.params.uri}`);
     return {
       contents: [
-        { uri: resource.uri, mimeType: resource.mimeType, text: resource.text() },
+        { uri: resource.uri, mimeType: resource.mimeType, text: await resource.text() },
       ],
     };
   });
