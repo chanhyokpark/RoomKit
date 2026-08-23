@@ -29,6 +29,22 @@ MCP 클라이언트 설정 예시는 다음과 같습니다.
 }
 ```
 
+### Claude Code
+
+```sh
+claude mcp add roomkit -- pnpm --allow-build=@roomkit/mcp dlx "github:chanhyokpark/RoomKit#path:apps/mcp"
+```
+
+`claude mcp get roomkit` 또는 Claude Code의 `/mcp` 명령으로 연결 상태를 확인할 수 있습니다.
+
+### Codex
+
+```sh
+codex mcp add roomkit -- pnpm --allow-build=@roomkit/mcp dlx "github:chanhyokpark/RoomKit#path:apps/mcp"
+```
+
+`codex mcp list` 또는 Codex의 `/mcp` 명령으로 연결 상태를 확인할 수 있습니다.
+
 ## 권장 대화 흐름
 
 1. AI에게 `docs_list`를 호출해 공식 문서 목차를 읽도록 요청해 주세요.
