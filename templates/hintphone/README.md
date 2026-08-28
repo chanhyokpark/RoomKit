@@ -42,8 +42,6 @@ pnpm build
 - MCP `control_session`의 `push_hint` 또는 `POST /api/sessions/:id/hint`로 힌트를 강제로 전송했을 때도 표시되는지 확인해 주세요. 현재 Studio 운영 화면에는 이 카드가 숨겨져 있습니다.
 - 페이지를 새로고침한 뒤 다시 연결되는지 확인해 주세요.
 
-Studio **웹 테스트**는 코드 입력과 `session_not_running` 오류 렌더링, Helper 연결과 새로고침을 빠르게 확인할 때만 사용해 주세요. 웹 테스트는 실제 힌트 세션을 실행하지 않으므로 성공한 단계와 정답을 반환하지 않습니다.
-
 ## 배포하기
 
 ```sh

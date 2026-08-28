@@ -2,8 +2,7 @@
 
 MCP (Model Context Protocol) server exposing RoomKit authoring and testing to
 AI agents: theme/asset management, sequence (scenario) editing as JSON,
-launching and observing test sessions, website tests, and headless virtual
-devices. Theme archive import/export and bulk/site ZIP import remain Studio or
+launching and observing test sessions, and headless virtual devices. Theme archive import/export and bulk/site ZIP import remain Studio or
 REST-only operations.
 
 It is a thin client over the server's REST API (`/api/*`) plus socket.io for
@@ -60,7 +59,7 @@ For development without rebuilding, point the command at tsx instead:
 `pnpm --dir apps/mcp exec tsx src/index.ts` (requires the workspace installed
 and `@roomkit/shared` built).
 
-## Tools (43)
+## Tools (39)
 
 - **Connection**: `login`, `select_theme`, `get_context` — stateful; after
   `select_theme`, theme-scoped tools no longer need `themeId`.
@@ -86,17 +85,16 @@ and `@roomkit/shared` built).
   operation console's backend), `list_session_runs`, `abort_session_run`,
   `list_sessions`, `get_session`, `get_session_summary`, `get_session_logs`,
   `delete_session`.
-- **Website test**: `create_website_test`, `list_website_tests`,
-  `control_website_test`, `get_website_test_activity`.
 - **Virtual devices**: `connect_virtual_devices`, `get_virtual_device_state`,
   `emit_device_trigger`, `disconnect_virtual_devices` — headless socket.io
   devices that ack every command immediately, enabling full test loops with
   no player app or hardware.
 
 Connected Player launchers are observed by Studio's admin socket and do not
-have a listing tool. A real website test therefore needs a `playerId` copied
-from Player/Studio. Theme archive transfer, media ZIP import, and hosted-site
-ZIP import are also not exposed by the current 43 tools.
+have a listing tool. A player test session (`create_session` with `playerId`)
+therefore needs the id copied from Player/Studio. Theme archive transfer,
+media ZIP import, and hosted-site ZIP import are also not exposed by the
+current 39 tools.
 
 ## Smoke test
 
@@ -127,5 +125,5 @@ Defaults: `ROOMKIT_URL=http://localhost:3000`, `ROOMKIT_ID=admin`,
   rather than the installed MCP commit.
 - Tool input validation is done in-process with the zod schemas from
   `@roomkit/shared`; the SDK only ever sees pre-derived JSON Schema.
-- The admin JWT expires after 12h; the client re-logins automatically with
-  the in-memory credentials.
+- The admin JWT expires after 60 days; the client re-logins automatically
+  with the in-memory credentials.

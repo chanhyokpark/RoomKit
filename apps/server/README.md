@@ -1,6 +1,6 @@
 # RoomKit Server
 
-NestJS backend for RoomKit. It owns authentication, themes/tags/assets, uploads and hosted sites, sessions/timers/event execution, hints, post-game summaries, website tests, and the admin/device/player Socket.io namespaces.
+NestJS backend for RoomKit. It owns authentication, themes/tags/assets, uploads and hosted sites, sessions/timers/event execution, hints, post-game summaries, and the admin/device/player Socket.io namespaces.
 
 The canonical contracts are documented in [architecture](../../docs/ai/architecture.md), [environment and deployment](../../docs/ai/environment.md), and [HTTP/Socket.io protocols](../../docs/ai/api-protocol.md). Exact payloads live in `packages/shared`.
 

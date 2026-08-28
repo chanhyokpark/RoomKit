@@ -1,6 +1,6 @@
 # RoomKit Studio
 
-SvelteKit web application for theme authoring, asset/tag and archive management, event-sequence editing, website tests, and live session operation.
+SvelteKit web application for theme authoring, asset/tag and archive management, event-sequence editing, and live session operation.
 
 User workflows start at the [RoomKit documentation index](../../docs/TOC.md). Implementation-level behavior is covered by [architecture](../../docs/ai/architecture.md), [theme authoring](../../docs/ai/authoring.md), and [sessions/testing](../../docs/ai/sessions-testing.md).
 
@@ -19,7 +19,7 @@ Studio opens at `http://localhost:5173`. `PUBLIC_API_URL` must be the RoomKit Se
 ## Public environment values
 
 - `PUBLIC_API_URL` is imported statically and therefore baked into production client bundles.
-- `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` are optional runtime overrides for the minimums shown in operation and website-test warning banners.
+- `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` are optional runtime overrides for the minimums shown in the operation warning banner.
 
 See [`.env.example`](./.env.example) for defaults. The Docker and Kubernetes builds pass `PUBLIC_API_URL` as a build argument.
 
