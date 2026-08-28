@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { SessionLogEntry, SessionResponse } from '@roomkit/shared';
+	import { SessionLogEntrySchema, type SessionResponse } from '@roomkit/shared';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -35,8 +35,15 @@
 			await Promise.all([
 				themeAssets.load(themeId),
 				api<SessionResponse>(`/sessions/${sessionId}`).then((s) => (sessionInfo = s)),
-				api<SessionLogEntry[]>(`/sessions/${sessionId}/logs`, { query: { limit: '200' } }).then(
-					(entries) => admin.appendLogs(entries)
+				// Backfill rows arrive as raw JSON — run them through the schema so
+				// `at` becomes a Date like the live socket entries (LogCard formats it).
+				api<unknown[]>(`/sessions/${sessionId}/logs`, { query: { limit: '200' } }).then((rows) =>
+					admin.appendLogs(
+						rows.flatMap((row) => {
+							const parsed = SessionLogEntrySchema.safeParse(row);
+							return parsed.success ? [parsed.data] : [];
+						})
+					)
 				)
 			]);
 			ready = true;
