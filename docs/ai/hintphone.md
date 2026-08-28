@@ -4,6 +4,16 @@
 
 RoomKit provides transport/controller core plus React and Svelte bindings. The UI packages are headless: they emit semantic DOM and class hooks but do not ship theme styling.
 
+## Installation
+
+```sh
+pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-react"
+# or
+pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-svelte"
+```
+
+Each UI package bundles the controller transport, so no separate core package is installed. pnpm 10 consumers must first allow the package's build script; see [library installation from GitHub](./environment.md#library-installation-from-github).
+
 ## Transport selection
 
 `HintphoneConnection` supports:

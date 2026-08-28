@@ -4,6 +4,14 @@
 
 Use Helper only for a website navigated inside RoomKit Player's iframe. It does not connect to the RoomKit server. All traffic is `postMessage` through Player's existing device socket. A standalone browser/device must use [`@roomkit/client`](./client.md).
 
+## Installation
+
+```sh
+pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
+```
+
+pnpm 10 consumers must first allow the package's build script; see [library installation from GitHub](./environment.md#library-installation-from-github).
+
 ## Construction and handshake
 
 ```ts

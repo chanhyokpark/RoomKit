@@ -4,6 +4,14 @@
 
 Use Client for standalone browsers, hardware controllers, custom kiosks, and any device that owns its RoomKit Socket.io connection. Player itself is the reference implementation. Do not open a second Client connection from a website embedded in Player; use Helper there.
 
+## Installation
+
+```sh
+pnpm add "github:chanhyokpark/RoomKit#path:packages/client"
+```
+
+pnpm 10 consumers must first allow the package's build script; see [library installation from GitHub](./environment.md#library-installation-from-github).
+
 ## Connection
 
 ```ts
