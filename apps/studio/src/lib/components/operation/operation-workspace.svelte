@@ -9,7 +9,6 @@
 	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 	import VersionWarningBanner from '$lib/components/version-warning-banner.svelte';
 	import { provideOperationData } from './operation-data.svelte';
-	import LogPanel from './log-panel.svelte';
 	import SessionDashboard from './session-dashboard.svelte';
 	import SessionList from './session-list.svelte';
 
@@ -85,10 +84,4 @@
 			</div>
 		{/if}
 	</div>
-	<!-- Logs follow the selected session; render the panel only when one is open. -->
-	{#if data.selected}
-		{#key data.selected.id}
-			<LogPanel />
-		{/key}
-	{/if}
 </div>

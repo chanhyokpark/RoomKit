@@ -1,21 +1,29 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { SessionLogEntrySchema, type SessionResponse } from '@roomkit/shared';
-	import * as Alert from '$lib/components/ui/alert';
+	import {
+		SessionDashboard,
+		type SessionUiActions,
+		type SessionUiModel
+	} from '@roomkit/session-ui';
+	import {
+		SessionLogEntrySchema,
+		SessionResponseSchema,
+		SessionSummarySchema,
+		type Command,
+		type PushHintInput,
+		type SessionResponse,
+		type SessionState,
+		type SessionSummary
+	} from '@roomkit/shared';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { api } from '../../api';
 	import { admin } from '../../stores/admin.svelte';
 	import { auth } from '../../stores/auth.svelte';
-	import { config } from '../../stores/config.svelte';
 	import { themeAssets } from '../../stores/theme-assets.svelte';
-	import CommandCard from './CommandCard.svelte';
-	import DevicesCard from './DevicesCard.svelte';
-	import EventsCard from './EventsCard.svelte';
-	import LogCard from './LogCard.svelte';
-	import SessionCard from './SessionCard.svelte';
 
 	let { sessionId, themeId }: { sessionId: string; themeId: string } = $props();
 
@@ -23,9 +31,10 @@
 	let loginId = $state('');
 	let loginPassword = $state('');
 	let sessionInfo = $state<SessionResponse | null>(null);
+	let testDeviceCodes = $state<SessionResponse['testDeviceCodes']>([]);
 	let loadError = $state('');
 
-	async function boot() {
+	async function boot(): Promise<void> {
 		if (!auth.loggedIn && !(await auth.relogin())) {
 			ready = false;
 			return;
@@ -34,10 +43,10 @@
 			admin.start(sessionId);
 			await Promise.all([
 				themeAssets.load(themeId),
-				api<SessionResponse>(`/sessions/${sessionId}`).then((s) => (sessionInfo = s)),
-				// Backfill rows arrive as raw JSON — run them through the schema so
-				// `at` becomes a Date like the live socket entries (LogCard formats it).
-				api<unknown[]>(`/sessions/${sessionId}/logs`, { query: { limit: '200' } }).then((rows) =>
+				loadSessionInfo(),
+				api<unknown[]>(`/sessions/${sessionId}/logs`, {
+					query: { limit: '500' }
+				}).then((rows) =>
 					admin.appendLogs(
 						rows.flatMap((row) => {
 							const parsed = SessionLogEntrySchema.safeParse(row);
@@ -47,8 +56,8 @@
 				)
 			]);
 			ready = true;
-		} catch (err) {
-			loadError = err instanceof Error ? err.message : '세션 정보를 불러오지 못했습니다.';
+		} catch (error) {
+			loadError = error instanceof Error ? error.message : '세션 정보를 불러오지 못했습니다.';
 		}
 	}
 
@@ -57,7 +66,7 @@
 		return () => admin.stop();
 	});
 
-	async function submitLogin(event: SubmitEvent) {
+	async function submitLogin(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
 		if (await auth.login(loginId.trim(), loginPassword)) {
 			loginPassword = '';
@@ -65,60 +74,165 @@
 		}
 	}
 
-	async function refreshSessionInfo() {
-		try {
-			sessionInfo = await api<SessionResponse>(`/sessions/${sessionId}`);
-		} catch {
-			// The live socket still carries state; the REST snapshot is best-effort.
-		}
+	async function refreshSessionInfo(): Promise<void> {
+		await loadSessionInfo();
 	}
+
+	async function loadSessionInfo(): Promise<void> {
+		const response = SessionResponseSchema.parse(await api<unknown>(`/sessions/${sessionId}`));
+		sessionInfo = response;
+		if ((response.testDeviceCodes?.length ?? 0) > 0) testDeviceCodes = response.testDeviceCodes;
+	}
+
+	function fallbackSession(): SessionState | null {
+		if (!sessionInfo) return null;
+		const runningTimer = sessionInfo.timerEndsAt !== null;
+		return {
+			sessionId,
+			themeId,
+			mode: sessionInfo.mode,
+			phaseId: sessionInfo.phaseId,
+			state: sessionInfo.state,
+			verdict: sessionInfo.verdict,
+			timerState: runningTimer
+				? 'running'
+				: sessionInfo.timerRemainingMs !== null
+					? 'paused'
+					: null,
+			timerRemainingMs: runningTimer
+				? Math.max(0, sessionInfo.timerEndsAt!.getTime() - Date.now())
+				: sessionInfo.timerRemainingMs
+		};
+	}
+
+	const model: SessionUiModel = {
+		get sessionId() {
+			return sessionId;
+		},
+		get session() {
+			return admin.session ?? fallbackSession();
+		},
+		get sessionReceivedAt() {
+			return admin.session ? admin.sessionReceivedAt : Date.now();
+		},
+		get connected() {
+			return admin.connected;
+		},
+		get assets() {
+			return themeAssets.assets;
+		},
+		get runs() {
+			return admin.runs;
+		},
+		get media() {
+			return admin.media;
+		},
+		get logs() {
+			return admin.logs.toReversed();
+		},
+		get logsLoading() {
+			return !ready;
+		},
+		get notifications() {
+			return admin.notifications;
+		},
+		get testDeviceCodes() {
+			return testDeviceCodes ?? [];
+		},
+		statusOf(deviceId) {
+			return admin.deviceStatus[deviceId] ?? null;
+		}
+	};
+
+	async function post(path: string, body?: unknown): Promise<void> {
+		await api(`/sessions/${sessionId}${path}`, {
+			method: 'POST',
+			...(body === undefined ? {} : { body })
+		});
+	}
+
+	const actions: SessionUiActions = {
+		async start(resetFirst) {
+			if (resetFirst) await post('/reset-devices');
+			await post('/start');
+			await refreshSessionInfo();
+		},
+		async pause() {
+			await post('/pause');
+			await refreshSessionInfo();
+		},
+		async resume() {
+			await post('/resume');
+			await refreshSessionInfo();
+		},
+		async end() {
+			await post('/end');
+			await refreshSessionInfo();
+		},
+		adjustTimer: (input) => post('/timer', input),
+		switchPhase: (phaseId) => post('/phase', { phaseId }),
+		restartPhase: () => post('/phase/restart'),
+		triggerEvent: (eventId) => post('/trigger', { eventId }),
+		abortRun: (runId) => post(`/runs/${runId}/abort`),
+		resetDevices: () => post('/reset-devices'),
+		runCommand: (command: Command) => post('/command', command),
+		pushHint: (input: PushHintInput) => post('/hint', input),
+		runTestCallback: (deviceId, name) =>
+			api<{ ok: boolean }>(`/sessions/${sessionId}/devices/${deviceId}/test-callback`, {
+				method: 'POST',
+				body: { name }
+			}),
+		getSummary: async () =>
+			SessionSummarySchema.parse(
+				await api<unknown>(`/sessions/${sessionId}/summary`)
+			) as SessionSummary
+	};
 </script>
 
-<main class="flex h-full flex-col gap-4 overflow-y-auto bg-background p-5">
-	<header class="flex items-center justify-between">
-		<div class="flex items-center gap-2.5">
-			<h1 class="text-lg font-semibold">테스트 디버그</h1>
-			<Badge variant="secondary" class="font-mono">{sessionId.slice(0, 8)}</Badge>
-		</div>
-		<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-			<span class="h-2 w-2 rounded-full {admin.connected ? 'bg-emerald-400' : 'bg-muted'}"></span>
-			{admin.connected ? '실시간 연결됨' : '연결 끊김'}
-		</span>
+<main class="flex h-full flex-col overflow-y-auto bg-background text-foreground">
+	<header class="flex shrink-0 items-center gap-2 border-b px-4 py-3">
+		<h1 class="text-lg font-semibold">세션 디버그</h1>
+		<Badge variant="secondary" class="font-mono">{sessionId.slice(0, 8)}</Badge>
 	</header>
 
 	{#if !auth.loggedIn}
 		<Card.Root class="mx-auto mt-16 w-80">
 			<Card.Header>
-				<Card.Description>디버그 창을 사용하려면 관리자 로그인이 필요합니다.</Card.Description>
+				<Card.Title>관리자 로그인</Card.Title>
+				<Card.Description>세션 디버그 도구를 사용하려면 로그인하세요.</Card.Description>
 			</Card.Header>
 			<Card.Content>
-				<form class="flex flex-col gap-3" onsubmit={submitLogin}>
-					<Input placeholder="아이디" bind:value={loginId} />
-					<Input type="password" placeholder="비밀번호" bind:value={loginPassword} />
-					<Button type="submit" disabled={auth.status === 'pending'}>로그인</Button>
-					{#if auth.error}
-						<p class="text-xs text-destructive">{auth.error}</p>
-					{/if}
+				<form onsubmit={submitLogin}>
+					<Field.FieldGroup>
+						<Field.Field>
+							<Field.FieldLabel for="debug-login-id">아이디</Field.FieldLabel>
+							<Input id="debug-login-id" bind:value={loginId} autocomplete="username" />
+						</Field.Field>
+						<Field.Field>
+							<Field.FieldLabel for="debug-login-password">비밀번호</Field.FieldLabel>
+							<Input
+								id="debug-login-password"
+								type="password"
+								bind:value={loginPassword}
+								autocomplete="current-password"
+							/>
+						</Field.Field>
+						<Button type="submit" disabled={auth.status === 'pending'}>로그인</Button>
+						{#if auth.error}<p class="text-xs text-destructive">
+								{auth.error}
+							</p>{/if}
+					</Field.FieldGroup>
 				</form>
 			</Card.Content>
 		</Card.Root>
 	{:else if loadError}
-		<Alert.Root variant="destructive">
-			<Alert.Description>{loadError}</Alert.Description>
-		</Alert.Root>
+		<Card.Root class="m-4">
+			<Card.Header><Card.Title>세션을 불러오지 못했습니다.</Card.Title></Card.Header>
+			<Card.Content><p class="text-sm text-destructive">{loadError}</p></Card.Content>
+		</Card.Root>
 	{:else if !ready}
-		<p class="text-sm text-muted-foreground">불러오는 중…</p>
+		<p class="p-4 text-sm text-muted-foreground">불러오는 중…</p>
 	{:else}
-		<div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-			<div class="flex flex-col gap-4">
-				<SessionCard {sessionId} onchanged={refreshSessionInfo} />
-				<DevicesCard {sessionId} {sessionInfo} />
-				<CommandCard {sessionId} />
-			</div>
-			<div class="flex flex-col gap-4">
-				<EventsCard {sessionId} />
-				<LogCard />
-			</div>
-		</div>
+		<SessionDashboard {model} {actions} />
 	{/if}
 </main>

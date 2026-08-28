@@ -13,6 +13,9 @@ export default defineConfig({
 			// schemas and silently broke parity with the server.
 			'@roomkit/shared': fileURLToPath(
 				new URL('../../packages/shared/src/index.ts', import.meta.url)
+			),
+			'@roomkit/session-ui': fileURLToPath(
+				new URL('../../packages/session-ui/src/index.ts', import.meta.url)
 			)
 		}
 	},

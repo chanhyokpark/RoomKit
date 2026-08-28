@@ -28,6 +28,9 @@ export default defineConfig({
 			),
 			'@roomkit/client': fileURLToPath(
 				new URL('../../packages/client/src/index.ts', import.meta.url)
+			),
+			'@roomkit/session-ui': fileURLToPath(
+				new URL('../../packages/session-ui/src/index.ts', import.meta.url)
 			)
 		}
 	},

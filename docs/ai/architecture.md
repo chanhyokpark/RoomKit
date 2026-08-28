@@ -4,16 +4,17 @@
 
 ## Components
 
-| Component              | Responsibility                                                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/server`          | NestJS REST API, Socket.io gateways, sequence runtime, timer, eval sandbox, media/site delivery, and persistence orchestration. |
-| `apps/studio`          | SvelteKit authoring and operation SPA. It uses REST for CRUD and admin sockets for live session state.                          |
+| Component              | Responsibility                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/server`          | NestJS REST API, Socket.io gateways, sequence runtime, timer, eval sandbox, media/site delivery, and persistence orchestration.                               |
+| `apps/studio`          | SvelteKit authoring and operation SPA. It uses REST for CRUD and admin sockets for live session state.                                                        |
 | `apps/player`          | Tauri launcher, stage windows, and a test-session debug window. It uses `@roomkit/client`, owns media playback, embeds websites, and bridges Helper messages. |
-| `apps/mcp`             | Stdio MCP server that exposes Studio operations to AI agents through REST and virtual device sockets.                           |
-| `packages/shared`      | Zod schemas and shared protocol types; the source of truth for asset, command, helper, and wire shapes.                         |
-| `packages/client`      | Direct Socket.io device client with validation, command dedupe, acknowledgment, and reconnect behavior.                         |
-| `packages/helper`      | Small browser bridge for websites inside Player; communicates only with the parent frame.                                       |
-| `packages/hintphone-*` | Transport-independent hint state/controller plus React and Svelte UI bindings.                                                  |
+| `apps/mcp`             | Stdio MCP server that exposes Studio operations to AI agents through REST and virtual device sockets.                                                         |
+| `packages/shared`      | Zod schemas and shared protocol types; the source of truth for asset, command, helper, and wire shapes.                                                       |
+| `packages/session-ui`  | Shared Svelte session dashboard used by both Studio operations and the Player debug window through host-supplied reactive models/actions.                     |
+| `packages/client`      | Direct Socket.io device client with validation, command dedupe, acknowledgment, and reconnect behavior.                                                       |
+| `packages/helper`      | Small browser bridge for websites inside Player; communicates only with the parent frame.                                                                     |
+| `packages/hintphone-*` | Transport-independent hint state/controller plus React and Svelte UI bindings.                                                                                |
 
 PostgreSQL stores durable metadata and session state. S3-compatible storage holds uploaded files and hosted-site trees. The server issues presigned URLs for playback/cache delivery and exposes stable public routes for file-backed image/file/video/BGM/SFX assets and hosted sites.
 

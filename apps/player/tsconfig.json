@@ -15,7 +15,8 @@
 			"$lib": ["./src/lib"],
 			"$lib/*": ["./src/lib/*"],
 			"@roomkit/shared": ["../../packages/shared/src/index.ts"],
-			"@roomkit/client": ["../../packages/client/src/index.ts"]
+			"@roomkit/client": ["../../packages/client/src/index.ts"],
+			"@roomkit/session-ui": ["../../packages/session-ui/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"]

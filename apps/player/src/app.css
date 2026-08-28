@@ -2,6 +2,8 @@
 @import 'tw-animate-css';
 @import 'shadcn-svelte/tailwind.css';
 
+@source '../../../packages/session-ui/src';
+
 @custom-variant dark (&:is(.dark *));
 
 /* shadcn-svelte theme (copied from studio's layout.css, minus the Inter font). */

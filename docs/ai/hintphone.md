@@ -46,7 +46,7 @@ Error reasons are `unknown_code`, `unknown_hint`, `invalid_step`, `not_hint_devi
 
 The attached device must be marked as a hint device. Operator push can display a step without code entry but is still logged as hint usage.
 
-Website-test runs intentionally do not execute the hint service: submissions are logged and return `session_not_running`. Test successful steps, answer navigation, and operator push in a running test session. The push endpoint/MCP action exists, but the current Studio operation dashboard keeps its hint-push card hidden.
+Website-test runs intentionally do not execute the hint service: submissions are logged and return `session_not_running`. Test successful steps, answer navigation, and operator push in a running test session. Hint push and code-overlay controls are available in the shared Studio/Player session dashboard.
 
 ## SSR and lifecycle
 

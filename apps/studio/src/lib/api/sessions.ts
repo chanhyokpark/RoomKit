@@ -108,3 +108,15 @@ export function abortRun(id: string, runId: string): Promise<void> {
 export function runSessionCommand(id: string, command: Command): Promise<void> {
 	return api(`/sessions/${id}/command`, { method: 'POST', body: command });
 }
+
+/** Run a Helper callback registered by a website in a test device. */
+export function runTestCallback(
+	id: string,
+	deviceId: string,
+	name: string
+): Promise<{ ok: boolean }> {
+	return api(`/sessions/${id}/devices/${deviceId}/test-callback`, {
+		method: 'POST',
+		body: { name }
+	});
+}
