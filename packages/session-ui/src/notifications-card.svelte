@@ -1,22 +1,32 @@
 <script lang="ts">
-	import BellIcon from '@lucide/svelte/icons/bell';
-	import * as Card from '$lib/components/ui/card';
+	import BellRingIcon from '@lucide/svelte/icons/bell-ring';
+	import * as Alert from '$lib/components/ui/alert';
+	import { Badge } from '$lib/components/ui/badge';
 	import { useSessionUi } from './context.js';
 
 	const { model } = useSessionUi();
+	const notifications = $derived(model.notifications);
 </script>
 
-{#if model.notifications.length > 0}
-	<Card.Root class="md:col-span-2">
-		<Card.Header>
-			<Card.Title class="flex items-center gap-2"><BellIcon />알림</Card.Title>
-		</Card.Header>
-		<Card.Content>
-			<ul class="flex flex-col gap-2">
-				{#each model.notifications as notification, index (`${notification.message}:${index}`)}
-					<li class="rounded-md border p-3 text-sm">{notification.message}</li>
-				{/each}
-			</ul>
-		</Card.Content>
-	</Card.Root>
+{#if notifications.length > 0}
+	{@const latest = notifications[0]}
+	<div class="sticky top-0">
+		<Alert.Root>
+			<BellRingIcon />
+			<Alert.Title class="flex flex-wrap items-center gap-2">
+				<Badge>운영 알림</Badge>
+				<span>{latest.message}</span>
+			</Alert.Title>
+			<Alert.Description>
+				<p>명령으로 전송된 알림입니다.</p>
+				{#if notifications.length > 1}
+					<ul class="mt-2 flex flex-col gap-1">
+						{#each notifications.slice(1) as notification, index (`${notification.message}:${index}`)}
+							<li>이전: {notification.message}</li>
+						{/each}
+					</ul>
+				{/if}
+			</Alert.Description>
+		</Alert.Root>
+	</div>
 {/if}

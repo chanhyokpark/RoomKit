@@ -81,7 +81,7 @@
 			return data.logsLoading;
 		},
 		get notifications() {
-			return [];
+			return data.notificationsFor(session.id);
 		},
 		get testDeviceCodes() {
 			return codes;

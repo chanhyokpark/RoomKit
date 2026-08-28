@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
+import { toast } from 'svelte-sonner';
 import {
 	ADMIN_NAMESPACE,
 	AdminEvents,
@@ -42,7 +43,9 @@ class AdminStore {
 	#reloginTried = false;
 
 	start(sessionId: string): void {
+		const changedSession = this.#sessionId !== sessionId;
 		this.stop();
+		if (changedSession) this.notifications = [];
 		this.#sessionId = sessionId;
 		const serverUrl = config.serverUrl.trim().replace(/\/$/, '');
 		const socket = io(`${serverUrl}${ADMIN_NAMESPACE}`, {
@@ -99,6 +102,7 @@ class AdminStore {
 			const parsed = SessionNotificationSchema.safeParse(payload);
 			if (!parsed.success || parsed.data.sessionId !== this.#sessionId) return;
 			this.notifications = [parsed.data, ...this.notifications].slice(0, 5);
+			toast.info(parsed.data.message, { duration: 10_000 });
 		});
 	}
 

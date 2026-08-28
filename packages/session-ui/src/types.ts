@@ -35,6 +35,7 @@ export interface SessionUiModel {
 	/** Oldest first. */
 	readonly logs: SessionLogEntry[];
 	readonly logsLoading: boolean;
+	/** Newest first. */
 	readonly notifications: SessionNotification[];
 	readonly testDeviceCodes: TestDeviceCode[];
 	statusOf(deviceId: string): DeviceStatus | null;

@@ -46,6 +46,26 @@
 	const codeByDevice = $derived(
 		new Map(model.testDeviceCodes.map((entry) => [entry.deviceId, entry.code]))
 	);
+	const media = $derived(model.media);
+	const websiteByDevice = $derived(
+		new Map((media?.websites ?? []).map((website) => [website.deviceId, website]))
+	);
+	const playingByDevice = $derived.by(() => {
+		const result = new Map<string, PlayingMedia[]>();
+		for (const entry of media?.playing ?? []) {
+			const playing = result.get(entry.deviceId);
+			if (playing) playing.push(entry);
+			else result.set(entry.deviceId, [entry]);
+		}
+		return result;
+	});
+
+	const channelLabels: Record<PlayChannel, string> = {
+		bgm: 'BGM',
+		sfx: '효과음',
+		dialogue: '대사',
+		video: '비디오'
+	};
 
 	const stopTypes: Record<PlayChannel, Command['type']> = {
 		bgm: 'stopBgm',
@@ -59,14 +79,6 @@
 			messageForms[deviceId] = { messageId: '', values: {}, wait: false };
 		}
 		return messageForms[deviceId];
-	}
-
-	function websiteFor(deviceId: string) {
-		return model.media?.websites.find((website) => website.deviceId === deviceId) ?? null;
-	}
-
-	function playingFor(deviceId: string): PlayingMedia[] {
-		return model.media?.playing.filter((entry) => entry.deviceId === deviceId) ?? [];
 	}
 
 	function messagesFor(deviceId: string): MessageAsset[] {
@@ -175,8 +187,8 @@
 		{/if}
 		{#each devices as device (device.id)}
 			{@const status = model.statusOf(device.id)}
-			{@const currentWebsite = websiteFor(device.id)}
-			{@const currentMedia = playingFor(device.id)}
+			{@const currentWebsite = websiteByDevice.get(device.id)}
+			{@const currentMedia = playingByDevice.get(device.id) ?? []}
 			{@const code = codeByDevice.get(device.id)}
 			<div class="rounded-md border">
 				<button
@@ -190,14 +202,6 @@
 					<span class="truncate text-sm font-medium">{device.data.displayName || device.name}</span>
 					{#if device.data.isHintDevice}<Badge variant="secondary">힌트</Badge>{/if}
 					{#if code}<code class="font-mono text-xs text-muted-foreground">{code}</code>{/if}
-					{#if currentWebsite}
-						<span
-							class="max-w-56 truncate text-xs text-muted-foreground"
-							title={currentWebsite.url}
-						>
-							{assetName(model.assets, currentWebsite.websiteId) ?? currentWebsite.url}
-						</span>
-					{/if}
 					<Badge variant={status?.online ? 'outline' : 'secondary'} class="ml-auto">
 						{status?.online ? '온라인' : '오프라인'}
 					</Badge>
@@ -207,6 +211,55 @@
 						<ChevronRightIcon class="size-4 text-muted-foreground" />
 					{/if}
 				</button>
+
+				{#if currentWebsite || currentMedia.length > 0}
+					<div class="flex flex-col gap-1.5 border-t px-3 py-2">
+						{#if currentWebsite}
+							<div class="flex items-center gap-2 text-xs">
+								<Badge variant="outline">웹사이트</Badge>
+								<span class="min-w-0 truncate" title={currentWebsite.url}>
+									{assetName(model.assets, currentWebsite.websiteId) ?? currentWebsite.url}
+								</span>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									class="ml-auto"
+									aria-label="웹사이트 종료"
+									disabled={busyKeys.has(`stop-site:${device.id}`) ||
+										model.session?.state === 'ended'}
+									onclick={() =>
+										run(`stop-site:${device.id}`, () =>
+											actions.runCommand({
+												type: 'resetDevice',
+												deviceId: device.id
+											})
+										)}
+								>
+									<SquareIcon />
+								</Button>
+							</div>
+						{/if}
+						{#each currentMedia as entry (entry.commandId)}
+							<div class="flex items-center gap-2 text-xs">
+								<Badge variant="outline">{channelLabels[entry.channel]}</Badge>
+								<span class="min-w-0 truncate">
+									{assetName(model.assets, entry.assetId) ?? entry.assetName}
+								</span>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									class="ml-auto"
+									aria-label="재생 정지"
+									disabled={busyKeys.has(`stop:${entry.commandId}`) ||
+										model.session?.state === 'ended'}
+									onclick={() => run(`stop:${entry.commandId}`, () => stopMedia(entry))}
+								>
+									<SquareIcon />
+								</Button>
+							</div>
+						{/each}
+					</div>
+				{/if}
 
 				{#if expanded.has(device.id)}
 					{@const form = formFor(device.id)}
@@ -239,50 +292,6 @@
 								<RotateCcwIcon data-icon="inline-start" />리셋
 							</Button>
 						</div>
-
-						{#if currentWebsite || currentMedia.length > 0}
-							<div class="flex flex-col gap-1.5">
-								<p class="text-xs font-medium text-muted-foreground">현재 콘텐츠</p>
-								{#if currentWebsite}
-									<div class="flex items-center gap-2 text-xs">
-										<Badge variant="outline">웹사이트</Badge>
-										<span class="min-w-0 truncate" title={currentWebsite.url}
-											>{currentWebsite.url}</span
-										>
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											class="ml-auto"
-											aria-label="웹사이트 종료"
-											onclick={() =>
-												run(`stop-site:${device.id}`, () =>
-													actions.runCommand({
-														type: 'resetDevice',
-														deviceId: device.id
-													})
-												)}
-										>
-											<SquareIcon />
-										</Button>
-									</div>
-								{/if}
-								{#each currentMedia as entry (entry.commandId)}
-									<div class="flex items-center gap-2 text-xs">
-										<Badge variant="outline">{entry.channel}</Badge>
-										<span>{assetName(model.assets, entry.assetId) ?? entry.assetName}</span>
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											class="ml-auto"
-											aria-label="재생 정지"
-											onclick={() => run(`stop:${entry.commandId}`, () => stopMedia(entry))}
-										>
-											<SquareIcon />
-										</Button>
-									</div>
-								{/each}
-							</div>
-						{/if}
 
 						<Field.FieldGroup>
 							<Field.Field>

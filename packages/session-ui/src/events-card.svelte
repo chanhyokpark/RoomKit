@@ -21,6 +21,7 @@
 
 	const session = $derived(model.session);
 	const events = $derived(assetsOf(model.assets, 'event'));
+	const runs = $derived(model.runs);
 	const groups = $derived.by(() => {
 		const phaseId = session?.phaseId ?? null;
 		return [
@@ -52,7 +53,7 @@
 	}
 
 	function runsOf(eventId: string) {
-		return model.runs.filter((run) => run.eventId === eventId);
+		return runs.filter((run) => run.eventId === eventId);
 	}
 
 	function triggerLabel(event: (typeof events)[number]): string {
@@ -90,15 +91,14 @@
 		<Card.Title class="flex items-center gap-2">
 			<ZapIcon />
 			이벤트
-			{#if model.runs.length > 0}<Badge variant="secondary">{model.runs.length}개 실행 중</Badge
-				>{/if}
+			{#if runs.length > 0}<Badge variant="secondary">{runs.length}개 실행 중</Badge>{/if}
 		</Card.Title>
 		<Card.Description>수동 이벤트를 실행하고 시퀀스 진행 상황을 확인합니다.</Card.Description>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
-		{#if model.runs.length > 0}
+		{#if runs.length > 0}
 			<div class="flex flex-col gap-1.5 rounded-md border p-2">
-				{#each model.runs as run (run.runId)}
+				{#each runs as run (run.runId)}
 					<div class="flex items-center gap-2 text-xs">
 						<ActivityIcon class="size-4 text-muted-foreground" />
 						<span class="font-medium">{run.eventName}</span>

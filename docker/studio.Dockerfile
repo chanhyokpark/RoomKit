@@ -7,9 +7,11 @@ WORKDIR /repo
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/studio/package.json apps/studio/
 COPY packages/shared/package.json packages/shared/
+COPY packages/session-ui/package.json packages/session-ui/
 RUN pnpm install --frozen-lockfile --filter studio...
 
 COPY packages/shared packages/shared
+COPY packages/session-ui packages/session-ui
 COPY apps/studio apps/studio
 
 # $env/static/public is inlined at build time, so the API origin is a build arg.

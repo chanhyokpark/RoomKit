@@ -18,9 +18,9 @@
 
 <div class="flex min-h-0 flex-1 flex-col gap-4 p-4">
 	<SessionControls />
+	<NotificationsCard />
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 		{#if model.session?.state === 'ended'}<SummaryCard />{/if}
-		<NotificationsCard />
 		<TimerPhaseCard />
 		<EventsCard />
 		<DevicesCard />

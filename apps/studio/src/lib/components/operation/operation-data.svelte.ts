@@ -22,6 +22,7 @@ import {
 	type Session,
 	type SessionLogEntry,
 	type SessionMedia,
+	type SessionNotification,
 	type SessionState,
 	type SessionStateValue,
 	type Verdict
@@ -75,6 +76,8 @@ export class OperationData {
 	readonly runs = new SvelteMap<string, RunningEvent[]>();
 	/** sessionId → playing media/websites (server sends full snapshots). */
 	readonly media = new SvelteMap<string, SessionMedia>();
+	/** sessionId → newest operator notifications, capped per session. */
+	readonly notifications = new SvelteMap<string, SessionNotification[]>();
 	/** playerId → connected player launcher (global, not per theme). */
 	readonly playersById = new SvelteMap<string, PlayerStatus>();
 
@@ -197,6 +200,7 @@ export class OperationData {
 		this.live.delete(sessionId);
 		this.runs.delete(sessionId);
 		this.media.delete(sessionId);
+		this.notifications.delete(sessionId);
 		for (const key of this.deviceStatus.keys()) {
 			if (key.startsWith(`${sessionId}:`)) this.deviceStatus.delete(key);
 		}
@@ -299,7 +303,9 @@ export class OperationData {
 			const parsed = SessionNotificationSchema.safeParse(payload);
 			if (!parsed.success) return;
 			if (!this.#sessionInTheme(parsed.data.sessionId)) return;
-			toast.info(parsed.data.message);
+			const previous = this.notifications.get(parsed.data.sessionId) ?? [];
+			this.notifications.set(parsed.data.sessionId, [parsed.data, ...previous].slice(0, 5));
+			toast.info(parsed.data.message, { duration: 10_000 });
 		});
 		this.#socket.on(AdminEvents.playerStatus, (payload: unknown) => {
 			const parsed = PlayerStatusSchema.safeParse(payload);
@@ -337,6 +343,10 @@ export class OperationData {
 
 	mediaFor(sessionId: string): SessionMedia {
 		return this.media.get(sessionId) ?? { sessionId, playing: [], websites: [] };
+	}
+
+	notificationsFor(sessionId: string): SessionNotification[] {
+		return this.notifications.get(sessionId) ?? [];
 	}
 
 	assetName(id: string | null): string | null {
