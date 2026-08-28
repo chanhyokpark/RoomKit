@@ -12,6 +12,8 @@
 		"forceConsistentCasingInFileNames": true,
 		"types": ["vite/client"],
 		"paths": {
+			"$lib": ["./src/lib"],
+			"$lib/*": ["./src/lib/*"],
 			"@roomkit/shared": ["../../packages/shared/src/index.ts"],
 			"@roomkit/client": ["../../packages/client/src/index.ts"]
 		}

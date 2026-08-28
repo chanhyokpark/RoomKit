@@ -14,7 +14,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({
         secret: config.get('JWT_SECRET', { infer: true }),
-        signOptions: { expiresIn: '12h' },
+        signOptions: { expiresIn: '60d' },
       }),
     }),
   ],

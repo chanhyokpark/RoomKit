@@ -16,6 +16,9 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
+			// SvelteKit-style alias so shadcn-svelte components (copied from
+			// studio) resolve without a kit runtime.
+			$lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
 			// Compile both workspace libs from source in dev AND build (same
 			// rationale as studio: the built dist goes through vite's dep
 			// prebundle cache, which only invalidates on lockfile changes, and

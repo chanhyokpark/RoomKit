@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import * as Alert from '$lib/components/ui/alert';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import * as Select from '$lib/components/ui/select';
 	import { api, ApiError } from '../../api';
 	import { admin } from '../../stores/admin.svelte';
 	import { themeAssets } from '../../stores/theme-assets.svelte';
@@ -52,111 +57,144 @@
 			busy = false;
 		}
 	}
-
-	const btn =
-		'rounded-md border border-neutral-700 px-2.5 py-1.5 text-sm hover:bg-neutral-800 disabled:opacity-40';
-	const primaryBtn =
-		'rounded-md bg-neutral-100 px-2.5 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-40';
 </script>
 
-<section class="flex flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-	<div class="flex items-center justify-between">
-		<h2 class="text-sm font-medium text-neutral-300">세션</h2>
-		<span class="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">{stateLabel}</span>
-	</div>
-
-	<div class="flex flex-wrap gap-2">
-		{#if session?.state === 'created'}
-			<button class={primaryBtn} disabled={busy} onclick={() => void call('/start')}>
-				세션 시작
-			</button>
-		{:else if session?.state === 'running'}
-			<button class={btn} disabled={busy} onclick={() => void call('/pause')}>일시정지</button>
-		{:else if session?.state === 'paused'}
-			<button class={primaryBtn} disabled={busy} onclick={() => void call('/resume')}>재개</button>
-		{/if}
-		{#if session && session.state !== 'ended'}
-			<button class={btn} disabled={busy} onclick={() => void call('/end')}>세션 종료</button>
-			<button class={btn} disabled={busy} onclick={() => void call('/reset-devices')}>
-				디바이스 전체 리셋
-			</button>
-		{/if}
-		{#if session?.verdict}
-			<span class="self-center text-xs text-neutral-400">
-				결과: {session.verdict === 'success' ? '성공' : '실패'}
-			</span>
-		{/if}
-	</div>
-
-	<div class="flex items-center gap-3 border-t border-neutral-800 pt-3">
-		<span class="w-14 text-xs text-neutral-400">타이머</span>
-		<span class="font-mono text-xl tabular-nums">
-			{remainingMs === null ? '—' : formatMs(remainingMs)}
-		</span>
-		{#if session?.timerState}
-			<span class="text-xs text-neutral-500">
-				{{ running: '진행', paused: '정지', expired: '만료' }[session.timerState]}
-			</span>
-		{/if}
-		<div class="ml-auto flex gap-1.5">
-			<button class={btn} disabled={busy} onclick={() => void call('/timer', { deltaMs: -60_000 })}>
-				-1분
-			</button>
-			<button class={btn} disabled={busy} onclick={() => void call('/timer', { deltaMs: 60_000 })}>
-				+1분
-			</button>
-			<button class={btn} disabled={busy} onclick={() => void call('/timer', { deltaMs: 300_000 })}>
-				+5분
-			</button>
-			{#if session?.timerState === 'running'}
-				<button class={btn} disabled={busy} onclick={() => void call('/timer', { action: 'pause' })}>
-					정지
-				</button>
-			{:else if session?.timerState === 'paused'}
-				<button
-					class={btn}
+<Card.Root>
+	<Card.Header>
+		<Card.Title>세션</Card.Title>
+		<Card.Action>
+			<Badge variant="secondary">{stateLabel}</Badge>
+		</Card.Action>
+	</Card.Header>
+	<Card.Content class="flex flex-col gap-3">
+		<div class="flex flex-wrap gap-2">
+			{#if session?.state === 'created'}
+				<Button size="sm" disabled={busy} onclick={() => void call('/start')}>세션 시작</Button>
+			{:else if session?.state === 'running'}
+				<Button variant="outline" size="sm" disabled={busy} onclick={() => void call('/pause')}>
+					일시정지
+				</Button>
+			{:else if session?.state === 'paused'}
+				<Button size="sm" disabled={busy} onclick={() => void call('/resume')}>재개</Button>
+			{/if}
+			{#if session && session.state !== 'ended'}
+				<Button variant="outline" size="sm" disabled={busy} onclick={() => void call('/end')}>
+					세션 종료
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
 					disabled={busy}
-					onclick={() => void call('/timer', { action: 'resume' })}
+					onclick={() => void call('/reset-devices')}
 				>
-					재개
-				</button>
+					디바이스 전체 리셋
+				</Button>
+			{/if}
+			{#if session?.verdict}
+				<span class="self-center text-xs text-muted-foreground">
+					결과: {session.verdict === 'success' ? '성공' : '실패'}
+				</span>
 			{/if}
 		</div>
-	</div>
 
-	<div class="flex items-center gap-3 border-t border-neutral-800 pt-3">
-		<span class="w-14 text-xs text-neutral-400">페이즈</span>
-		<span class="text-sm">{themeAssets.phaseName(session?.phaseId ?? null)}</span>
-		<div class="ml-auto flex gap-1.5">
-			<select
-				class="rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none"
-				bind:value={phaseChoice}
-			>
-				<option value="">페이즈 선택</option>
-				{#each themeAssets.phases as phase (phase.id)}
-					<option value={phase.id}>{phase.name}</option>
-				{/each}
-			</select>
-			<button
-				class={btn}
-				disabled={busy || !phaseChoice || phaseChoice === session?.phaseId}
-				onclick={() => void call('/phase', { phaseId: phaseChoice })}
-			>
-				전환
-			</button>
-			<button class={btn} disabled={busy} onclick={() => void call('/phase/restart')}>
-				재시작
-			</button>
+		<div class="flex items-center gap-3 border-t pt-3">
+			<span class="w-14 text-xs text-muted-foreground">타이머</span>
+			<span class="font-mono text-xl tabular-nums">
+				{remainingMs === null ? '—' : formatMs(remainingMs)}
+			</span>
+			{#if session?.timerState}
+				<span class="text-xs text-muted-foreground">
+					{{ running: '진행', paused: '정지', expired: '만료' }[session.timerState]}
+				</span>
+			{/if}
+			<div class="ml-auto flex gap-1.5">
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy}
+					onclick={() => void call('/timer', { deltaMs: -60_000 })}
+				>
+					-1분
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy}
+					onclick={() => void call('/timer', { deltaMs: 60_000 })}
+				>
+					+1분
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy}
+					onclick={() => void call('/timer', { deltaMs: 300_000 })}
+				>
+					+5분
+				</Button>
+				{#if session?.timerState === 'running'}
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={busy}
+						onclick={() => void call('/timer', { action: 'pause' })}
+					>
+						정지
+					</Button>
+				{:else if session?.timerState === 'paused'}
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={busy}
+						onclick={() => void call('/timer', { action: 'resume' })}
+					>
+						재개
+					</Button>
+				{/if}
+			</div>
 		</div>
-	</div>
 
-	{#each admin.notifications as notification, i (i)}
-		<p class="rounded-md border border-sky-900 bg-sky-950/40 px-3 py-1.5 text-xs text-sky-300">
-			{notification.message}
-		</p>
-	{/each}
+		<div class="flex items-center gap-3 border-t pt-3">
+			<span class="w-14 text-xs text-muted-foreground">페이즈</span>
+			<span class="text-sm">{themeAssets.phaseName(session?.phaseId ?? null)}</span>
+			<div class="ml-auto flex gap-1.5">
+				<Select.Root type="single" bind:value={phaseChoice}>
+					<Select.Trigger size="sm" class="w-36">
+						{themeAssets.phases.find((p) => p.id === phaseChoice)?.name ?? '페이즈 선택'}
+					</Select.Trigger>
+					<Select.Content>
+						{#each themeAssets.phases as phase (phase.id)}
+							<Select.Item value={phase.id} label={phase.name}>{phase.name}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy || !phaseChoice || phaseChoice === session?.phaseId}
+					onclick={() => void call('/phase', { phaseId: phaseChoice })}
+				>
+					전환
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy}
+					onclick={() => void call('/phase/restart')}
+				>
+					재시작
+				</Button>
+			</div>
+		</div>
 
-	{#if error}
-		<p class="text-xs text-red-400">{error}</p>
-	{/if}
-</section>
+		{#each admin.notifications as notification, i (i)}
+			<Alert.Root>
+				<Alert.Description>{notification.message}</Alert.Description>
+			</Alert.Root>
+		{/each}
+
+		{#if error}
+			<p class="text-xs text-destructive">{error}</p>
+		{/if}
+	</Card.Content>
+</Card.Root>

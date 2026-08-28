@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import { Input } from '$lib/components/ui/input';
+	import * as Select from '$lib/components/ui/select';
 	import { api, ApiError } from '../../api';
 	import { admin } from '../../stores/admin.svelte';
 	import { themeAssets } from '../../stores/theme-assets.svelte';
@@ -100,112 +105,154 @@
 			error = err instanceof ApiError ? err.message : '힌트를 푸시하지 못했습니다.';
 		}
 	}
-
-	const btn =
-		'rounded-md border border-neutral-700 px-2.5 py-1.5 text-xs hover:bg-neutral-800 disabled:opacity-40';
-	const input =
-		'rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-neutral-400';
 </script>
 
-<section class="flex flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-	<h2 class="text-sm font-medium text-neutral-300">수동 커맨드</h2>
-
-	<!-- 재생 중 미디어 -->
-	{#if admin.media && admin.media.playing.length > 0}
-		<div class="flex flex-col gap-1 rounded-md border border-neutral-800 bg-neutral-900/80 p-2">
-			{#each admin.media.playing as playing (playing.commandId)}
-				<div class="flex items-center gap-2 text-xs text-neutral-400">
-					<span class="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px]">{playing.channel}</span>
-					<span>{playing.assetName}</span>
-					<span class="text-neutral-600">{themeAssets.name(playing.deviceId)}</span>
-					<button
-						class="{btn} ml-auto"
-						onclick={() =>
-							void command(
-								{
-									type:
-										playing.channel === 'bgm'
-											? 'stopBgm'
-											: playing.channel === 'sfx'
-												? 'stopSfx'
-												: playing.channel === 'video'
-													? 'stopVideo'
-													: 'stopDialogue',
-									playerId: playing.playerId,
-									allPlayers: false
-								},
-								'정지'
-							)}
-					>
-						정지
-					</button>
-				</div>
-			{/each}
-		</div>
-	{/if}
-
-	<div class="flex items-center gap-2">
-		<select class={input} bind:value={channel} onchange={() => (mediaAssetId = '')}>
-			{#each CHANNELS as ch (ch.key)}
-				<option value={ch.key}>{ch.label}</option>
-			{/each}
-		</select>
-		<select class="{input} flex-1" bind:value={mediaAssetId}>
-			<option value="">애셋 선택</option>
-			{#each mediaOptions as asset (asset.id)}
-				<option value={asset.id}>{asset.name}</option>
-			{/each}
-		</select>
-		<select class="{input} w-32" bind:value={playerAssetId}>
-			<option value="">플레이어 선택</option>
-			{#each themeAssets.players as playerAsset (playerAsset.id)}
-				<option value={playerAsset.id}>{playerAsset.name}</option>
-			{/each}
-		</select>
-		<button class={btn} disabled={!mediaAssetId || !playerAssetId} onclick={play}>재생</button>
-		<button class={btn} onclick={stop}>전체 정지</button>
-	</div>
-
-	<!-- 힌트 -->
-	{#if themeAssets.hints.length > 0}
-		<div class="flex items-center gap-2 border-t border-neutral-800 pt-3">
-			<span class="text-xs text-neutral-400">힌트</span>
-			<select class="{input} flex-1" bind:value={hintId}>
-				<option value="">힌트 선택</option>
-				{#each themeAssets.hints as hint (hint.id)}
-					<option value={hint.id}>{hint.name}{hint.code ? ` (${hint.code})` : ''}</option>
+<Card.Root>
+	<Card.Header>
+		<Card.Title>수동 커맨드</Card.Title>
+	</Card.Header>
+	<Card.Content class="flex flex-col gap-3">
+		<!-- 재생 중 미디어 -->
+		{#if admin.media && admin.media.playing.length > 0}
+			<div class="flex flex-col gap-1 rounded-md border bg-card p-2">
+				{#each admin.media.playing as playing (playing.commandId)}
+					<div class="flex items-center gap-2 text-xs text-muted-foreground">
+						<Badge variant="secondary" class="text-[10px]">{playing.channel}</Badge>
+						<span>{playing.assetName}</span>
+						<span class="text-muted-foreground/60">{themeAssets.name(playing.deviceId)}</span>
+						<Button
+							variant="outline"
+							size="sm"
+							class="ml-auto"
+							onclick={() =>
+								void command(
+									{
+										type:
+											playing.channel === 'bgm'
+												? 'stopBgm'
+												: playing.channel === 'sfx'
+													? 'stopSfx'
+													: playing.channel === 'video'
+														? 'stopVideo'
+														: 'stopDialogue',
+										playerId: playing.playerId,
+										allPlayers: false
+									},
+									'정지'
+								)}
+						>
+							정지
+						</Button>
+					</div>
 				{/each}
-			</select>
-			<input class="{input} w-16" type="number" min="0" bind:value={hintStep} title="단계 (0부터)" />
-			<button class={btn} disabled={!hintId} onclick={() => void pushHint()}>푸시</button>
-			<select class={input} bind:value={hintDeviceId}>
-				<option value="">코드 표시…</option>
-				{#each themeAssets.devices as device (device.id)}
-					<option value={device.id}>{device.name}</option>
-				{/each}
-			</select>
-			<button
-				class={btn}
-				disabled={!hintId || !hintDeviceId}
-				onclick={() =>
-					void command({ type: 'showHintCode', hintId, deviceId: hintDeviceId }, '힌트 코드 표시')}
-			>
-				표시
-			</button>
-			<button
-				class={btn}
-				onclick={() =>
-					void command({ type: 'hideHintCode', deviceId: null, allDevices: true }, '힌트 코드 숨김')}
-			>
-				모두 숨김
-			</button>
-		</div>
-	{/if}
+			</div>
+		{/if}
 
-	{#if ok}
-		<p class="text-xs text-emerald-400">{ok}</p>
-	{/if}
-	{#if error}
-		<p class="text-xs text-red-400">{error}</p>
-	{/if}
-</section>
+		<div class="flex items-center gap-2">
+			<Select.Root type="single" bind:value={channel} onValueChange={() => (mediaAssetId = '')}>
+				<Select.Trigger size="sm">
+					{CHANNELS.find((ch) => ch.key === channel)?.label}
+				</Select.Trigger>
+				<Select.Content>
+					{#each CHANNELS as ch (ch.key)}
+						<Select.Item value={ch.key} label={ch.label}>{ch.label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+			<Select.Root type="single" bind:value={mediaAssetId}>
+				<Select.Trigger size="sm" class="flex-1">
+					{mediaOptions.find((a) => a.id === mediaAssetId)?.name ?? '애셋 선택'}
+				</Select.Trigger>
+				<Select.Content>
+					{#each mediaOptions as asset (asset.id)}
+						<Select.Item value={asset.id} label={asset.name}>{asset.name}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+			<Select.Root type="single" bind:value={playerAssetId}>
+				<Select.Trigger size="sm" class="w-32">
+					{themeAssets.players.find((p) => p.id === playerAssetId)?.name ?? '플레이어 선택'}
+				</Select.Trigger>
+				<Select.Content>
+					{#each themeAssets.players as playerAsset (playerAsset.id)}
+						<Select.Item value={playerAsset.id} label={playerAsset.name}>
+							{playerAsset.name}
+						</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={!mediaAssetId || !playerAssetId}
+				onclick={play}
+			>
+				재생
+			</Button>
+			<Button variant="outline" size="sm" onclick={stop}>전체 정지</Button>
+		</div>
+
+		<!-- 힌트 -->
+		{#if themeAssets.hints.length > 0}
+			<div class="flex items-center gap-2 border-t pt-3">
+				<span class="text-xs text-muted-foreground">힌트</span>
+				<Select.Root type="single" bind:value={hintId}>
+					<Select.Trigger size="sm" class="flex-1">
+						{themeAssets.hints.find((h) => h.id === hintId)?.name ?? '힌트 선택'}
+					</Select.Trigger>
+					<Select.Content>
+						{#each themeAssets.hints as hint (hint.id)}
+							<Select.Item value={hint.id} label={hint.name}>
+								{hint.name}{hint.code ? ` (${hint.code})` : ''}
+							</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+				<Input
+					class="h-8 w-16 text-xs"
+					type="number"
+					min="0"
+					bind:value={hintStep}
+					title="단계 (0부터)"
+				/>
+				<Button variant="outline" size="sm" disabled={!hintId} onclick={() => void pushHint()}>
+					푸시
+				</Button>
+				<Select.Root type="single" bind:value={hintDeviceId}>
+					<Select.Trigger size="sm">
+						{themeAssets.devices.find((d) => d.id === hintDeviceId)?.name ?? '코드 표시…'}
+					</Select.Trigger>
+					<Select.Content>
+						{#each themeAssets.devices as device (device.id)}
+							<Select.Item value={device.id} label={device.name}>{device.name}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={!hintId || !hintDeviceId}
+					onclick={() =>
+						void command({ type: 'showHintCode', hintId, deviceId: hintDeviceId }, '힌트 코드 표시')}
+				>
+					표시
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() =>
+						void command({ type: 'hideHintCode', deviceId: null, allDevices: true }, '힌트 코드 숨김')}
+				>
+					모두 숨김
+				</Button>
+			</div>
+		{/if}
+
+		{#if ok}
+			<p class="text-xs text-emerald-400">{ok}</p>
+		{/if}
+		{#if error}
+			<p class="text-xs text-destructive">{error}</p>
+		{/if}
+	</Card.Content>
+</Card.Root>

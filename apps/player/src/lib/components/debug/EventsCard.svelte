@@ -1,5 +1,10 @@
 <script lang="ts">
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { Asset, SequenceEntry } from '@roomkit/shared';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
 	import { api, ApiError } from '../../api';
 	import { admin } from '../../stores/admin.svelte';
 	import { themeAssets } from '../../stores/theme-assets.svelte';
@@ -113,92 +118,100 @@
 	}
 </script>
 
-<section class="flex flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-	<div class="flex items-center justify-between">
-		<h2 class="text-sm font-medium text-neutral-300">이벤트</h2>
+<Card.Root>
+	<Card.Header>
+		<Card.Title>이벤트</Card.Title>
 		{#if admin.runs.length > 0}
-			<span class="text-xs text-emerald-400">{admin.runs.length}개 실행 중</span>
+			<Card.Action>
+				<span class="text-xs text-emerald-400">{admin.runs.length}개 실행 중</span>
+			</Card.Action>
 		{/if}
-	</div>
-
-	{#if admin.runs.length > 0}
-		<div class="flex flex-col gap-1.5 rounded-md border border-emerald-900/60 bg-emerald-950/20 p-2">
-			{#each admin.runs as run (run.runId)}
-				<div class="flex items-center gap-2 text-xs">
-					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
-					<span>{run.eventName}</span>
-					<span class="text-neutral-500">
-						{run.entryIndex + 1}/{run.entryCount}{run.commandType ? ` · ${run.commandType}` : ''}
-					</span>
-					<button
-						class="ml-auto rounded border border-neutral-700 px-1.5 py-0.5 text-neutral-400 hover:bg-neutral-800"
-						onclick={() => void abort(run.runId)}
-					>
-						중단
-					</button>
-				</div>
-			{/each}
-		</div>
-	{/if}
-
-	{#if events.length === 0}
-		<p class="text-sm text-neutral-500">이 테마에는 이벤트가 없습니다.</p>
-	{/if}
-
-	{#each groups as group (group.label)}
-		<div class="flex flex-col gap-1.5">
-			<h3 class="text-xs font-medium text-neutral-500">{group.label}</h3>
-			{#each group.items as event (event.id)}
-				<div class="rounded-md border border-neutral-800 bg-neutral-900/80">
-					<div class="flex items-center gap-2 px-3 py-2">
-						<button
-							class="text-left text-sm hover:text-white"
-							onclick={() => (expanded[event.id] = !expanded[event.id])}
-						>
-							<span class="mr-1 text-neutral-500">{expanded[event.id] ? '▾' : '▸'}</span>
-							{event.name}
-						</button>
-						<span class="rounded bg-neutral-800 px-1.5 py-0.5 text-[11px] text-neutral-400">
-							{triggerLabel(event)}
+	</Card.Header>
+	<Card.Content class="flex flex-col gap-3">
+		{#if admin.runs.length > 0}
+			<div class="flex flex-col gap-1.5 rounded-md border border-emerald-900/60 bg-emerald-950/20 p-2">
+				{#each admin.runs as run (run.runId)}
+					<div class="flex items-center gap-2 text-xs">
+						<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
+						<span>{run.eventName}</span>
+						<span class="text-muted-foreground">
+							{run.entryIndex + 1}/{run.entryCount}{run.commandType ? ` · ${run.commandType}` : ''}
 						</span>
-						{#if runsOf(event.id).length > 0}
-							<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
-						{/if}
-						<button
-							class="ml-auto rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-900 hover:bg-white disabled:opacity-40"
-							disabled={admin.session?.state !== 'running' && admin.session?.state !== 'paused'}
-							onclick={() => void run(event.id)}
+						<Button
+							variant="outline"
+							size="sm"
+							class="ml-auto"
+							onclick={() => void abort(run.runId)}
 						>
-							실행
-						</button>
+							중단
+						</Button>
 					</div>
-					{#if expanded[event.id]}
-						<ol class="flex flex-col gap-0.5 border-t border-neutral-800 px-3 py-2">
-							{#if event.data.sequence.length === 0}
-								<p class="text-xs text-neutral-500">빈 시퀀스</p>
-							{/if}
-							{#each event.data.sequence as entry, i (entry.id)}
-								{@const activeRun = runsOf(event.id).find((r) => r.entryIndex === i)}
-								<li
-									class="flex items-center gap-2 rounded px-1.5 py-0.5 text-xs {activeRun
-										? 'bg-emerald-950/40 text-emerald-300'
-										: 'text-neutral-400'}"
-								>
-									<span class="w-5 text-right font-mono text-neutral-600">{i + 1}</span>
-									<span>{commandLabel(entry)}</span>
-									{#if activeRun}
-										<span class="ml-auto animate-pulse text-[10px]">실행 중</span>
-									{/if}
-								</li>
-							{/each}
-						</ol>
-					{/if}
-				</div>
-			{/each}
-		</div>
-	{/each}
+				{/each}
+			</div>
+		{/if}
 
-	{#if error}
-		<p class="text-xs text-red-400">{error}</p>
-	{/if}
-</section>
+		{#if events.length === 0}
+			<p class="text-sm text-muted-foreground">이 테마에는 이벤트가 없습니다.</p>
+		{/if}
+
+		{#each groups as group (group.label)}
+			<div class="flex flex-col gap-1.5">
+				<h3 class="text-xs font-medium text-muted-foreground">{group.label}</h3>
+				{#each group.items as event (event.id)}
+					<div class="rounded-md border bg-card">
+						<div class="flex items-center gap-2 px-3 py-2">
+							<button
+								class="flex items-center gap-1 text-left text-sm hover:text-foreground"
+								onclick={() => (expanded[event.id] = !expanded[event.id])}
+							>
+								{#if expanded[event.id]}
+									<ChevronDownIcon class="size-4 text-muted-foreground" />
+								{:else}
+									<ChevronRightIcon class="size-4 text-muted-foreground" />
+								{/if}
+								{event.name}
+							</button>
+							<Badge variant="secondary" class="text-[11px]">{triggerLabel(event)}</Badge>
+							{#if runsOf(event.id).length > 0}
+								<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
+							{/if}
+							<Button
+								size="sm"
+								class="ml-auto"
+								disabled={admin.session?.state !== 'running' && admin.session?.state !== 'paused'}
+								onclick={() => void run(event.id)}
+							>
+								실행
+							</Button>
+						</div>
+						{#if expanded[event.id]}
+							<ol class="flex flex-col gap-0.5 border-t px-3 py-2">
+								{#if event.data.sequence.length === 0}
+									<p class="text-xs text-muted-foreground">빈 시퀀스</p>
+								{/if}
+								{#each event.data.sequence as entry, i (entry.id)}
+									{@const activeRun = runsOf(event.id).find((r) => r.entryIndex === i)}
+									<li
+										class="flex items-center gap-2 rounded px-1.5 py-0.5 text-xs {activeRun
+											? 'bg-emerald-950/40 text-emerald-300'
+											: 'text-muted-foreground'}"
+									>
+										<span class="w-5 text-right font-mono text-muted-foreground/60">{i + 1}</span>
+										<span>{commandLabel(entry)}</span>
+										{#if activeRun}
+											<span class="ml-auto animate-pulse text-[10px]">실행 중</span>
+										{/if}
+									</li>
+								{/each}
+							</ol>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/each}
+
+		{#if error}
+			<p class="text-xs text-destructive">{error}</p>
+		{/if}
+	</Card.Content>
+</Card.Root>

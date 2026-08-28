@@ -1,5 +1,13 @@
 <script lang="ts">
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { Asset, JsonValue, SessionResponse } from '@roomkit/shared';
+	import { Button } from '$lib/components/ui/button';
+	import * as Card from '$lib/components/ui/card';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import * as Select from '$lib/components/ui/select';
 	import { api, ApiError } from '../../api';
 	import { admin } from '../../stores/admin.svelte';
 	import { themeAssets } from '../../stores/theme-assets.svelte';
@@ -121,155 +129,193 @@
 			// Clipboard may be unavailable in the webview; the code is still visible.
 		}
 	}
-
-	const btn =
-		'rounded-md border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40';
-	const input =
-		'rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-neutral-400';
 </script>
 
-<section class="flex flex-col gap-2.5 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-	<h2 class="text-sm font-medium text-neutral-300">디바이스</h2>
-
-	{#each devices as device (device.id)}
-		{@const status = statusOf(device.id)}
-		{@const website = websiteOf(device.id)}
-		{@const code = codeOf(device.id)}
-		<div class="rounded-md border border-neutral-800 bg-neutral-900/80">
-			<button
-				class="flex w-full items-center gap-2 px-3 py-2 text-left"
-				onclick={() => (expanded[device.id] = !expanded[device.id])}
-			>
-				<span
-					class="h-2 w-2 rounded-full {status?.online ? 'bg-emerald-400' : 'bg-neutral-600'}"
-				></span>
-				<span class="text-sm">{device.data.displayName || device.name}</span>
-				{#if code}
-					<span class="font-mono text-xs text-neutral-500">{code}</span>
-				{/if}
-				{#if website}
-					<span class="max-w-48 truncate text-xs text-neutral-500">{website}</span>
-				{/if}
-				<span class="ml-auto text-neutral-600">{expanded[device.id] ? '▾' : '▸'}</span>
-			</button>
-
-			{#if expanded[device.id]}
-				{@const form = formFor(device.id)}
-				{@const registeredCallbacks = status?.helperTestCallbacks ?? []}
-				{@const messages = messagesFor(device.id)}
-				<div class="flex flex-col gap-3 border-t border-neutral-800 px-3 py-2.5">
+<Card.Root>
+	<Card.Header>
+		<Card.Title>디바이스</Card.Title>
+	</Card.Header>
+	<Card.Content class="flex flex-col gap-2.5">
+		{#each devices as device (device.id)}
+			{@const status = statusOf(device.id)}
+			{@const website = websiteOf(device.id)}
+			{@const code = codeOf(device.id)}
+			<div class="rounded-md border bg-card">
+				<button
+					class="flex w-full items-center gap-2 px-3 py-2 text-left"
+					onclick={() => (expanded[device.id] = !expanded[device.id])}
+				>
+					<span
+						class="h-2 w-2 rounded-full {status?.online ? 'bg-emerald-400' : 'bg-muted'}"
+					></span>
+					<span class="text-sm">{device.data.displayName || device.name}</span>
 					{#if code}
-						<div class="flex items-center gap-2 text-xs text-neutral-400">
-							접속 코드 <span class="font-mono text-neutral-200">{code}</span>
-							<button class={btn} onclick={() => void copyCode(code)}>복사</button>
-							<button
-								class="{btn} ml-auto"
-								onclick={() => void command({ type: 'resetDevice', deviceId: device.id })}
-							>
-								리셋
-							</button>
-						</div>
+						<span class="font-mono text-xs text-muted-foreground">{code}</span>
 					{/if}
+					{#if website}
+						<span class="max-w-48 truncate text-xs text-muted-foreground">{website}</span>
+					{/if}
+					{#if expanded[device.id]}
+						<ChevronDownIcon class="ml-auto size-4 text-muted-foreground" />
+					{:else}
+						<ChevronRightIcon class="ml-auto size-4 text-muted-foreground" />
+					{/if}
+				</button>
 
-					<!-- 내비게이션 -->
-					<div class="flex items-center gap-2">
-						<span class="w-16 shrink-0 text-xs text-neutral-400">이동</span>
-						<select class="{input} flex-1" bind:value={navigateForm[device.id]}>
-							<option value="">웹사이트 선택</option>
-							{#each themeAssets.websites as site (site.id)}
-								<option value={site.id}>{site.name}</option>
-							{/each}
-						</select>
-						<button
-							class={btn}
-							disabled={!navigateForm[device.id]}
-							onclick={() =>
-								void command({
-									type: 'navigate',
-									deviceId: device.id,
-									websiteId: navigateForm[device.id],
-									query: []
-								})}
-						>
-							이동
-						</button>
-					</div>
-
-					<!-- 등록된 메시지 전송 -->
-					<div class="flex flex-col gap-1.5">
-						<div class="flex items-center gap-2">
-							<span class="w-16 shrink-0 text-xs text-neutral-400">메시지</span>
-							<select class="{input} flex-1" bind:value={form.messageId}>
-								<option value="">메시지 선택</option>
-								{#each messages as message (message.id)}
-									<option value={message.id}>
-										{message.data.displayName || message.name}
-										{status?.helperMessages?.includes(message.name) ? ' ✓' : ''}
-									</option>
-								{/each}
-							</select>
-							<label class="flex items-center gap-1 text-xs text-neutral-400">
-								<input type="checkbox" bind:checked={form.wait} /> 대기
-							</label>
-							<button class={btn} disabled={!form.messageId} onclick={() => sendMessage(device.id)}>
-								전송
-							</button>
-						</div>
-						{#if status?.helperMessages && status.helperMessages.length > 0}
-							<p class="pl-18 text-[11px] text-neutral-500">
-								페이지 등록 메시지: {status.helperMessages.join(', ')}
-							</p>
-						{/if}
-						{#if form.messageId}
-							{@const selected = messages.find((m) => m.id === form.messageId)}
-							{#if selected}
-								{#each selected.data.fields as field (field.key)}
-									<div class="flex items-center gap-2 pl-18">
-										<span class="w-24 shrink-0 truncate text-[11px] text-neutral-500">
-											{field.label || field.key}{field.required ? ' *' : ''}
-										</span>
-										{#if field.type === 'boolean'}
-											<select class={input} bind:value={form.values[field.key]}>
-												<option value="">-</option>
-												<option value="true">true</option>
-												<option value="false">false</option>
-											</select>
-										{:else}
-											<input
-												class="{input} flex-1 font-mono"
-												placeholder={field.type}
-												bind:value={form.values[field.key]}
-											/>
-										{/if}
-									</div>
-								{/each}
-							{/if}
-						{/if}
-					</div>
-
-					<!-- 테스트 콜백 -->
-					{#if registeredCallbacks.length > 0}
-						<div class="flex flex-wrap items-center gap-1.5">
-							<span class="w-16 shrink-0 text-xs text-neutral-400">콜백</span>
-							{#each registeredCallbacks as name (name)}
-								{@const result = callbackResult[`${device.id}:${name}`]}
-								<button
-									class={btn}
-									disabled={result === 'running'}
-									onclick={() => void runCallback(device.id, name)}
+				{#if expanded[device.id]}
+					{@const form = formFor(device.id)}
+					{@const registeredCallbacks = status?.helperTestCallbacks ?? []}
+					{@const messages = messagesFor(device.id)}
+					<div class="flex flex-col gap-3 border-t px-3 py-2.5">
+						{#if code}
+							<div class="flex items-center gap-2 text-xs text-muted-foreground">
+								접속 코드 <span class="font-mono text-foreground">{code}</span>
+								<Button variant="outline" size="sm" onclick={() => void copyCode(code)}>
+									복사
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									class="ml-auto"
+									onclick={() => void command({ type: 'resetDevice', deviceId: device.id })}
 								>
-									{name}
-									{result === 'ok' ? '✓' : result === 'fail' ? '✕' : ''}
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{/each}
+									리셋
+								</Button>
+							</div>
+						{/if}
 
-	{#if error}
-		<p class="text-xs text-red-400">{error}</p>
-	{/if}
-</section>
+						<!-- 내비게이션 -->
+						<div class="flex items-center gap-2">
+							<span class="w-16 shrink-0 text-xs text-muted-foreground">이동</span>
+							<Select.Root type="single" bind:value={navigateForm[device.id]}>
+								<Select.Trigger size="sm" class="flex-1">
+									{themeAssets.websites.find((w) => w.id === navigateForm[device.id])?.name ??
+										'웹사이트 선택'}
+								</Select.Trigger>
+								<Select.Content>
+									{#each themeAssets.websites as site (site.id)}
+										<Select.Item value={site.id} label={site.name}>{site.name}</Select.Item>
+									{/each}
+								</Select.Content>
+							</Select.Root>
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={!navigateForm[device.id]}
+								onclick={() =>
+									void command({
+										type: 'navigate',
+										deviceId: device.id,
+										websiteId: navigateForm[device.id],
+										query: []
+									})}
+							>
+								이동
+							</Button>
+						</div>
+
+						<!-- 등록된 메시지 전송 -->
+						<div class="flex flex-col gap-1.5">
+							<div class="flex items-center gap-2">
+								<span class="w-16 shrink-0 text-xs text-muted-foreground">메시지</span>
+								<Select.Root type="single" bind:value={form.messageId}>
+									<Select.Trigger size="sm" class="flex-1">
+										{messages.find((m) => m.id === form.messageId)?.data.displayName ||
+											messages.find((m) => m.id === form.messageId)?.name ||
+											'메시지 선택'}
+									</Select.Trigger>
+									<Select.Content>
+										{#each messages as message (message.id)}
+											<Select.Item
+												value={message.id}
+												label={message.data.displayName || message.name}
+											>
+												{message.data.displayName || message.name}
+												{status?.helperMessages?.includes(message.name) ? ' ✓' : ''}
+											</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+								<div class="flex items-center gap-1">
+									<Checkbox id="wait-{device.id}" bind:checked={form.wait} />
+									<Label
+										for="wait-{device.id}"
+										class="text-xs font-normal text-muted-foreground"
+									>
+										대기
+									</Label>
+								</div>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={!form.messageId}
+									onclick={() => sendMessage(device.id)}
+								>
+									전송
+								</Button>
+							</div>
+							{#if status?.helperMessages && status.helperMessages.length > 0}
+								<p class="pl-18 text-[11px] text-muted-foreground">
+									페이지 등록 메시지: {status.helperMessages.join(', ')}
+								</p>
+							{/if}
+							{#if form.messageId}
+								{@const selected = messages.find((m) => m.id === form.messageId)}
+								{#if selected}
+									{#each selected.data.fields as field (field.key)}
+										<div class="flex items-center gap-2 pl-18">
+											<span class="w-24 shrink-0 truncate text-[11px] text-muted-foreground">
+												{field.label || field.key}{field.required ? ' *' : ''}
+											</span>
+											{#if field.type === 'boolean'}
+												<Select.Root type="single" bind:value={form.values[field.key]}>
+													<Select.Trigger size="sm" class="w-24">
+														{form.values[field.key] || '-'}
+													</Select.Trigger>
+													<Select.Content>
+														<Select.Item value="" label="-">-</Select.Item>
+														<Select.Item value="true" label="true">true</Select.Item>
+														<Select.Item value="false" label="false">false</Select.Item>
+													</Select.Content>
+												</Select.Root>
+											{:else}
+												<Input
+													class="h-8 flex-1 font-mono text-xs"
+													placeholder={field.type}
+													bind:value={form.values[field.key]}
+												/>
+											{/if}
+										</div>
+									{/each}
+								{/if}
+							{/if}
+						</div>
+
+						<!-- 테스트 콜백 -->
+						{#if registeredCallbacks.length > 0}
+							<div class="flex flex-wrap items-center gap-1.5">
+								<span class="w-16 shrink-0 text-xs text-muted-foreground">콜백</span>
+								{#each registeredCallbacks as name (name)}
+									{@const result = callbackResult[`${device.id}:${name}`]}
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={result === 'running'}
+										onclick={() => void runCallback(device.id, name)}
+									>
+										{name}
+										{result === 'ok' ? '✓' : result === 'fail' ? '✕' : ''}
+									</Button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{/each}
+
+		{#if error}
+			<p class="text-xs text-destructive">{error}</p>
+		{/if}
+	</Card.Content>
+</Card.Root>

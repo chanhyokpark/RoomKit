@@ -1,4 +1,6 @@
 <script lang="ts">
+	import * as Card from '$lib/components/ui/card';
+	import * as Select from '$lib/components/ui/select';
 	import { admin } from '../../stores/admin.svelte';
 
 	let kindFilter = $state('');
@@ -13,35 +15,41 @@
 	}
 </script>
 
-<section class="flex min-h-0 flex-col gap-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-	<div class="flex items-center justify-between">
-		<h2 class="text-sm font-medium text-neutral-300">로그</h2>
-		<select
-			class="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs outline-none"
-			bind:value={kindFilter}
-		>
-			<option value="">전체</option>
-			{#each kinds as kind (kind)}
-				<option value={kind}>{kind}</option>
+<Card.Root class="min-h-0">
+	<Card.Header>
+		<Card.Title>로그</Card.Title>
+		<Card.Action>
+			<Select.Root type="single" bind:value={kindFilter}>
+				<Select.Trigger size="sm">
+					{kindFilter === '' ? '전체' : kindFilter}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Item value="" label="전체">전체</Select.Item>
+					{#each kinds as kind (kind)}
+						<Select.Item value={kind} label={kind}>{kind}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		</Card.Action>
+	</Card.Header>
+	<Card.Content>
+		<div class="flex max-h-96 flex-col gap-0.5 overflow-y-auto font-mono text-[11px]">
+			{#if filtered.length === 0}
+				<p class="text-muted-foreground/60">로그가 없습니다.</p>
+			{/if}
+			{#each filtered as entry (entry.id)}
+				<div
+					class="flex gap-2 {entry.level === 'error'
+						? 'text-destructive'
+						: entry.level === 'warn'
+							? 'text-amber-400'
+							: 'text-muted-foreground'}"
+				>
+					<span class="shrink-0 text-muted-foreground/60">{timeOf(entry.at)}</span>
+					<span class="shrink-0 text-muted-foreground/80">[{entry.kind}]</span>
+					<span class="break-all">{entry.message}</span>
+				</div>
 			{/each}
-		</select>
-	</div>
-	<div class="flex max-h-96 flex-col gap-0.5 overflow-y-auto font-mono text-[11px]">
-		{#if filtered.length === 0}
-			<p class="text-neutral-600">로그가 없습니다.</p>
-		{/if}
-		{#each filtered as entry (entry.id)}
-			<div
-				class="flex gap-2 {entry.level === 'error'
-					? 'text-red-400'
-					: entry.level === 'warn'
-						? 'text-amber-400'
-						: 'text-neutral-400'}"
-			>
-				<span class="shrink-0 text-neutral-600">{timeOf(entry.at)}</span>
-				<span class="shrink-0 text-neutral-500">[{entry.kind}]</span>
-				<span class="break-all">{entry.message}</span>
-			</div>
-		{/each}
-	</div>
-</section>
+		</div>
+	</Card.Content>
+</Card.Root>

@@ -1,5 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import XIcon from '@lucide/svelte/icons/x';
+	import * as Alert from '$lib/components/ui/alert';
+	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as Empty from '$lib/components/ui/empty';
+	import * as Field from '$lib/components/ui/field';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import * as Select from '$lib/components/ui/select';
+	import { Spinner } from '$lib/components/ui/spinner';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import logo from '../assets/logo.svg';
 	import { auth } from '../stores/auth.svelte';
 	import { config } from '../stores/config.svelte';
@@ -56,6 +67,10 @@
 		config.selectedThemeId ? config.testConfigFor(config.selectedThemeId) : null
 	);
 
+	const selectedThemeName = $derived(
+		testSetup.themes.find((t) => t.id === config.selectedThemeId)?.name ?? null
+	);
+
 	function openAll() {
 		for (const device of config.devices) {
 			if (device.deviceCode.trim()) void openDeviceWindow(device);
@@ -88,316 +103,334 @@
 		persist();
 	}
 
+	function websiteName(websiteId: string): string | null {
+		return testSetup.websites.find((w) => w.id === websiteId)?.name ?? null;
+	}
+
 	function overridePlaceholder(websiteId: string): string {
 		const site = testSetup.websites.find((w) => w.id === websiteId);
 		return site?.defaultUrl ? `기본: ${site.defaultUrl}` : '대체 URL (비우면 치환 안 함)';
 	}
-
-	const inputClass =
-		'rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-neutral-400';
-	const smallInputClass =
-		'rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-neutral-400';
-	const primaryBtn =
-		'rounded-md bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-white disabled:opacity-40';
-	const ghostBtn = 'rounded-md border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800';
 </script>
+
+{#snippet prodTab()}
+	{#if player.lastTestStart}
+		<Alert.Root>
+			<Alert.Description>
+				테스트 세션이 시작되어 디바이스 창 {player.lastTestStart.devices.length}개를 열었습니다.
+			</Alert.Description>
+		</Alert.Root>
+	{/if}
+
+	<section class="flex flex-col gap-3">
+		<div class="flex items-center justify-between">
+			<h2 class="text-sm font-medium">디바이스</h2>
+			<div class="flex gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() => {
+						config.addDevice();
+						persist();
+					}}
+				>
+					추가
+				</Button>
+				{#if !mobile}
+					<Button
+						size="sm"
+						disabled={!config.devices.some((d) => d.deviceCode.trim())}
+						onclick={openAll}
+					>
+						모두 열기
+					</Button>
+				{/if}
+			</div>
+		</div>
+
+		{#if config.devices.length === 0}
+			<Empty.Root class="border p-8">
+				<Empty.Header>
+					<Empty.Title class="text-sm">아직 디바이스가 없습니다</Empty.Title>
+					<Empty.Description>‘추가’로 디바이스 코드를 등록하세요.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
+		{/if}
+
+		{#each config.devices as device (device.id)}
+			<div class="flex items-end gap-2 rounded-md border bg-card p-3">
+				<div class="flex w-36 flex-col gap-1">
+					<Label for="device-label-{device.id}" class="text-xs text-muted-foreground">라벨</Label>
+					<Input id="device-label-{device.id}" bind:value={device.label} oninput={persist} />
+				</div>
+				<div class="flex flex-1 flex-col gap-1">
+					<Label for="device-code-{device.id}" class="text-xs text-muted-foreground">
+						디바이스 코드
+					</Label>
+					<Input
+						id="device-code-{device.id}"
+						class="font-mono"
+						placeholder="프로덕션 코드 또는 테스트 코드"
+						bind:value={device.deviceCode}
+						oninput={persist}
+					/>
+				</div>
+				<div class="flex items-center gap-1.5 self-center pt-4">
+					<Checkbox
+						id="device-kiosk-{device.id}"
+						bind:checked={device.kiosk}
+						onCheckedChange={persist}
+					/>
+					<Label for="device-kiosk-{device.id}" class="text-xs font-normal text-muted-foreground">
+						키오스크
+					</Label>
+				</div>
+				<Button
+					disabled={!device.deviceCode.trim()}
+					onclick={() => void openDeviceWindow(device)}
+				>
+					열기
+				</Button>
+				<Button
+					variant="ghost"
+					size="icon"
+					aria-label="디바이스 삭제"
+					onclick={() => {
+						config.removeDevice(device.id);
+						persist();
+					}}
+				>
+					<XIcon />
+				</Button>
+			</div>
+		{/each}
+	</section>
+{/snippet}
+
+{#snippet testTab()}
+	<!-- 테스트 탭: 스튜디오 없이 이 기기에서 테마를 테스트합니다. -->
+	{#if !auth.loggedIn}
+		<form class="flex flex-col gap-3" onsubmit={submitLogin}>
+			<p class="text-sm text-muted-foreground">
+				테스트 기능은 서버 관리자 계정이 필요합니다. 로그인하면 이 기기에 저장됩니다.
+			</p>
+			<div class="flex gap-2">
+				<Input class="flex-1" placeholder="아이디" bind:value={loginId} />
+				<Input class="flex-1" type="password" placeholder="비밀번호" bind:value={loginPassword} />
+				<Button type="submit" disabled={auth.status === 'pending'}>로그인</Button>
+			</div>
+			{#if auth.error}
+				<p class="text-xs text-destructive">{auth.error}</p>
+			{/if}
+		</form>
+	{:else}
+		<div class="flex items-center justify-between text-xs text-muted-foreground">
+			<span>관리자로 로그인됨{config.auth ? ` (${config.auth.id})` : ''}</span>
+			<Button
+				variant="link"
+				size="sm"
+				class="h-auto p-0 text-xs text-muted-foreground"
+				onclick={() => void auth.logout()}
+			>
+				로그아웃
+			</Button>
+		</div>
+
+		<Field.Field>
+			<Field.FieldLabel>테마</Field.FieldLabel>
+			<Select.Root
+				type="single"
+				value={config.selectedThemeId}
+				onValueChange={(v) => void testSetup.selectTheme(v)}
+			>
+				<Select.Trigger class="w-full">
+					{selectedThemeName ?? '테마를 선택하세요'}
+				</Select.Trigger>
+				<Select.Content>
+					{#each testSetup.themes as theme (theme.id)}
+						<Select.Item value={theme.id} label={theme.name}>{theme.name}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+		</Field.Field>
+
+		{#if testSetup.error}
+			<Alert.Root variant="destructive">
+				<Alert.Description>{testSetup.error}</Alert.Description>
+			</Alert.Root>
+		{/if}
+
+		{#if config.selectedThemeId && testConfig}
+			<section class="flex flex-col gap-3">
+				<div class="flex items-center justify-between">
+					<h2 class="text-sm font-medium">실행할 디바이스</h2>
+					<Button
+						variant="link"
+						size="sm"
+						class="h-auto p-0 text-xs text-muted-foreground"
+						onclick={selectAllDevices}
+					>
+						전체 선택
+					</Button>
+				</div>
+				{#if testSetup.loading}
+					<p class="text-sm text-muted-foreground">불러오는 중…</p>
+				{:else if testSetup.devices.length === 0}
+					<Empty.Root class="border p-6">
+						<Empty.Header>
+							<Empty.Description>이 테마에는 디바이스 애셋이 없습니다.</Empty.Description>
+						</Empty.Header>
+					</Empty.Root>
+				{:else}
+					<div class="flex flex-col gap-1.5">
+						{#each testSetup.devices as device (device.id)}
+							<div class="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
+								<Checkbox
+									id="test-device-{device.id}"
+									checked={testConfig.deviceIds.includes(device.id)}
+									onCheckedChange={(checked) => toggleDevice(device.id, checked === true)}
+								/>
+								<Label for="test-device-{device.id}" class="text-sm font-normal">
+									{device.displayName}
+								</Label>
+								<span class="text-xs text-muted-foreground">{device.name}</span>
+								{#if device.startWebsiteId}
+									<span class="ml-auto text-xs text-muted-foreground">시작 웹페이지 있음</span>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				<div class="mt-2 flex items-center justify-between">
+					<h2 class="text-sm font-medium">웹사이트 URL 대체</h2>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => {
+							testConfig.overrides.push({ websiteId: '', url: '' });
+							persist();
+						}}
+					>
+						행 추가
+					</Button>
+				</div>
+				<p class="text-xs text-muted-foreground">
+					선택한 웹사이트 애셋을 이 세션에서만 다른 주소(예: 로컬 개발 서버)로 바꿉니다. URL을
+					비워두면 치환하지 않습니다.
+				</p>
+				{#each testConfig.overrides as override, i (i)}
+					<div class="flex items-center gap-2">
+						<Select.Root type="single" bind:value={override.websiteId} onValueChange={persist}>
+							<Select.Trigger class="w-44">
+								{websiteName(override.websiteId) ?? '웹사이트 선택'}
+							</Select.Trigger>
+							<Select.Content>
+								{#each testSetup.websites as site (site.id)}
+									<Select.Item value={site.id} label={site.name}>{site.name}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+						<Input
+							class="flex-1 font-mono"
+							placeholder={override.websiteId
+								? overridePlaceholder(override.websiteId)
+								: '대체 URL (비우면 치환 안 함)'}
+							bind:value={override.url}
+							oninput={persist}
+						/>
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="대체 삭제"
+							onclick={() => {
+								testConfig.overrides.splice(i, 1);
+								persist();
+							}}
+						>
+							<XIcon />
+						</Button>
+					</div>
+				{/each}
+
+				<Button
+					class="mt-2"
+					disabled={testConfig.deviceIds.length === 0 || testSetup.starting}
+					onclick={() => void testSetup.start()}
+				>
+					{#if testSetup.starting}<Spinner data-icon="inline-start" />{/if}
+					{testSetup.starting ? '시작 중…' : '테스트 시작'}
+				</Button>
+				<p class="text-xs text-muted-foreground">
+					선택한 디바이스 창과 디버그 창이 열립니다. 세션 시작은 디버그 창에서 합니다. 모든
+					디바이스 창을 닫으면 세션은 잠시 후 자동 종료됩니다.
+				</p>
+			</section>
+		{/if}
+	{/if}
+{/snippet}
 
 <main class="mx-auto flex h-full max-w-2xl flex-col gap-6 overflow-y-auto p-8">
 	<header class="flex items-center gap-3">
 		<img src={logo} alt="RoomKit" class="size-10 rounded-lg" />
 		<div>
 			<h1 class="text-xl font-semibold">RoomKit Player</h1>
-			<p class="mt-0.5 text-sm text-neutral-400">
+			<p class="mt-0.5 text-sm text-muted-foreground">
 				서버와 디바이스를 설정하고 창을 열어 시작하세요. 설정은 자동으로 저장됩니다.
 			</p>
 		</div>
 	</header>
 
-	<label class="flex flex-col gap-1.5">
-		<span class="text-sm font-medium text-neutral-300">서버 URL</span>
-		<input
-			class={inputClass}
-			type="url"
-			placeholder="http://localhost:3000"
-			bind:value={config.serverUrl}
-			oninput={persistAndReconnect}
-		/>
-	</label>
+	<Field.FieldGroup class="gap-6">
+		<Field.Field>
+			<Field.FieldLabel for="server-url">서버 URL</Field.FieldLabel>
+			<Input
+				id="server-url"
+				type="url"
+				placeholder="http://localhost:3000"
+				bind:value={config.serverUrl}
+				oninput={persistAndReconnect}
+			/>
+		</Field.Field>
 
-	<label class="flex flex-col gap-1.5">
-		<span class="flex items-center justify-between text-sm font-medium text-neutral-300">
-			플레이어 이름
-			<span class="flex items-center gap-1.5 text-xs font-normal text-neutral-400">
-				<span
-					class="h-2 w-2 rounded-full {player.status === 'connected'
-						? 'bg-emerald-400'
-						: player.status === 'connecting'
-							? 'bg-amber-400'
-							: 'bg-neutral-600'}"
-				></span>
-				{statusLabel}
-			</span>
-		</span>
-		<input class={inputClass} bind:value={config.playerName} oninput={persistAndReconnect} />
-	</label>
+		<Field.Field>
+			<div class="flex items-center justify-between">
+				<Field.FieldLabel for="player-name">플레이어 이름</Field.FieldLabel>
+				<span class="flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span
+						class="h-2 w-2 rounded-full {player.status === 'connected'
+							? 'bg-emerald-400'
+							: player.status === 'connecting'
+								? 'bg-amber-400'
+								: 'bg-muted'}"
+					></span>
+					{statusLabel}
+				</span>
+			</div>
+			<Input id="player-name" bind:value={config.playerName} oninput={persistAndReconnect} />
+		</Field.Field>
+	</Field.FieldGroup>
 
 	{#if mobile}
-		<p class="rounded-md border border-amber-900 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">
-			모바일에서는 창을 하나만 열 수 있습니다. 디바이스를 열면 이 화면이 스테이지로 전환되며,
-			런처로 돌아오려면 앱을 완전히 종료했다가 다시 실행하세요.
-		</p>
+		<Alert.Root>
+			<Alert.Description>
+				모바일에서는 창을 하나만 열 수 있습니다. 디바이스를 열면 이 화면이 스테이지로 전환되며,
+				런처로 돌아오려면 앱을 완전히 종료했다가 다시 실행하세요.
+			</Alert.Description>
+		</Alert.Root>
+		{@render prodTab()}
 	{:else}
-		<nav class="flex gap-1 rounded-lg border border-neutral-800 bg-neutral-900/60 p-1">
-			<button
-				class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium {tab === 'prod'
-					? 'bg-neutral-100 text-neutral-900'
-					: 'text-neutral-400 hover:text-neutral-200'}"
-				onclick={() => (tab = 'prod')}
-			>
-				실제
-			</button>
-			<button
-				class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium {tab === 'test'
-					? 'bg-neutral-100 text-neutral-900'
-					: 'text-neutral-400 hover:text-neutral-200'}"
-				onclick={() => (tab = 'test')}
-			>
-				테스트
-			</button>
-		</nav>
-	{/if}
-
-	{#if mobile || tab === 'prod'}
-		{#if player.lastTestStart}
-			<p
-				class="rounded-md border border-emerald-900 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-300"
-			>
-				테스트 세션이 시작되어 디바이스 창 {player.lastTestStart.devices.length}개를 열었습니다.
-			</p>
-		{/if}
-
-		<section class="flex flex-col gap-3">
-			<div class="flex items-center justify-between">
-				<h2 class="text-sm font-medium text-neutral-300">디바이스</h2>
-				<div class="flex gap-2">
-					<button
-						class={ghostBtn}
-						onclick={() => {
-							config.addDevice();
-							persist();
-						}}
-					>
-						추가
-					</button>
-					{#if !mobile}
-						<button
-							class={primaryBtn}
-							disabled={!config.devices.some((d) => d.deviceCode.trim())}
-							onclick={openAll}
-						>
-							모두 열기
-						</button>
-					{/if}
-				</div>
-			</div>
-
-			{#if config.devices.length === 0}
-				<p
-					class="rounded-md border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500"
-				>
-					아직 디바이스가 없습니다. ‘추가’로 디바이스 코드를 등록하세요.
-				</p>
-			{/if}
-
-			{#each config.devices as device (device.id)}
-				<div class="flex items-end gap-2 rounded-md border border-neutral-800 bg-neutral-900/60 p-3">
-					<label class="flex w-36 flex-col gap-1">
-						<span class="text-xs text-neutral-400">라벨</span>
-						<input class={smallInputClass} bind:value={device.label} oninput={persist} />
-					</label>
-					<label class="flex flex-1 flex-col gap-1">
-						<span class="text-xs text-neutral-400">디바이스 코드</span>
-						<input
-							class="{smallInputClass} font-mono"
-							placeholder="프로덕션 코드 또는 테스트 코드"
-							bind:value={device.deviceCode}
-							oninput={persist}
-						/>
-					</label>
-					<label class="flex items-center gap-1.5 pb-2 text-xs text-neutral-400">
-						<input type="checkbox" bind:checked={device.kiosk} onchange={persist} />
-						키오스크
-					</label>
-					<button
-						class={primaryBtn}
-						disabled={!device.deviceCode.trim()}
-						onclick={() => void openDeviceWindow(device)}
-					>
-						열기
-					</button>
-					<button
-						class="rounded-md border border-neutral-700 px-2 py-1.5 text-sm text-neutral-400 hover:bg-neutral-800"
-						aria-label="디바이스 삭제"
-						onclick={() => {
-							config.removeDevice(device.id);
-							persist();
-						}}
-					>
-						✕
-					</button>
-				</div>
-			{/each}
-		</section>
-	{:else}
-		<!-- 테스트 탭: 스튜디오 없이 이 기기에서 테마를 테스트합니다. -->
-		{#if !auth.loggedIn}
-			<form class="flex flex-col gap-3" onsubmit={submitLogin}>
-				<p class="text-sm text-neutral-400">
-					테스트 기능은 서버 관리자 계정이 필요합니다. 로그인하면 이 기기에 저장됩니다.
-				</p>
-				<div class="flex gap-2">
-					<input class="{inputClass} flex-1" placeholder="아이디" bind:value={loginId} />
-					<input
-						class="{inputClass} flex-1"
-						type="password"
-						placeholder="비밀번호"
-						bind:value={loginPassword}
-					/>
-					<button class={primaryBtn} type="submit" disabled={auth.status === 'pending'}>
-						로그인
-					</button>
-				</div>
-				{#if auth.error}
-					<p class="text-xs text-red-400">{auth.error}</p>
-				{/if}
-			</form>
-		{:else}
-			<div class="flex items-center justify-between text-xs text-neutral-400">
-				<span>관리자로 로그인됨{config.auth ? ` (${config.auth.id})` : ''}</span>
-				<button class="underline hover:text-neutral-200" onclick={() => void auth.logout()}>
-					로그아웃
-				</button>
-			</div>
-
-			<label class="flex flex-col gap-1.5">
-				<span class="text-sm font-medium text-neutral-300">테마</span>
-				<select
-					class={inputClass}
-					value={config.selectedThemeId}
-					onchange={(e) => void testSetup.selectTheme(e.currentTarget.value)}
-				>
-					<option value="">테마를 선택하세요</option>
-					{#each testSetup.themes as theme (theme.id)}
-						<option value={theme.id}>{theme.name}</option>
-					{/each}
-				</select>
-			</label>
-
-			{#if testSetup.error}
-				<p class="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-xs text-red-300">
-					{testSetup.error}
-				</p>
-			{/if}
-
-			{#if config.selectedThemeId && testConfig}
-				<section class="flex flex-col gap-3">
-					<div class="flex items-center justify-between">
-						<h2 class="text-sm font-medium text-neutral-300">실행할 디바이스</h2>
-						<button class="text-xs text-neutral-400 underline hover:text-neutral-200" onclick={selectAllDevices}>
-							전체 선택
-						</button>
-					</div>
-					{#if testSetup.loading}
-						<p class="text-sm text-neutral-500">불러오는 중…</p>
-					{:else if testSetup.devices.length === 0}
-						<p
-							class="rounded-md border border-dashed border-neutral-700 p-4 text-center text-sm text-neutral-500"
-						>
-							이 테마에는 디바이스 애셋이 없습니다.
-						</p>
-					{:else}
-						<div class="flex flex-col gap-1.5">
-							{#each testSetup.devices as device (device.id)}
-								<label
-									class="flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-sm"
-								>
-									<input
-										type="checkbox"
-										checked={testConfig.deviceIds.includes(device.id)}
-										onchange={(e) => toggleDevice(device.id, e.currentTarget.checked)}
-									/>
-									<span>{device.displayName}</span>
-									<span class="text-xs text-neutral-500">{device.name}</span>
-									{#if device.startWebsiteId}
-										<span class="ml-auto text-xs text-neutral-500">시작 웹페이지 있음</span>
-									{/if}
-								</label>
-							{/each}
-						</div>
-					{/if}
-
-					<div class="mt-2 flex items-center justify-between">
-						<h2 class="text-sm font-medium text-neutral-300">웹사이트 URL 대체</h2>
-						<button
-							class={ghostBtn}
-							onclick={() => {
-								testConfig.overrides.push({ websiteId: '', url: '' });
-								persist();
-							}}
-						>
-							행 추가
-						</button>
-					</div>
-					<p class="text-xs text-neutral-500">
-						선택한 웹사이트 애셋을 이 세션에서만 다른 주소(예: 로컬 개발 서버)로 바꿉니다. URL을
-						비워두면 치환하지 않습니다.
-					</p>
-					{#each testConfig.overrides as override, i (i)}
-						<div class="flex items-center gap-2">
-							<select
-								class="{smallInputClass} w-44"
-								bind:value={override.websiteId}
-								onchange={persist}
-							>
-								<option value="">웹사이트 선택</option>
-								{#each testSetup.websites as site (site.id)}
-									<option value={site.id}>{site.name}</option>
-								{/each}
-							</select>
-							<input
-								class="{smallInputClass} flex-1 font-mono"
-								placeholder={override.websiteId
-									? overridePlaceholder(override.websiteId)
-									: '대체 URL (비우면 치환 안 함)'}
-								bind:value={override.url}
-								oninput={persist}
-							/>
-							<button
-								class="rounded-md border border-neutral-700 px-2 py-1.5 text-sm text-neutral-400 hover:bg-neutral-800"
-								aria-label="대체 삭제"
-								onclick={() => {
-									testConfig.overrides.splice(i, 1);
-									persist();
-								}}
-							>
-								✕
-							</button>
-						</div>
-					{/each}
-
-					<button
-						class="{primaryBtn} mt-2 py-2"
-						disabled={testConfig.deviceIds.length === 0 || testSetup.starting}
-						onclick={() => void testSetup.start()}
-					>
-						{testSetup.starting ? '시작 중…' : '테스트 시작'}
-					</button>
-					<p class="text-xs text-neutral-500">
-						선택한 디바이스 창과 디버그 창이 열립니다. 세션 시작은 디버그 창에서 합니다. 모든
-						디바이스 창을 닫으면 세션은 잠시 후 자동 종료됩니다.
-					</p>
-				</section>
-			{/if}
-		{/if}
+		<Tabs.Root bind:value={tab}>
+			<Tabs.List class="w-full">
+				<Tabs.Trigger value="prod" class="flex-1">실제</Tabs.Trigger>
+				<Tabs.Trigger value="test" class="flex-1">테스트</Tabs.Trigger>
+			</Tabs.List>
+			<Tabs.Content value="prod" class="flex flex-col gap-6 pt-3">
+				{@render prodTab()}
+			</Tabs.Content>
+			<Tabs.Content value="test" class="flex flex-col gap-4 pt-3">
+				{@render testTab()}
+			</Tabs.Content>
+		</Tabs.Root>
 	{/if}
 </main>
