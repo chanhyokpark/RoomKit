@@ -1,9 +1,8 @@
 <script lang="ts">
-	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
-	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
+	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { dragHandle } from 'svelte-dnd-action';
@@ -17,20 +16,16 @@
 
 	let {
 		entry,
-		index,
-		count,
 		ownEventId,
 		onchanged,
-		onmove,
+		oninsert,
 		onduplicate,
 		ondelete
 	}: {
 		entry: SequenceEntry;
-		index: number;
-		count: number;
 		ownEventId: string;
 		onchanged: () => void;
-		onmove: (delta: number) => void;
+		oninsert: (offset: 0 | 1) => void;
 		onduplicate: () => void;
 		ondelete: () => void;
 	} = $props();
@@ -50,8 +45,7 @@
 
 <div class="flex items-start gap-2 rounded-lg border bg-card p-3">
 	<!-- Not a <button>: svelte-dnd-action refuses to start drags from elements
-	     with a .value property (its nested-input check). Keyboard reordering is
-	     covered by the row menu's 위로/아래로 items instead. -->
+		     with a .value property (its nested-input check). -->
 	<div
 		use:dragHandle
 		data-drag-handle
@@ -82,13 +76,13 @@
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content align="end">
 						<DropdownMenu.Group>
-							<DropdownMenu.Item disabled={index === 0} onSelect={() => onmove(-1)}>
-								<ArrowUpIcon />
-								위로
+							<DropdownMenu.Item onSelect={() => oninsert(0)}>
+								<ListPlusIcon />
+								위에 커맨드 추가
 							</DropdownMenu.Item>
-							<DropdownMenu.Item disabled={index === count - 1} onSelect={() => onmove(1)}>
-								<ArrowDownIcon />
-								아래로
+							<DropdownMenu.Item onSelect={() => oninsert(1)}>
+								<ListPlusIcon />
+								아래에 커맨드 추가
 							</DropdownMenu.Item>
 							<DropdownMenu.Item onSelect={onduplicate}>
 								<CopyIcon />

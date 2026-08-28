@@ -85,7 +85,16 @@ const nonDialogueOptions = [
     /** Stop on every player; playerId is ignored when set. */
     allPlayers: z.boolean().default(false),
   }),
-  z.object({ type: z.literal('wait'), durationMs: z.number().int().positive() }),
+  z.object({
+    type: z.literal('adjustBgmVolume'),
+    playerId: assetRef,
+    /** Persistent BGM base volume for this player (percent, until device reset). */
+    value: z.number().min(0).max(100),
+  }),
+  z.object({
+    type: z.literal('wait'),
+    durationMs: z.number().int().positive(),
+  }),
   z.object({
     type: z.literal('navigate'),
     deviceId: assetRef,
@@ -95,7 +104,9 @@ const nonDialogueOptions = [
      * so the editor tolerates in-progress duplicate keys. Values support
      * {{vars.x}} / {{payload.x}} interpolation at resolve time.
      */
-    query: z.array(z.object({ key: z.string(), value: z.string() })).default([]),
+    query: z
+      .array(z.object({ key: z.string(), value: z.string() }))
+      .default([]),
   }),
   z.object({
     type: z.literal('sendMessage'),
@@ -137,7 +148,10 @@ const nonDialogueOptions = [
    * Game over: resets every device, records the verdict for the operation
    * screen, and ends the session.
    */
-  z.object({ type: z.literal('endTheme'), verdict: z.enum(['success', 'fail']) }),
+  z.object({
+    type: z.literal('endTheme'),
+    verdict: z.enum(['success', 'fail']),
+  }),
   z.object({
     type: z.literal('adjustTimer'),
     adjustment: z.union([
@@ -153,7 +167,11 @@ const nonDialogueOptions = [
   /** Shows a toast on the operation screen to alert the operators. */
   z.object({ type: z.literal('notify'), message: z.string() }),
   /** Displays the hint asset's entry code as an overlay on the device screen. */
-  z.object({ type: z.literal('showHintCode'), hintId: assetRef, deviceId: assetRef }),
+  z.object({
+    type: z.literal('showHintCode'),
+    hintId: assetRef,
+    deviceId: assetRef,
+  }),
   z.object({
     type: z.literal('hideHintCode'),
     deviceId: assetRef,
@@ -223,6 +241,7 @@ export const COMMAND_ASSET_REFS = {
   stopVideo: ['playerId'],
   playBgm: ['bgmId', 'playerId'],
   stopBgm: ['playerId'],
+  adjustBgmVolume: ['playerId'],
   wait: [],
   navigate: ['deviceId', 'websiteId'],
   sendMessage: ['deviceId', 'messageId'],

@@ -15,6 +15,7 @@ export type {
   PlaybackProgress,
   SessionState,
   Welcome,
+  WireBgmVolume,
   WireCommand,
   WireMessage,
   WireNavigate,

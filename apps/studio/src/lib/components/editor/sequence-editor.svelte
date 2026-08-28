@@ -34,6 +34,8 @@
 		structuredClone($state.snapshot(event.data.sequence) as SequenceEntry[])
 	);
 	let paletteOpen = $state(false);
+	/** Null appends; a number inserts the palette selection at that index. */
+	let paletteInsertIndex = $state<number | null>(null);
 	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
 
 	const TRIGGER_LABELS: Record<TriggerKind, string> = {
@@ -46,6 +48,11 @@
 			? `${TRIGGER_LABELS[event.data.triggerKind]} · ${triggerNameLabel(event.data.triggerName)}`
 			: TRIGGER_LABELS[event.data.triggerKind]
 	);
+
+	$effect(() => {
+		// A dismissed insertion palette must not affect the next inline append.
+		if (!paletteOpen) paletteInsertIndex = null;
+	});
 
 	// ── autosave ─────────────────────────────────────────────────────────────
 	const DEBOUNCE_MS = 800;
@@ -110,15 +117,21 @@
 
 	// ── stack mutations ──────────────────────────────────────────────────────
 	function addCommand(type: CommandType): void {
-		entries.push({ id: crypto.randomUUID(), ...COMMAND_META[type].create() });
+		const entry = { id: crypto.randomUUID(), ...COMMAND_META[type].create() } as SequenceEntry;
+		if (paletteInsertIndex === null) entries.push(entry);
+		else entries.splice(paletteInsertIndex, 0, entry);
+		paletteInsertIndex = null;
 		scheduleSave(true);
 	}
 
-	function moveEntry(index: number, delta: number): void {
-		const target = index + delta;
-		if (target < 0 || target >= entries.length) return;
-		[entries[index], entries[target]] = [entries[target], entries[index]];
-		scheduleSave(true);
+	function openAppendPalette(): void {
+		paletteInsertIndex = null;
+		paletteOpen = true;
+	}
+
+	function openInsertPalette(index: number): void {
+		paletteInsertIndex = index;
+		paletteOpen = true;
 	}
 
 	function duplicateEntry(index: number): void {
@@ -191,7 +204,7 @@
 					</Empty.Header>
 					{#if isMobile.current}
 						<Empty.Content>
-							<Button onclick={() => (paletteOpen = true)}>
+							<Button onclick={openAppendPalette}>
 								<PlusIcon data-icon="inline-start" />
 								커맨드 추가
 							</Button>
@@ -213,11 +226,9 @@
 				{#each entries as entry, index (entry.id)}
 					<CommandRow
 						{entry}
-						{index}
-						count={entries.length}
 						ownEventId={event.id}
 						onchanged={() => scheduleSave()}
-						onmove={(delta) => moveEntry(index, delta)}
+						oninsert={(offset) => openInsertPalette(index + offset)}
 						onduplicate={() => duplicateEntry(index)}
 						ondelete={() => deleteEntry(index)}
 					/>
@@ -225,11 +236,7 @@
 			</div>
 			{#if isMobile.current}
 				<div class="mx-auto w-full max-w-2xl">
-					<Button
-						variant="outline"
-						class="w-full border-dashed"
-						onclick={() => (paletteOpen = true)}
-					>
+					<Button variant="outline" class="w-full border-dashed" onclick={openAppendPalette}>
 						<PlusIcon data-icon="inline-start" />
 						커맨드 추가
 					</Button>
@@ -248,6 +255,4 @@
 	{/if}
 </div>
 
-{#if isMobile.current}
-	<CommandPalette bind:open={paletteOpen} onselect={addCommand} />
-{/if}
+<CommandPalette bind:open={paletteOpen} onselect={addCommand} />

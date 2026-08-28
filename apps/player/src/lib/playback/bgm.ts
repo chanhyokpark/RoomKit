@@ -6,8 +6,10 @@ import { simulate } from './simulate';
 
 interface ActiveBgm {
 	audio: HTMLAudioElement | null;
-	/** Fade-in/out position (0..1); the audible volume is base × duck. */
+	/** Fade-in/out position (0..1); audible = fade × volume × duck. */
 	baseVolume: number;
+	/** Explicit volume factor (0..1) set by adjustBgmVolume. */
+	volumeFactor: number;
 	/** Duck factor (0..1) from the engine's duck coordinator; 1 = no duck. */
 	duckFactor: number;
 	cancelSimulation: (() => void) | null;
@@ -49,7 +51,10 @@ function fadeValue(
 
 function applyVolume(entry: ActiveBgm): void {
 	if (entry.audio) {
-		entry.audio.volume = Math.max(0, Math.min(1, entry.baseVolume * entry.duckFactor));
+		entry.audio.volume = Math.max(
+			0,
+			Math.min(1, entry.baseVolume * entry.volumeFactor * entry.duckFactor)
+		);
 	}
 }
 
@@ -73,6 +78,8 @@ function applyVolume(entry: ActiveBgm): void {
  */
 export class BgmChannel {
 	private readonly active = new Map<string, ActiveBgm>();
+	/** Explicit base volume per player; kept so later tracks inherit it. */
+	private readonly volumeFactors = new Map<string, number>();
 	/** Current duck factor per player; kept so a new track starts ducked. */
 	private readonly duckFactors = new Map<string, number>();
 	/** Detached fade-outs still ramping; killed instantly by stopAll (reset). */
@@ -89,6 +96,7 @@ export class BgmChannel {
 			const entry: ActiveBgm = {
 				audio: null,
 				baseVolume: 1,
+				volumeFactor: this.volumeFactors.get(cmd.playerId) ?? 1,
 				duckFactor: 1,
 				cancelSimulation: null,
 				cancelFade: null,
@@ -115,6 +123,7 @@ export class BgmChannel {
 		const entry: ActiveBgm = {
 			audio,
 			baseVolume: cmd.fadeInMs > 0 ? 0 : 1,
+			volumeFactor: this.volumeFactors.get(cmd.playerId) ?? 1,
 			duckFactor: this.duckFactors.get(cmd.playerId) ?? 1,
 			cancelSimulation: null,
 			cancelFade: null,
@@ -152,6 +161,17 @@ export class BgmChannel {
 			done('failed');
 		});
 		void audio.play().catch(() => done('failed'));
+	}
+
+	/** Applies and remembers a direct BGM base-volume adjustment. */
+	setVolume(playerId: string, value: number): void {
+		const factor = Math.max(0, Math.min(1, value));
+		if (factor >= 1) this.volumeFactors.delete(playerId);
+		else this.volumeFactors.set(playerId, factor);
+		const entry = this.active.get(playerId);
+		if (!entry) return;
+		entry.volumeFactor = factor;
+		applyVolume(entry);
 	}
 
 	/**
@@ -225,14 +245,14 @@ export class BgmChannel {
 
 	/** Device reset / session end: instant silence, including mid-fade tracks. */
 	stopAll(): void {
-		for (const playerId of [...this.active.keys()])
-			this.stop(playerId, { instant: true });
+		for (const playerId of [...this.active.keys()]) this.stop(playerId, { instant: true });
 		for (const detached of [...this.fadingOut]) {
 			detached.cancel();
 			detached.audio.pause();
 			detached.audio.removeAttribute('src');
 		}
 		this.fadingOut.clear();
+		this.volumeFactors.clear();
 		this.duckFactors.clear();
 	}
 }

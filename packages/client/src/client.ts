@@ -19,6 +19,7 @@ import {
   type SessionState,
   type Welcome,
   type WireCommand,
+  type WireBgmVolume,
   type WireHintCode,
   type WireMessage,
   type WireNavigate,
@@ -32,11 +33,7 @@ import { defaultStorage, testCodeKey, type CodeStorage } from './storage.js';
 import { CLIENT_VERSION } from './version.js';
 
 export type ConnectionStatus =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'error';
+  'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export type DoneFn = (status?: 'done' | 'failed') => void;
 
@@ -105,6 +102,8 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    */
   play: [WirePlayCommand, DoneFn];
   stop: [WireStop];
+  /** Persistent base-volume adjustment for one player's BGM channel. */
+  bgmVolume: [WireBgmVolume];
   /**
    * Call `done()` once the website has actually changed (e.g. the iframe
    * finished loading) — the server sequence waits on this ack before running
@@ -242,7 +241,11 @@ export class RoomKitClient {
     socket.on(DeviceEvents.welcome, (payload: unknown) => {
       const parsed = WelcomeSchema.safeParse(payload);
       if (!parsed.success) {
-        console.warn('[roomkit] invalid welcome dropped', payload, parsed.error);
+        console.warn(
+          '[roomkit] invalid welcome dropped',
+          payload,
+          parsed.error,
+        );
         return;
       }
       const welcome = parsed.data;
@@ -264,7 +267,11 @@ export class RoomKitClient {
     socket.on(DeviceEvents.sessionState, (payload: unknown) => {
       const parsed = SessionStateSchema.safeParse(payload);
       if (!parsed.success) {
-        console.warn('[roomkit] invalid session state dropped', payload, parsed.error);
+        console.warn(
+          '[roomkit] invalid session state dropped',
+          payload,
+          parsed.error,
+        );
         return;
       }
       this.log('session state', parsed.data);
@@ -273,12 +280,18 @@ export class RoomKitClient {
       this.emitter.emit('sessionState', parsed.data);
     });
 
-    socket.on(DeviceEvents.command, (payload: unknown) => this.handleCommand(payload));
+    socket.on(DeviceEvents.command, (payload: unknown) =>
+      this.handleCommand(payload),
+    );
 
     socket.on(DeviceEvents.progress, (payload: unknown) => {
       const parsed = PlaybackProgressSchema.safeParse(payload);
       if (!parsed.success) {
-        console.warn('[roomkit] invalid progress dropped', payload, parsed.error);
+        console.warn(
+          '[roomkit] invalid progress dropped',
+          payload,
+          parsed.error,
+        );
         return;
       }
       this.log('progress', parsed.data);
@@ -298,7 +311,11 @@ export class RoomKitClient {
     socket.on(DeviceEvents.hintError, (payload: unknown) => {
       const parsed = HintErrorSchema.safeParse(payload);
       if (!parsed.success) {
-        console.warn('[roomkit] invalid hint error dropped', payload, parsed.error);
+        console.warn(
+          '[roomkit] invalid hint error dropped',
+          payload,
+          parsed.error,
+        );
         return;
       }
       this.log('hint error', parsed.data);
@@ -427,7 +444,11 @@ export class RoomKitClient {
       await this.resyncSessionState(options.timeoutMs ?? RESYNC_TIMEOUT_MS);
     }
     const state = this.lastSessionState;
-    if (!state || state.timerState === null || state.timerRemainingMs === null) {
+    if (
+      !state ||
+      state.timerState === null ||
+      state.timerRemainingMs === null
+    ) {
       return null;
     }
     if (state.timerState !== 'running') return state.timerRemainingMs;
@@ -442,13 +463,17 @@ export class RoomKitClient {
     return new Promise((resolve) => {
       socket
         .timeout(timeoutMs)
-        .emit(DeviceEvents.sessionSync, {}, (err: Error | null, ack: unknown) => {
-          if (!err) {
-            const parsed = SessionStateSchema.safeParse(ack);
-            if (parsed.success) this.rememberSessionState(parsed.data);
-          }
-          resolve();
-        });
+        .emit(
+          DeviceEvents.sessionSync,
+          {},
+          (err: Error | null, ack: unknown) => {
+            if (!err) {
+              const parsed = SessionStateSchema.safeParse(ack);
+              if (parsed.success) this.rememberSessionState(parsed.data);
+            }
+            resolve();
+          },
+        );
     });
   }
 
@@ -482,7 +507,12 @@ export class RoomKitClient {
       // Redelivery. If we already finished it, repeat the ack; if it is
       // still in flight, the eventual done()/auto-ack covers it.
       const status = this.completed.get(cmd.id);
-      this.log('command redelivered', cmd.type, cmd.id, status ?? 'still in flight');
+      this.log(
+        'command redelivered',
+        cmd.type,
+        cmd.id,
+        status ?? 'still in flight',
+      );
       if (status) this.ack(cmd.id, status);
       return;
     }
@@ -503,6 +533,10 @@ export class RoomKitClient {
       case 'stop':
         this.ack(cmd.id, 'done');
         this.emitter.emit('stop', cmd as WireStop);
+        break;
+      case 'bgmVolume':
+        this.ack(cmd.id, 'done');
+        this.emitter.emit('bgmVolume', cmd as WireBgmVolume);
         break;
       case 'navigate': {
         let acked = false;

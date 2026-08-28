@@ -155,6 +155,15 @@ export const WireStopSchema = z.object({
 });
 export type WireStop = z.infer<typeof WireStopSchema>;
 
+/** Applies a persistent BGM base-volume factor to one player until reset. */
+export const WireBgmVolumeSchema = z.object({
+  ...wireBase,
+  type: z.literal('bgmVolume'),
+  playerId: z.uuid(),
+  value: z.number().min(0).max(1),
+});
+export type WireBgmVolume = z.infer<typeof WireBgmVolumeSchema>;
+
 export const WireNavigateSchema = z.object({
   ...wireBase,
   type: z.literal('navigate'),
@@ -216,6 +225,7 @@ export type WireTestCallback = z.infer<typeof WireTestCallbackSchema>;
 export const WireCommandSchema = z.union([
   WirePlayCommandSchema,
   WireStopSchema,
+  WireBgmVolumeSchema,
   WireNavigateSchema,
   WireResetSchema,
   WireMessageSchema,

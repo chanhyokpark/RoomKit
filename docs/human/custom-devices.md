@@ -36,6 +36,7 @@ roomkit.connect();
 
 - `play(cmd, done)`: 미디어를 재생하고 완료 또는 실패 시 `done()`을 한 번 호출해 주세요.
 - `stop(cmd)`: 채널별 재생을 멈추고 관련 상태를 정리해 주세요.
+- `bgmVolume(cmd)`: 플레이어별 BGM 기본 볼륨(`cmd.value`, 0~1)을 즉시 적용하고 reset까지 유지해 주세요. 페이드와 덕킹은 이 값에 곱해서 적용합니다.
 - `navigate(url, cmd, done)`: 실제 화면이 준비된 뒤 `done()`을 호출해 주세요. 전체 페이지를 이동한다면 소켓이 사라지기 전에 호출해 주세요.
 - `message(payload, cmd)`: 구조화된 장치 명령을 처리해 주세요. 기다리는 메시지의 listener가 반환한 Promise가 끝난 뒤 완료 응답이 전송됩니다.
 - `reset`: 초기 화면과 모든 재생 상태로 돌아가 주세요.

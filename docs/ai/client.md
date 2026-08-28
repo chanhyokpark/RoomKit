@@ -31,7 +31,7 @@ Status is `idle | connecting | connected | disconnected | error`. Fatal errors i
 
 ## Automatic versus owner acknowledgments
 
-Client validates inbound schemas, deduplicates command IDs, and automatically acknowledges reset, stop, non-awaited messages, and hint-code commands. The consumer owns completion for `play` and `navigate`. A `done()` callback is idempotent and accepts `done()` or `done('failed')`.
+Client validates inbound schemas, deduplicates command IDs, and automatically acknowledges reset, stop, BGM-volume, non-awaited messages, and hint-code commands. The consumer owns completion for `play` and `navigate`. A `done()` callback is idempotent and accepts `done()` or `done('failed')`.
 
 Message listeners may return promises. For `awaitHandled` commands, Client waits for all listeners before acknowledging. Without the flag, it acknowledges before invoking them.
 
@@ -39,7 +39,7 @@ Message listeners may return promises. For `awaitHandled` commands, Client waits
 
 Every play command has id, channel, player/asset identity, and either URL/file metadata or placeholder duration.
 
-- **BGM:** implement loop and fades. A loop acknowledges at start. Store fade-out for later stop/replacement.
+- **BGM:** implement loop and fades. A loop acknowledges at start. Store fade-out for later stop/replacement. Handle `bgmVolume` by applying `cmd.value` (0–1) as the player's persistent base volume until reset; fade and duck factors multiply it.
 - **SFX:** play independently and apply optional `bgmDuck` while active.
 - **Dialogue speaker:** play ordered lines; emit `sendProgress(id, index)` as each starts. For `holdBefore`, emit waiting progress first and wait for the server's non-waiting progress before starting that line. Finish after the last line.
 - **Dialogue screen:** acknowledge play immediately, retain the dialogue command, and render line subtitle HTML on matching progress. Clear at end unless `keepSubtitleAfterEnd`, and always clear on stop.

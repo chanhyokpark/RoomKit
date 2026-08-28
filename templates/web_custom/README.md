@@ -26,7 +26,7 @@ pnpm dev
 ## 구현 범위
 
 - `navigate` URL을 내부 iframe에 로드하고 `onLoad` 뒤 완료 응답을 보냅니다.
-- BGM 반복/페이드, SFX·대사의 BGM ducking과 플레이스홀더 시간을 처리합니다.
+- BGM 반복/페이드와 직접 볼륨 조정, SFX·대사의 BGM ducking과 플레이스홀더 시간을 처리합니다.
 - 대사 speaker/screen/both 역할, 라인 progress와 `holdBefore` 재개 신호, HTML/CSS 자막을 처리합니다.
 - 비디오 frame, 실제 파일 완료/실패 응답과 플레이스홀더 타이머를 처리합니다.
 - stop은 재생을 정상 완료시키고 reset은 전체 미디어·화면·힌트 코드를 초기화합니다.

@@ -3,6 +3,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { SequenceEntry } from '@roomkit/shared';
 	import { Button } from '$lib/components/ui/button';
+	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import { Switch } from '$lib/components/ui/switch';
@@ -113,6 +114,27 @@
 			</label>
 		{/if}
 		<p class="w-full text-xs text-muted-foreground">페이드 인/아웃은 BGM 애셋 설정을 따릅니다.</p>
+	{:else if entry.type === 'adjustBgmVolume'}
+		<AssetSelect kind="player" label="플레이어" bind:id={entry.playerId} {onchanged} />
+		<Field.Field class="w-32 gap-1">
+			<Field.FieldLabel for={`bgm-volume-${entry.id}`}>볼륨 (%)</Field.FieldLabel>
+			<Input
+				id={`bgm-volume-${entry.id}`}
+				class="h-8"
+				type="number"
+				min="0"
+				max="100"
+				step="1"
+				value={entry.value}
+				onchange={(changeEvent) => {
+					if (entry.type === 'adjustBgmVolume') {
+						const value = Number(changeEvent.currentTarget.value);
+						if (Number.isFinite(value)) entry.value = Math.max(0, Math.min(100, value));
+					}
+					onchanged();
+				}}
+			/>
+		</Field.Field>
 	{:else if entry.type === 'stopDialogue' || entry.type === 'stopSfx' || entry.type === 'stopVideo' || entry.type === 'stopBgm'}
 		<AssetSelect
 			kind="player"

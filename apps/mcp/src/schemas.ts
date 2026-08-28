@@ -42,6 +42,7 @@ export function commandsDoc(): unknown {
       'Asset reference fields (deviceId, playerId, bgmId, ...) take an asset UUID or null. Null/dangling refs are not fatal: the runtime logs and skips that command.',
       'playDialogue.lineCues wedge commands between dialogue lines: {afterLineId: <dialogue line id>, sequence: [...commands]}. playDialogue itself is not allowed inside a cue (use callEvent instead). A cue after the last line never runs.',
       'waitUntilEnd on play commands makes the sequence wait for playback to finish before the next entry. wait.durationMs pauses the sequence.',
+      'adjustBgmVolume.value is a 0..100 percent base volume for one player; it persists through later BGM tracks until that device is reset, while fades and ducking still multiply it.',
       'switchPhase changes the session phase; callEvent runs another event (waitUntilFinish to await it); eval runs JS in a server sandbox (returning false aborts the sequence); endTheme ends the game with a success/fail verdict.',
       'sendMessage.values, navigate query values, and sendWebsiteRequest path/body/headers support {{vars.x}} and {{payload.x}} template interpolation at run time.',
       'sendWebsiteRequest sends HTTP from the RoomKit server to a URL resolved from a website asset; waitUntilEnd waits through the complete response body.',
@@ -66,7 +67,9 @@ const KIND_NOTES: Record<AssetKind, string[]> = {
     'lines[] play in array order; each line needs an id (uuid), fileKey (or null placeholder + durationMs), and subtitleHtml.',
     'Line ids anchor playDialogue lineCues — keep them stable when editing.',
   ],
-  sfx: ['fileKey null = placeholder: clients simulate playback for durationMs.'],
+  sfx: [
+    'fileKey null = placeholder: clients simulate playback for durationMs.',
+  ],
   video: [
     'frame places the video surface on the stage in percent; null = fullscreen.',
     'params is free-form JSON forwarded to the website for rendering.',
@@ -75,7 +78,9 @@ const KIND_NOTES: Record<AssetKind, string[]> = {
     'Static resource for hosted websites, served publicly at /api/media/{assetId} (stable URL).',
     'fileKey null serves a generated placeholder with placeholderRatio.',
   ],
-  file: ['Arbitrary file served publicly at /api/media/{assetId}; 404 until fileKey is set.'],
+  file: [
+    'Arbitrary file served publicly at /api/media/{assetId}; 404 until fileKey is set.',
+  ],
   hint: [
     '`code` (top-level asset field) is the code players type on the hint device; auto-generated 4-digit when omitted on create.',
     'steps[] are revealed one by one; textHtml allows HTML.',
@@ -91,7 +96,9 @@ const KIND_NOTES: Record<AssetKind, string[]> = {
   message: [
     'Defines a payload shape (fields[]) the sendMessage command fills in per use; the website receives it via the client library.',
   ],
-  phase: ['Game progression stage; data.order sorts phases ascending. Events belong to a phase (or are common with phaseId null).'],
+  phase: [
+    'Game progression stage; data.order sorts phases ascending. Events belong to a phase (or are common with phaseId null).',
+  ],
   event: [
     'The scenario logic unit: data.sequence is the command array (see describe_commands).',
     'phaseId null = common event valid in every phase. once = run at most once per session. allowReentry permits re-trigger while already running.',

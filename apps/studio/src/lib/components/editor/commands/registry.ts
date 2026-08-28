@@ -15,6 +15,7 @@ import RefreshCcwIcon from '@lucide/svelte/icons/refresh-ccw';
 import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 import SendIcon from '@lucide/svelte/icons/send';
 import TimerIcon from '@lucide/svelte/icons/timer';
+import Volume1Icon from '@lucide/svelte/icons/volume-1';
 import Volume2Icon from '@lucide/svelte/icons/volume-2';
 import ZapIcon from '@lucide/svelte/icons/zap';
 import type { Asset, AssetKind, Command, CommandType, Sequence } from '@roomkit/shared';
@@ -78,6 +79,11 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 		label: 'BGM 정지',
 		icon: CircleStopIcon,
 		create: () => ({ type: 'stopBgm', playerId: null, allPlayers: false })
+	},
+	adjustBgmVolume: {
+		label: 'BGM 볼륨 조정',
+		icon: Volume1Icon,
+		create: () => ({ type: 'adjustBgmVolume', playerId: null, value: 100 })
 	},
 	resetDevice: {
 		label: '장치 리셋',
@@ -178,6 +184,7 @@ export const COMMAND_GROUPS: CommandGroup[] = [
 			'playSfx',
 			'playVideo',
 			'playBgm',
+			'adjustBgmVolume',
 			'stopDialogue',
 			'stopSfx',
 			'stopVideo',
@@ -243,6 +250,8 @@ export function commandRefs(cmd: Command): CommandRef[] {
 		case 'stopBgm':
 			// "All players" needs no ref — suppress the unset-ref warning.
 			return cmd.allPlayers ? [] : [{ kind: 'player', id: cmd.playerId }];
+		case 'adjustBgmVolume':
+			return [{ kind: 'player', id: cmd.playerId }];
 		case 'navigate':
 			return [
 				{ kind: 'device', id: cmd.deviceId },

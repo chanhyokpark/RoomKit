@@ -4,6 +4,7 @@ import {
   type DoneFn,
   type PlaybackProgress,
   type SessionState,
+  type WireBgmVolume,
   type WireNavigate,
   type WirePlayCommand,
   type WirePlayDialogue,
@@ -79,10 +80,14 @@ export class RoomKitDevice {
   private readonly screenDialogues = new Map<string, WirePlayDialogue>();
   private readonly resumeWaiters = new Map<string, () => void>();
   private readonly ducking = new Map<string, Map<string, number>>();
+  private readonly bgmVolumes = new Map<string, number>();
   private activeVideo: ActiveVideo | null = null;
   private pendingNavigation: { commandId: string; done: DoneFn } | null = null;
 
-  constructor(config: DeviceConfig, private readonly callbacks: DeviceCallbacks) {
+  constructor(
+    config: DeviceConfig,
+    private readonly callbacks: DeviceCallbacks,
+  ) {
     this.client = new RoomKitClient({
       serverUrl: config.serverUrl,
       deviceCode: config.deviceCode,
@@ -96,14 +101,21 @@ export class RoomKitDevice {
     this.client.on('sessionState', callbacks.onSession);
     this.client.on('play', (command, done) => this.play(command, done));
     this.client.on('stop', (command) => this.stop(command));
+    this.client.on('bgmVolume', (command) => this.setBgmVolume(command));
     this.client.on('progress', (progress) => this.progress(progress));
-    this.client.on('navigate', (_url, command, done) => this.navigate(command, done));
+    this.client.on('navigate', (_url, command, done) =>
+      this.navigate(command, done),
+    );
     this.client.on('message', async (payload, command) => {
-      callbacks.onLog(`메시지 ${command.messageName}: ${JSON.stringify(payload)}`);
+      callbacks.onLog(
+        `메시지 ${command.messageName}: ${JSON.stringify(payload)}`,
+      );
       await Promise.resolve();
     });
     this.client.on('hintCode', (command) => {
-      callbacks.onHintCode(command.code ? { code: command.code, css: command.css } : null);
+      callbacks.onHintCode(
+        command.code ? { code: command.code, css: command.css } : null,
+      );
     });
     this.client.on('reset', () => this.reset());
     this.client.connect();
@@ -117,7 +129,10 @@ export class RoomKitDevice {
   }
 
   trigger(event: string) {
-    this.client.trigger(event, { source: 'web-custom-template', at: Date.now() });
+    this.client.trigger(event, {
+      source: 'web-custom-template',
+      at: Date.now(),
+    });
     this.callbacks.onLog(`트리거 전송: ${event}`);
   }
 
@@ -141,10 +156,18 @@ export class RoomKitDevice {
   private play(command: WirePlayCommand, done: DoneFn) {
     this.callbacks.onLog(`재생: ${command.channel} / ${command.assetName}`);
     switch (command.channel) {
-      case 'bgm': this.playBgm(command, done); break;
-      case 'sfx': this.playSfx(command, done); break;
-      case 'dialogue': this.playDialogue(command, done); break;
-      case 'video': this.playVideo(command, done); break;
+      case 'bgm':
+        this.playBgm(command, done);
+        break;
+      case 'sfx':
+        this.playSfx(command, done);
+        break;
+      case 'dialogue':
+        this.playDialogue(command, done);
+        break;
+      case 'video':
+        this.playVideo(command, done);
+        break;
     }
   }
 
@@ -153,25 +176,39 @@ export class RoomKitDevice {
     if (previous) this.fadeAndFinish(previous);
 
     const active = this.createAudio(command, done, command.fadeOutMs, () => {
-      if (this.bgm.get(command.playerId) === active) this.bgm.delete(command.playerId);
+      if (this.bgm.get(command.playerId) === active)
+        this.bgm.delete(command.playerId);
     });
     this.bgm.set(command.playerId, active);
 
     if (!command.url) {
       if (command.loop) done();
-      else active.timer = window.setTimeout(() => active.finish(), command.durationMs ?? 1);
+      else
+        active.timer = window.setTimeout(
+          () => active.finish(),
+          command.durationMs ?? 1,
+        );
       return;
     }
 
     active.audio = new Audio(command.url);
     active.audio.loop = command.loop;
-    active.audio.volume = command.fadeInMs > 0 ? 0 : this.duckVolume(command.playerId);
+    active.audio.volume =
+      command.fadeInMs > 0 ? 0 : this.bgmTargetVolume(command.playerId);
     active.audio.onended = () => active.finish();
     active.audio.onerror = () => active.finish('failed');
-    void active.audio.play().then(() => {
-      this.fadeVolume(active.audio!, active.audio!.volume, this.duckVolume(command.playerId), command.fadeInMs);
-      if (command.loop) done();
-    }).catch(() => active.finish('failed'));
+    void active.audio
+      .play()
+      .then(() => {
+        this.fadeVolume(
+          active.audio!,
+          active.audio!.volume,
+          this.bgmTargetVolume(command.playerId),
+          command.fadeInMs,
+        );
+        if (command.loop) done();
+      })
+      .catch(() => active.finish('failed'));
   }
 
   private playSfx(command: PlaySfx, done: DoneFn) {
@@ -180,10 +217,14 @@ export class RoomKitDevice {
       this.removeDuck(command.playerId, command.id);
     });
     this.sfx.set(command.id, active);
-    if (command.bgmDuck !== undefined) this.addDuck(command.playerId, command.id, command.bgmDuck);
+    if (command.bgmDuck !== undefined)
+      this.addDuck(command.playerId, command.id, command.bgmDuck);
 
     if (!command.url) {
-      active.timer = window.setTimeout(() => active.finish(), command.durationMs ?? 1);
+      active.timer = window.setTimeout(
+        () => active.finish(),
+        command.durationMs ?? 1,
+      );
       return;
     }
     active.audio = new Audio(command.url);
@@ -240,7 +281,8 @@ export class RoomKitDevice {
     };
     this.dialogues.set(command.playerId, run);
     if (command.role === 'both') this.screenDialogues.set(command.id, command);
-    if (command.bgmDuck !== undefined) this.addDuck(command.playerId, command.id, command.bgmDuck);
+    if (command.bgmDuck !== undefined)
+      this.addDuck(command.playerId, command.id, command.bgmDuck);
     void this.runDialogue(run);
   }
 
@@ -248,7 +290,11 @@ export class RoomKitDevice {
     let failed = false;
     const { command } = run;
 
-    for (let index = 0; index < command.lines.length && !run.cancelled; index += 1) {
+    for (
+      let index = 0;
+      index < command.lines.length && !run.cancelled;
+      index += 1
+    ) {
       const line = command.lines[index];
       if (line.holdBefore) {
         this.client.sendProgress(command.id, index, true);
@@ -267,14 +313,20 @@ export class RoomKitDevice {
       if (failed) break;
     }
 
-    if (this.dialogues.get(command.playerId) === run) this.dialogues.delete(command.playerId);
+    if (this.dialogues.get(command.playerId) === run)
+      this.dialogues.delete(command.playerId);
     this.screenDialogues.delete(command.id);
     this.removeDuck(command.playerId, command.id);
-    if (!command.keepSubtitleAfterEnd || run.cancelled) this.callbacks.onSubtitle(null);
+    if (!command.keepSubtitleAfterEnd || run.cancelled)
+      this.callbacks.onSubtitle(null);
     run.done(failed ? 'failed' : 'done');
   }
 
-  private playDialogueLine(run: DialogueRun, url: string | null, durationMs: number | null) {
+  private playDialogueLine(
+    run: DialogueRun,
+    url: string | null,
+    durationMs: number | null,
+  ) {
     return new Promise<boolean>((resolve) => {
       let settled = false;
       const finish = (ok: boolean) => {
@@ -305,11 +357,14 @@ export class RoomKitDevice {
   }
 
   private progress(progress: PlaybackProgress) {
-    const resume = this.resumeWaiters.get(`${progress.commandId}:${progress.lineIndex}`);
+    const resume = this.resumeWaiters.get(
+      `${progress.commandId}:${progress.lineIndex}`,
+    );
     if (resume && !progress.waiting) resume();
 
     const dialogue = this.screenDialogues.get(progress.commandId);
-    if (dialogue && !progress.waiting) this.showDialogueLine(dialogue, progress.lineIndex);
+    if (dialogue && !progress.waiting)
+      this.showDialogueLine(dialogue, progress.lineIndex);
   }
 
   private showDialogueLine(command: WirePlayDialogue, index: number) {
@@ -336,21 +391,29 @@ export class RoomKitDevice {
   }
 
   private stop(command: WireStop) {
-    const matches = (playerId: string) => command.playerId === null || command.playerId === playerId;
+    const matches = (playerId: string) =>
+      command.playerId === null || command.playerId === playerId;
     if (command.channel === 'bgm') {
-      for (const active of this.bgm.values()) if (matches(active.playerId)) this.fadeAndFinish(active);
+      for (const active of this.bgm.values())
+        if (matches(active.playerId)) this.fadeAndFinish(active);
     }
     if (command.channel === 'sfx') {
-      for (const active of this.sfx.values()) if (matches(active.playerId)) active.finish();
+      for (const active of this.sfx.values())
+        if (matches(active.playerId)) active.finish();
     }
     if (command.channel === 'dialogue') {
-      for (const playerId of [...this.dialogues.keys()]) if (matches(playerId)) this.stopDialogueForPlayer(playerId);
+      for (const playerId of [...this.dialogues.keys()])
+        if (matches(playerId)) this.stopDialogueForPlayer(playerId);
       for (const [id, dialogue] of this.screenDialogues) {
         if (matches(dialogue.playerId)) this.screenDialogues.delete(id);
       }
       this.callbacks.onSubtitle(null);
     }
-    if (command.channel === 'video' && this.activeVideo && matches(this.activeVideo.command.playerId)) {
+    if (
+      command.channel === 'video' &&
+      this.activeVideo &&
+      matches(this.activeVideo.command.playerId)
+    ) {
       this.finishVideo(this.activeVideo.command.id);
     }
     this.callbacks.onLog(`정지: ${command.channel}`);
@@ -385,11 +448,21 @@ export class RoomKitDevice {
   }
 
   private stopEverything() {
-    for (const active of [...this.bgm.values(), ...this.sfx.values()]) active.finish();
-    for (const playerId of [...this.dialogues.keys()]) this.stopDialogueForPlayer(playerId);
+    for (const active of [...this.bgm.values(), ...this.sfx.values()])
+      active.finish();
+    for (const playerId of [...this.dialogues.keys()])
+      this.stopDialogueForPlayer(playerId);
     if (this.activeVideo) this.finishVideo(this.activeVideo.command.id);
     this.screenDialogues.clear();
+    this.bgmVolumes.clear();
     this.callbacks.onSubtitle(null);
+  }
+
+  private setBgmVolume(command: WireBgmVolume) {
+    if (command.value >= 1) this.bgmVolumes.delete(command.playerId);
+    else this.bgmVolumes.set(command.playerId, command.value);
+    const audio = this.bgm.get(command.playerId)?.audio;
+    if (audio) audio.volume = this.bgmTargetVolume(command.playerId);
   }
 
   private addDuck(playerId: string, commandId: string, factor: number) {
@@ -411,9 +484,14 @@ export class RoomKitDevice {
     return values.length ? Math.min(...values) : 1;
   }
 
+  private bgmTargetVolume(playerId: string) {
+    return (this.bgmVolumes.get(playerId) ?? 1) * this.duckVolume(playerId);
+  }
+
   private applyDuck(playerId: string) {
     const audio = this.bgm.get(playerId)?.audio;
-    if (audio) this.fadeVolume(audio, audio.volume, this.duckVolume(playerId), 250);
+    if (audio)
+      this.fadeVolume(audio, audio.volume, this.bgmTargetVolume(playerId), 250);
   }
 
   private fadeAndFinish(active: ActiveAudio) {
@@ -421,7 +499,13 @@ export class RoomKitDevice {
       active.finish();
       return;
     }
-    this.fadeVolume(active.audio, active.audio.volume, 0, active.fadeOutMs, () => active.finish());
+    this.fadeVolume(
+      active.audio,
+      active.audio.volume,
+      0,
+      active.fadeOutMs,
+      () => active.finish(),
+    );
   }
 
   private fadeVolume(

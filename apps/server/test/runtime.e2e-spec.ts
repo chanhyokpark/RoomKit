@@ -712,7 +712,7 @@ describe('Runtime (e2e)', () => {
     expect(byChannel('dialogue')).toEqual([speakerA, screenA, bothB].sort());
   });
 
-  it('playBgm carries the asset fades; stopBgm carries none', async () => {
+  it('resolves BGM play, volume adjustment, and stop to the speaker', async () => {
     const themeId = await createTheme();
     const speakerId = await createDevice(themeId, 'speaker');
     const playerId = await createAsset(themeId, {
@@ -736,18 +736,28 @@ describe('Runtime (e2e)', () => {
     const eventId = await createEvent(themeId, 'bgm-cycle', {
       sequence: [
         entry({ type: 'playBgm', bgmId, playerId, loop: true }),
+        entry({ type: 'adjustBgmVolume', playerId, value: 35 }),
         entry({ type: 'stopBgm', playerId, allPlayers: false }),
       ],
     });
     const sessionId = await createSession(themeId);
     await post(`/api/sessions/${sessionId}/trigger`, { eventId });
 
-    await waitFor(() => transport.ofType('stop').length === 1);
+    await waitFor(
+      () =>
+        transport.ofType('bgmVolume').length === 1 &&
+        transport.ofType('stop').length === 1,
+    );
     const play = transport.ofType('play')[0];
     expect(play.wire).toMatchObject({
       channel: 'bgm',
       fadeInMs: 1000,
       fadeOutMs: 2500,
+    });
+    const volume = transport.ofType('bgmVolume')[0];
+    expect(volume).toMatchObject({
+      deviceId: speakerId,
+      wire: { playerId, value: 0.35 },
     });
     const stop = transport.ofType('stop')[0];
     expect(stop.wire).toMatchObject({ channel: 'bgm', playerId });

@@ -172,6 +172,22 @@ export class CommandResolver {
               : undefined,
         };
       }
+      case 'adjustBgmVolume': {
+        const player = await this.getPlayer(themeId, cmd.playerId, opts);
+        return {
+          deliveries: [
+            {
+              deviceId: player.data.speakerDeviceId,
+              wire: {
+                id: randomUUID(),
+                type: 'bgmVolume',
+                playerId: player.id,
+                value: cmd.value / 100,
+              },
+            },
+          ],
+        };
+      }
       case 'playSfx': {
         const player = await this.getPlayer(themeId, cmd.playerId, opts);
         const sfx = await this.getAsset(themeId, cmd.sfxId, 'sfx');
@@ -372,7 +388,11 @@ export class CommandResolver {
       case 'sendWebsiteRequest': {
         const website = await this.getAsset(themeId, cmd.websiteId, 'website');
         const scope = scopeOf(opts);
-        const baseUrl = this.websiteUrl(website.id, website.data, opts.urlOverrides);
+        const baseUrl = this.websiteUrl(
+          website.id,
+          website.data,
+          opts.urlOverrides,
+        );
         let base: URL;
         let url: URL;
         try {
