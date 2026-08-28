@@ -72,10 +72,6 @@ export const AdminEvents = {
   playerStatus: 'player:status',
   /** Operator notification pushed by the `notify` sequence command. */
   notification: 'notification',
-  /** Website-test run snapshot (`WebsiteTestRun`). */
-  websiteTestState: 'websiteTest:state',
-  /** Website-test activity log entry (`WebsiteTestActivity`). */
-  websiteTestActivity: 'websiteTest:activity',
 } as const;
 
 /** Events on the /player namespace (player launcher, not device windows). */
@@ -85,14 +81,6 @@ export const PlayerEvents = {
    * window per device with the generated codes (`PlayerTestStart`).
    */
   testStart: 'test:start',
-  /**
-   * S→C: a website test targets this player — open one stage window with the
-   * generated code (`PlayerWebsiteTestStart`); the URL arrives as a navigate
-   * wire once the window attaches.
-   */
-  websiteTestStart: 'websiteTest:start',
-  /** S→C: a website test ended — close its window (`PlayerWebsiteTestStop`). */
-  websiteTestStop: 'websiteTest:stop',
 } as const;
 
 /**
@@ -148,7 +136,13 @@ export type Ack = z.infer<typeof AckSchema>;
  * a player device window. Null = the helper's hello carried no version (a
  * bundle predating version reporting).
  */
-export const HelperInfoSchema = z.object({ version: z.string().nullable() });
+export const HelperInfoSchema = z.object({
+  version: z.string().nullable(),
+  /** Message names declared via the helper's `messages` option; absent on old helpers. */
+  messages: z.array(z.string()).optional(),
+  /** Test-callback names declared via the helper's `testCallbacks` option. */
+  testCallbacks: z.array(z.string()).optional(),
+});
 export type HelperInfo = z.infer<typeof HelperInfoSchema>;
 
 export const TriggerSchema = z.object({
@@ -379,5 +373,12 @@ export const DeviceStatusSchema = z.object({
    * version, absent = no helper detected (or old server).
    */
   helperVersion: z.string().nullable().optional(),
+  /**
+   * Message names the loaded website registered declaratively (helper
+   * `messages` option): null = helper reported none, absent = no helper.
+   */
+  helperMessages: z.array(z.string()).nullable().optional(),
+  /** Test-callback names the loaded website registered (helper `testCallbacks`). */
+  helperTestCallbacks: z.array(z.string()).nullable().optional(),
 });
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;

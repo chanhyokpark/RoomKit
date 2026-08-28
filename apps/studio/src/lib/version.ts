@@ -2,7 +2,7 @@ import { env } from '$env/dynamic/public';
 import { EXPECTED_VERSIONS, isVersionBelow, type VersionedComponent } from '@roomkit/shared';
 
 /**
- * Minimum component versions the operation / website-test screens warn below.
+ * Minimum component versions the operation screen warns below.
  * Defaults come from the shared protocol package; a deployment can override
  * them without a rebuild (adapter-node) via the environment variables below.
  */

@@ -12,14 +12,13 @@ All routes use the `/api` prefix. Administrator routes require bearer authentica
 - `/api/themes`: list/create themes. `/:id` updates/deletes, `/:id/duplicate` deep-copies, `/:id/export` downloads a portable archive, and `/import` restores an archive as a new theme.
 - `/api/themes/:themeId/assets`: CRUD heterogeneous assets. `/api/themes/:themeId/tags` manages organization labels.
 - `/api/themes/:themeId/uploads` and `/api/files/url`: presigned single-file upload/download flows. `/api/themes/:themeId/imports/:kind` imports media ZIPs and `/imports/site` extracts a hosted-site ZIP.
-- `/api/sessions`: create/list sessions and operate lifecycle, phase, timer, hints, one-off commands, logs, live runs, and ended-session summary.
-- `/api/website-test`: create/list and control ephemeral website-test runs. The route family is singular.
+- `/api/sessions`: create/list sessions and operate lifecycle, phase, timer, hints, one-off commands, logs, live runs, and ended-session summary. Test-session creation accepts a launcher `playerId`, an optional `deviceIds` subset, and `urlOverrides` substituting website asset URLs; responses include the stored `urlOverrides` record. `POST /api/sessions/:id/devices/:deviceId/test-callback` runs a Helper-registered test callback (test sessions only; 400 for production).
 - `/api/media/:assetId`: public stable response for file-backed image/file/video/BGM/SFX assets. A fileless image returns a generated ratio placeholder; other fileless kinds return 404.
 - `/api/sites/:assetId/`: public hosted static-site tree; the trailing slash preserves relative asset resolution.
 
 Upload flows usually request a presigned target and send bytes directly to S3. Playback URLs are short-lived. Hosted ZIP extraction is server mediated.
 
-There is no `/api/players` REST family. Connected launcher discovery is streamed on the authenticated admin namespace, and test creation accepts a selected `playerId`; the server dispatches window requests over `/player`.
+There is no `/api/players` REST family. Connected launcher discovery is streamed on the authenticated admin namespace, and test-session creation accepts a selected `playerId`; the server dispatches window requests over `/player`.
 
 ## Device namespace
 
@@ -31,13 +30,13 @@ Command delivery is at-least-once. Client acknowledgment payload includes comman
 
 ## Admin and player namespaces
 
-The authenticated admin namespace streams session state, device presence, playback/website state, logs, live runs, connected launchers, operator notifications, and website-test state/activity to Studio. Session controls themselves use the REST routes above.
+The authenticated admin namespace streams session state, device presence, playback/website state, logs, live runs, connected launchers, and operator notifications. Its consumers are Studio and the Player debug window. Device status includes the Helper-registered message and test-callback names (`helperMessages`, `helperTestCallbacks`) relayed from the loaded page. Session controls themselves use the REST routes above.
 
-The player launcher namespace advertises a stable player ID/name and receives requests to open stage windows for test sessions and website tests. Do not confuse launcher player IDs with player asset IDs.
+The player launcher namespace advertises a stable player ID/name and receives requests to open stage windows for test sessions. Do not confuse launcher player IDs with player asset IDs.
 
 ## Helper envelopes
 
-Helper-to-Player messages identify source `roomkit-helper` and include hello/claims, trigger, hint, timer, video completion/error, and awaited-message completion. Player-to-Helper messages identify `roomkit-player` and include mode, message, hint, timer/trigger results, subtitle, hint-code, and video play/stop.
+Helper-to-Player messages identify source `roomkit-helper` and include hello/claims, trigger, hint, timer, video completion/error, awaited-message completion, and `test:callback:done`. Hello also carries the page's registered message-handler and test-callback names, which Player relays server-side via the extended `helper:info`. Player-to-Helper messages identify `roomkit-player` and include mode, message, hint, timer/trigger results, subtitle, hint-code, video play/stop, and `test:callback` requests driven by the `testCallback` wire command.
 
 Player validates shared Zod schemas and the source frame. Helper performs lightweight structural validation to keep its browser bundle small.
 

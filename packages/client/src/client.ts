@@ -25,6 +25,7 @@ import {
   type WirePlayCommand,
   type WireReset,
   type WireStop,
+  type WireTestCallback,
 } from '@roomkit/shared';
 import { Emitter } from './emitter.js';
 import { defaultStorage, testCodeKey, type CodeStorage } from './storage.js';
@@ -134,6 +135,12 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
   hintError: [HintError];
   /** Hint entry-code overlay: show (code set) or hide (code null). */
   hintCode: [WireHintCode];
+  /**
+   * Debug window asked to run a website-registered test callback (test
+   * sessions only). Call `done('done' | 'failed')` with the outcome — the
+   * server's REST reply waits on this ack.
+   */
+  testCallback: [WireTestCallback, DoneFn];
 }
 
 const SEEN_COMMANDS_LIMIT = 200;
@@ -341,12 +348,16 @@ export class RoomKitClient {
 
   /**
    * Player-internal: report the `@roomkit/helper` version of the website
-   * loaded in this device window (null = the helper sent no version). The
-   * server relays it to studio, which warns about outdated helpers.
+   * loaded in this device window (null = the helper sent no version) plus the
+   * message/test-callback names the site registered. The server relays them
+   * to studio and the debug window via device:status.
    */
-  reportHelperInfo(version: string | null): void {
-    this.log('helper info', version);
-    this.socket?.emit(DeviceEvents.helperInfo, { version });
+  reportHelperInfo(
+    version: string | null,
+    extras?: { messages?: string[]; testCallbacks?: string[] },
+  ): void {
+    this.log('helper info', version, extras);
+    this.socket?.emit(DeviceEvents.helperInfo, { version, ...extras });
   }
 
   /**
@@ -535,6 +546,23 @@ export class RoomKitClient {
         this.ack(cmd.id, 'done');
         this.emitter.emit('hintCode', cmd as WireHintCode);
         break;
+      case 'testCallback': {
+        // No listener (no helper loaded / not a player) must still answer —
+        // ack 'failed' when nobody claims the callback within a tick.
+        let acked = false;
+        const done: DoneFn = (status = 'done') => {
+          if (acked) return;
+          acked = true;
+          this.ack(cmd.id, status);
+        };
+        const handled = this.emitter.emitCollect(
+          'testCallback',
+          cmd as WireTestCallback,
+          done,
+        );
+        if (handled.length === 0) done('failed');
+        break;
+      }
     }
   }
 

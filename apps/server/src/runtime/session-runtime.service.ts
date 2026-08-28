@@ -18,6 +18,7 @@ import type {
   HintSubmit,
   PlaybackProgress,
   PushHintInput,
+  SessionLogEntry,
   SessionMedia,
   SessionRuns,
   SessionState,
@@ -30,6 +31,17 @@ import { HintService } from './hint.service';
 import { EngineStateError, SessionEngine } from './session-engine';
 import { NOOP_TRANSPORT, type RuntimeTransport } from './runtime-transport';
 
+/** Auto-end: grace after the last device of a player-created session disconnects. */
+export const AUTO_END_GRACE_MS = 60 * 1000;
+/** Auto-end: a player-created session no device ever connected to. */
+export const AUTO_END_NEVER_CONNECTED_MS = 10 * 60 * 1000;
+
+interface AutoEndState {
+  everConnected: boolean;
+  graceTimer: NodeJS.Timeout | null;
+  neverConnectedTimer: NodeJS.Timeout | null;
+}
+
 /**
  * Registry of live session engines. The single authority for live-state
  * mutations — SessionsService (REST) and the gateways both call into here.
@@ -40,6 +52,8 @@ export class SessionRuntimeService
 {
   private readonly logger = new Logger(SessionRuntimeService.name);
   private readonly engines = new Map<string, SessionEngine>();
+  /** Player-created (autoEnd) sessions being watched for device departure. */
+  private readonly autoEnd = new Map<string, AutoEndState>();
   private transport: RuntimeTransport = NOOP_TRANSPORT;
 
   constructor(
@@ -64,6 +78,9 @@ export class SessionRuntimeService
       const engine = this.buildEngine(row, row.theme.timeLimitMs);
       this.engines.set(row.id, engine);
       engine.recover(row);
+      // Recovery loses the connection history — the never-connected timer
+      // re-arms and a device reconnect (or the timer) settles it.
+      if (row.autoEnd) this.watchAutoEnd(row.id);
     }
     if (rows.length > 0) {
       this.logger.log(`Recovered ${rows.length} active session(s)`);
@@ -74,6 +91,9 @@ export class SessionRuntimeService
   onModuleDestroy(): void {
     for (const engine of this.engines.values()) engine.dispose();
     this.engines.clear();
+    for (const sessionId of [...this.autoEnd.keys()]) {
+      this.clearAutoEnd(sessionId);
+    }
   }
 
   /** Boot the engine for a freshly created session (idle until started). */
@@ -81,6 +101,7 @@ export class SessionRuntimeService
     const engine = this.buildEngine(row, timeLimitMs);
     this.engines.set(row.id, engine);
     engine.attach();
+    if (row.autoEnd) this.watchAutoEnd(row.id);
   }
 
   async start(sessionId: string): Promise<void> {
@@ -102,6 +123,7 @@ export class SessionRuntimeService
   }
 
   async end(sessionId: string): Promise<void> {
+    this.clearAutoEnd(sessionId);
     const engine = this.engines.get(sessionId);
     if (!engine) return; // already ended (or never live) — idempotent
     // engine.end() invokes onEnded, which removes the registry entry; the
@@ -155,6 +177,17 @@ export class SessionRuntimeService
   async pushHint(sessionId: string, input: PushHintInput): Promise<void> {
     await this.wrapAsync(() =>
       this.getEngine(sessionId).pushHint(input.hintId, input.step),
+    );
+  }
+
+  /** Debug window: run a website-registered test callback (test sessions only). */
+  async runTestCallback(
+    sessionId: string,
+    deviceId: string,
+    name: string,
+  ): Promise<boolean> {
+    return this.wrapAsync(() =>
+      this.getEngine(sessionId).runTestCallback(deviceId, name),
     );
   }
 
@@ -218,6 +251,7 @@ export class SessionRuntimeService
     deviceName: string,
     online: boolean,
   ): void {
+    this.noteAutoEndDeviceStatus(sessionId, online);
     this.engines
       .get(sessionId)
       ?.deviceStatusChanged(deviceId, deviceName, online);
@@ -263,6 +297,7 @@ export class SessionRuntimeService
       transport: () => this.transport,
       onEnded: async (sessionId) => {
         this.engines.delete(sessionId);
+        this.clearAutoEnd(sessionId);
         try {
           await this.prisma.sessionDeviceCode.deleteMany({
             where: { sessionId },
@@ -277,6 +312,84 @@ export class SessionRuntimeService
         }
       },
     });
+  }
+
+  // ── auto-end (player-created test sessions) ──────────────────────────────
+
+  /** Start watching an autoEnd session; arms the never-connected timeout. */
+  private watchAutoEnd(sessionId: string): void {
+    const state: AutoEndState = {
+      everConnected: false,
+      graceTimer: null,
+      neverConnectedTimer: setTimeout(() => {
+        state.neverConnectedTimer = null;
+        if (!this.transport.hasAnyDeviceOnline(sessionId)) {
+          void this.autoEndNow(sessionId, 'no device ever connected');
+        }
+      }, AUTO_END_NEVER_CONNECTED_MS),
+    };
+    this.autoEnd.set(sessionId, state);
+  }
+
+  private noteAutoEndDeviceStatus(sessionId: string, online: boolean): void {
+    const state = this.autoEnd.get(sessionId);
+    if (!state) return;
+    if (online) {
+      state.everConnected = true;
+      if (state.graceTimer) clearTimeout(state.graceTimer);
+      state.graceTimer = null;
+      if (state.neverConnectedTimer) clearTimeout(state.neverConnectedTimer);
+      state.neverConnectedTimer = null;
+      return;
+    }
+    // Last socket of *a* device went offline; end only when the whole session
+    // has no device left, after a reconnect grace.
+    if (
+      state.everConnected &&
+      state.graceTimer === null &&
+      !this.transport.hasAnyDeviceOnline(sessionId)
+    ) {
+      state.graceTimer = setTimeout(() => {
+        state.graceTimer = null;
+        if (!this.transport.hasAnyDeviceOnline(sessionId)) {
+          void this.autoEndNow(sessionId, 'all devices disconnected');
+        }
+      }, AUTO_END_GRACE_MS);
+    }
+  }
+
+  private async autoEndNow(sessionId: string, reason: string): Promise<void> {
+    try {
+      await this.logSession(sessionId, `Session auto-ended: ${reason}`);
+      await this.end(sessionId);
+      this.logger.log(`Auto-ended session ${sessionId}: ${reason}`);
+    } catch (err) {
+      this.logger.error(
+        `Failed to auto-end session ${sessionId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+  }
+
+  private clearAutoEnd(sessionId: string): void {
+    const state = this.autoEnd.get(sessionId);
+    if (!state) return;
+    if (state.graceTimer) clearTimeout(state.graceTimer);
+    if (state.neverConnectedTimer) clearTimeout(state.neverConnectedTimer);
+    this.autoEnd.delete(sessionId);
+  }
+
+  private async logSession(sessionId: string, message: string): Promise<void> {
+    try {
+      const entry = await this.logs.append(sessionId, {
+        level: 'info',
+        kind: 'session',
+        message,
+      });
+      this.transport.broadcastLog(entry as unknown as SessionLogEntry);
+    } catch {
+      // Logging must never block the end path.
+    }
   }
 
   private getEngine(sessionId: string): SessionEngine {

@@ -10,10 +10,16 @@ Use Helper only for a website navigated inside RoomKit Player's iframe. It does 
 const helper = new RoomKitHelper({
   lockdown: true,
   renders: { subtitle: true, hintCode: false, video: true },
+  messages: {
+    "set-screen": async (payload, envelope) => updateScreen(payload),
+  },
+  testCallbacks: {
+    "flash-panel": () => flashPanel(),
+  },
 });
 ```
 
-Construction installs a message listener, optional kiosk lockdown, and emits `hello` with render claims and helper version. Hello repeats every 800 ms up to 25 times until a Player message proves the bridge is alive. Player buffers state until hello, so a late page receives the current subtitle/hint/video-related state.
+Construction installs a message listener, optional kiosk lockdown, and emits `hello` with render claims, helper version, and the registered `messages`/`testCallbacks` names. Hello repeats every 800 ms up to 25 times until a Player message proves the bridge is alive. Player buffers state until hello, so a late page receives the current subtitle/hint/video-related state.
 
 Navigation destroys claims. Every new document must construct Helper again. `destroy()` removes listeners/styles, rejects pending trigger waits, resolves pending timer requests with null, and permanently retires the instance.
 
@@ -26,7 +32,11 @@ Navigation destroys claims. Every new document must construct Helper again. `des
 - `sessionMode` is `production` until Player reports `test` or `production`.
 - `on`/`off` subscribe to `message`, hint events, and claimed render slots.
 
-Awaited send-message commands carry a command ID. Helper waits for every message listener's returned promise and posts `message:done`; one rejection marks handling failed but does not stop the server sequence.
+Prefer the `messages` constructor option: named handlers are dispatched by `messageName` and their registered names surface in the debug window's per-device panel. `on('message')` still works but is deprecated. Awaited send-message commands carry a command ID. Helper waits for every named handler's and message listener's returned promise and posts `message:done`; one rejection marks handling failed but does not stop the server sequence.
+
+## Test callbacks
+
+`testCallbacks` registers parameterless functions runnable from the Player debug window in test sessions only. Player sends `test:callback` with a request ID; Helper runs the callback, awaits a returned promise, and answers `test:callback:done` with ok/failed. The server times the invocation out after fifteen seconds. Use them for repeatable manual probes (reset local state, simulate a puzzle solve) without wiring temporary UI.
 
 ## Render claims
 
@@ -57,4 +67,4 @@ For `url: null`, render a placeholder from `assetName`/`durationMs`. Player owns
 
 Lockdown disables text selection outside form fields and blocks the context menu in production sessions. Test sessions retain context-menu access. Set `lockdown: false` for plain-browser development, but remember Helper has no functional transport outside Player.
 
-Use Studio website test with a Vite URL for live development. For ZIP deployment use relative asset paths and `index.html` at archive root.
+For live development, launch a player test session from Player's test tab with a website URL override pointing at your Vite dev server. For ZIP deployment use relative asset paths and `index.html` at archive root.

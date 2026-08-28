@@ -10,6 +10,19 @@ export interface DeviceEntry {
 	kiosk: boolean;
 }
 
+/** One website-URL substitution row of a theme's test setup. */
+export interface UrlOverrideEntry {
+	websiteId: string;
+	url: string;
+}
+
+/** Per-theme test-tab selections, persisted across sessions. */
+export interface ThemeTestConfig {
+	/** Device asset ids to launch windows for. */
+	deviceIds: string[];
+	overrides: UrlOverrideEntry[];
+}
+
 export interface PlayerConfig {
 	serverUrl: string;
 	/** Stable self-generated identity for the /player namespace. */
@@ -17,6 +30,16 @@ export interface PlayerConfig {
 	/** Operator-facing name shown in studio's player list. */
 	playerName?: string;
 	devices: DeviceEntry[];
+	/**
+	 * Admin credentials for the test tab / debug window (plaintext at rest —
+	 * the player runs on trusted operator machines; production code entry
+	 * never needs a login).
+	 */
+	auth?: { id: string; password: string };
+	/** Theme driving the test tab. */
+	selectedThemeId?: string;
+	/** Test-tab selections keyed by theme id. */
+	testConfigs?: Record<string, ThemeTestConfig>;
 }
 
 const DEFAULTS: PlayerConfig = { serverUrl: 'http://localhost:3000', devices: [] };
@@ -44,6 +67,9 @@ class ConfigStore {
 	playerId = $state('');
 	playerName = $state('');
 	devices = $state<DeviceEntry[]>([]);
+	auth = $state<{ id: string; password: string } | null>(null);
+	selectedThemeId = $state('');
+	testConfigs = $state<Record<string, ThemeTestConfig>>({});
 	loaded = $state(false);
 
 	private tauriStore: { set(k: string, v: unknown): Promise<void>; save(): Promise<void> } | null =
@@ -75,7 +101,15 @@ class ConfigStore {
 			serverUrl: this.serverUrl,
 			playerId: this.playerId,
 			playerName: this.playerName,
-			devices: this.devices.map((d) => ({ ...d }))
+			devices: this.devices.map((d) => ({ ...d })),
+			...(this.auth ? { auth: { ...this.auth } } : {}),
+			...(this.selectedThemeId ? { selectedThemeId: this.selectedThemeId } : {}),
+			testConfigs: Object.fromEntries(
+				Object.entries(this.testConfigs).map(([themeId, tc]) => [
+					themeId,
+					{ deviceIds: [...tc.deviceIds], overrides: tc.overrides.map((o) => ({ ...o })) }
+				])
+			)
 		};
 		if (this.tauriStore) {
 			await this.tauriStore.set('config', snapshot);
@@ -104,11 +138,28 @@ class ConfigStore {
 		this.devices = this.devices.filter((d) => d.id !== id);
 	}
 
+	/** The (created-on-demand) test-tab selections for one theme. */
+	testConfigFor(themeId: string): ThemeTestConfig {
+		let entry = this.testConfigs[themeId];
+		if (!entry) {
+			entry = { deviceIds: [], overrides: [] };
+			this.testConfigs[themeId] = entry;
+		}
+		return entry;
+	}
+
 	private apply(config: PlayerConfig): void {
 		this.serverUrl = config.serverUrl ?? DEFAULTS.serverUrl;
 		this.playerId = config.playerId ?? '';
 		this.playerName = config.playerName ?? '';
 		this.devices = Array.isArray(config.devices) ? config.devices : [];
+		this.auth =
+			config.auth && typeof config.auth.id === 'string' && typeof config.auth.password === 'string'
+				? { ...config.auth }
+				: null;
+		this.selectedThemeId = config.selectedThemeId ?? '';
+		this.testConfigs =
+			config.testConfigs && typeof config.testConfigs === 'object' ? config.testConfigs : {};
 	}
 }
 

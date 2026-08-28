@@ -14,7 +14,7 @@ Confirm whether the code is a permanent device asset code or test-session code. 
 
 ## Trigger appears but event does not run
 
-Check trigger kind/name, current phase versus event `phaseId`, once history, and re-entry state. Website-test triggers are captured rather than automatically executed. Read trigger and event logs; a payload does not affect matching unless eval/commands consume it.
+Check trigger kind/name, current phase versus event `phaseId`, once history, and re-entry state. Read trigger and event logs; a payload does not affect matching unless eval/commands consume it.
 
 ## Sequence waits forever
 
@@ -34,7 +34,7 @@ Stop playback to resolve normally or abort the run to cancel the remainder. Virt
 
 ## Helper receives nothing
 
-It is likely running outside Player, was constructed before/without the current document, or the page never re-declared claims after navigation. Use Studio website test. Do not attempt to connect Helper to the server. Inspect Player and iframe consoles in a test session.
+It is likely running outside Player, was constructed before/without the current document, or the page never re-declared claims after navigation. Launch a player test session with a website URL override pointing at the dev server. Do not attempt to connect Helper to the server. Inspect Player and iframe consoles in a test session.
 
 ## Hosted site assets are 404
 

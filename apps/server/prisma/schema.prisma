@@ -107,6 +107,11 @@ model Session {
   onceRun Json         @default("[]")
   // Game outcome recorded by the endTheme command; null until it runs.
   verdict Verdict?
+  // Test sessions only: websiteId → replacement URL map applied at resolution.
+  urlOverrides Json @default("{}")
+  // Player-created test session: auto-end when its devices all disconnect
+  // (grace period) or never connect at all.
+  autoEnd Boolean @default(false)
 
   // Creation time until the session starts; updated to the actual start time.
   startedAt DateTime  @default(now())

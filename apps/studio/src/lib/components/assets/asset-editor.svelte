@@ -98,7 +98,9 @@
 						kind: 'device',
 						displayName: asset.data.displayName,
 						isHintDevice: asset.data.isHintDevice,
-						hintCodeCss: asset.data.hintCodeCss
+						hintCodeCss: asset.data.hintCodeCss,
+						startWebsiteId: asset.data.startWebsite?.websiteId ?? null,
+						startQuery: asset.data.startWebsite?.query.map((q) => ({ ...q })) ?? []
 					};
 				case 'bgm':
 					return {
@@ -177,7 +179,9 @@
 					kind: 'device',
 					displayName: '',
 					isHintDevice: false,
-					hintCodeCss: ''
+					hintCodeCss: '',
+					startWebsiteId: null,
+					startQuery: []
 				};
 			case 'bgm':
 				return {
@@ -350,7 +354,14 @@
 				return {
 					displayName: draft.displayName,
 					isHintDevice: draft.isHintDevice,
-					hintCodeCss: draft.hintCodeCss
+					hintCodeCss: draft.hintCodeCss,
+					startWebsite:
+						draft.startWebsiteId === null
+							? null
+							: {
+									websiteId: draft.startWebsiteId,
+									query: draft.startQuery.filter((q) => q.key !== '')
+								}
 				};
 			case 'bgm':
 				return {
@@ -501,9 +512,12 @@
 		</Field.Field>
 		{#if draft.kind === 'device'}
 			<DeviceForm
+				{themeId}
 				bind:displayName={draft.displayName}
 				bind:isHintDevice={draft.isHintDevice}
 				bind:hintCodeCss={draft.hintCodeCss}
+				bind:startWebsiteId={draft.startWebsiteId}
+				bind:startQuery={draft.startQuery}
 			/>
 		{:else if draft.kind === 'bgm'}
 			<FileAssetForm

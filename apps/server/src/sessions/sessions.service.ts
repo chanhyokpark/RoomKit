@@ -89,18 +89,29 @@ export class SessionsService {
 
     let deviceCodes = input.mode === 'test' ? (input.deviceCodes ?? []) : [];
     if (input.mode === 'test' && input.playerId) {
-      deviceCodes = await this.generateDeviceCodes(theme.id);
+      deviceCodes = await this.generateDeviceCodes(theme.id, input.deviceIds);
     }
     if (deviceCodes.length > 0) {
       await this.validateDeviceCodes(theme.id, deviceCodes);
     }
+    const urlOverrides = await this.validateUrlOverrides(
+      theme.id,
+      input.urlOverrides,
+    );
 
     const phaseId = await this.getInitialPhaseId(theme.id);
     let row: Session;
     try {
       row = await this.prisma.$transaction(async (tx) => {
         const session = await tx.session.create({
-          data: { themeId: theme.id, mode: input.mode, phaseId },
+          data: {
+            themeId: theme.id,
+            mode: input.mode,
+            phaseId,
+            urlOverrides,
+            // Player-created test sessions auto-end when their devices are gone.
+            autoEnd: input.playerId !== undefined,
+          },
         });
         if (deviceCodes.length > 0) {
           await tx.sessionDeviceCode.createMany({
@@ -181,11 +192,19 @@ export class SessionsService {
    */
   private async generateDeviceCodes(
     themeId: string,
+    deviceIds?: string[],
   ): Promise<DeviceCodeInput[]> {
     const devices = await this.prisma.asset.findMany({
-      where: { themeId, kind: 'device' },
+      where: {
+        themeId,
+        kind: 'device',
+        ...(deviceIds !== undefined ? { id: { in: deviceIds } } : {}),
+      },
       select: { id: true },
     });
+    if (deviceIds !== undefined && devices.length !== new Set(deviceIds).size) {
+      throw new BadRequestException('deviceIds reference unknown devices');
+    }
     if (devices.length === 0) return [];
     for (let attempt = 0; attempt < 5; attempt++) {
       const codes = new Set<string>();
@@ -243,6 +262,26 @@ export class SessionsService {
     }
   }
 
+  /** Validates override targets are theme website assets; returns the stored map. */
+  private async validateUrlOverrides(
+    themeId: string,
+    overrides: { websiteId: string; url: string }[] | undefined,
+  ): Promise<Record<string, string>> {
+    if (overrides === undefined || overrides.length === 0) return {};
+    const websiteIds = overrides.map((o) => o.websiteId);
+    if (new Set(websiteIds).size !== websiteIds.length) {
+      throw new BadRequestException('Each website may have only one override');
+    }
+    const websites = await this.prisma.asset.findMany({
+      where: { id: { in: websiteIds }, themeId, kind: 'website' },
+      select: { id: true },
+    });
+    if (websites.length !== websiteIds.length) {
+      throw new BadRequestException('urlOverrides reference unknown websites');
+    }
+    return Object.fromEntries(overrides.map((o) => [o.websiteId, o.url]));
+  }
+
   private async getTestDeviceCodes(
     sessionId: string,
   ): Promise<TestDeviceCode[]> {
@@ -298,5 +337,11 @@ function serialize(row: Session): SessionResponse {
     endedAt: row.endedAt,
     timerEndsAt: row.timerEndsAt,
     timerRemainingMs: row.timerRemainingMs,
+    urlOverrides:
+      row.urlOverrides !== null &&
+      typeof row.urlOverrides === 'object' &&
+      !Array.isArray(row.urlOverrides)
+        ? (row.urlOverrides as Record<string, string>)
+        : {},
   };
 }

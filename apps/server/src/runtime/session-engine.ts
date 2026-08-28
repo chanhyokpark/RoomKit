@@ -38,6 +38,7 @@ import type { RuntimeTransport } from './runtime-transport';
 import { performWebsiteRequest } from './website-request';
 
 export const ACK_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
+export const TEST_CALLBACK_TIMEOUT_MS = 15 * 1000;
 export const CALL_EVENT_DEPTH_LIMIT = 8;
 
 /** Thrown into runs when the session ends. */
@@ -110,6 +111,8 @@ export class SessionEngine {
   private vars: Record<string, JsonValue>;
   private verdict: Verdict | null;
   private readonly timeLimitMs: number | null;
+  /** Test sessions: websiteId → replacement URL applied at resolution. */
+  private readonly urlOverrides: Record<string, string>;
 
   private readonly timer = new CountdownTimer(() => void this.expireTimer());
   /** Remaining ms while the timer is not armed (paused); null otherwise. */
@@ -173,6 +176,12 @@ export class SessionEngine {
     );
     this.verdict = row.verdict;
     this.timeLimitMs = timeLimitMs;
+    this.urlOverrides =
+      row.urlOverrides !== null &&
+      typeof row.urlOverrides === 'object' &&
+      !Array.isArray(row.urlOverrides)
+        ? (row.urlOverrides as Record<string, string>)
+        : {};
     this.emitter.setMaxListeners(0);
   }
 
@@ -200,11 +209,63 @@ export class SessionEngine {
     this.queuePersist({ state: 'running', startedAt: new Date() });
     void this.log('info', 'session', 'Session started');
     this.broadcastState();
-    this.fireSystemEvents('session:start').catch(() => {});
-    // Starting the session enters the initial phase — its enter hooks fire
-    // here, since no switchPhase ever targets the first phase.
-    if (this.phaseId !== null) {
-      this.fireSystemEvents('phase:enter', this.phaseId).catch(() => {});
+    // Start websites go out before the session:start hooks so an authored
+    // navigate in a hook wins over a device's starting webpage.
+    void (async () => {
+      await this.sendStartWebsites().catch(() => {});
+      this.fireSystemEvents('session:start').catch(() => {});
+      // Starting the session enters the initial phase — its enter hooks fire
+      // here, since no switchPhase ever targets the first phase.
+      if (this.phaseId !== null) {
+        this.fireSystemEvents('phase:enter', this.phaseId).catch(() => {});
+      }
+    })();
+  }
+
+  /**
+   * Navigates devices to their asset-declared starting webpage (device
+   * `startWebsite`). Fire-and-forget deliveries — never awaits acks, so a
+   * stuck device can't block session start. `onlyDeviceId` limits the send to
+   * one device (the late-attach/reconnect path).
+   */
+  private async sendStartWebsites(onlyDeviceId?: string): Promise<void> {
+    const rows = await this.deps.prisma.asset.findMany({
+      where: {
+        themeId: this.themeId,
+        kind: 'device',
+        ...(onlyDeviceId !== undefined ? { id: onlyDeviceId } : {}),
+      },
+    });
+    for (const row of rows) {
+      const parsed = assetDataSchemas.device.safeParse(row.data);
+      const startWebsite = parsed.success ? parsed.data.startWebsite : null;
+      if (!startWebsite) continue;
+      const cmd: Command = {
+        type: 'navigate',
+        deviceId: row.id,
+        websiteId: startWebsite.websiteId,
+        query: startWebsite.query,
+      };
+      try {
+        const resolution = await this.deps.resolver.resolve(this.themeId, cmd, {
+          vars: this.vars,
+          urlOverrides: this.urlOverrides,
+        });
+        for (const delivery of resolution.deliveries) {
+          this.sendWire(delivery.deviceId, delivery.wire, 'startWebsite');
+        }
+      } catch (err) {
+        if (err instanceof ResolutionError) {
+          void this.log(
+            'warn',
+            'command',
+            `Start website for device "${row.name}" skipped: ${err.message}`,
+            { deviceId: row.id },
+          );
+          continue;
+        }
+        throw err;
+      }
     }
   }
 
@@ -929,6 +990,7 @@ export class SessionEngine {
       resolution = await this.deps.resolver.resolve(this.themeId, cmd, {
         vars: this.vars,
         payload,
+        urlOverrides: this.urlOverrides,
       });
     } catch (err) {
       if (err instanceof ResolutionError) {
@@ -1091,14 +1153,36 @@ export class SessionEngine {
   private waitForAck(
     commandId: string,
     runId?: string,
+    timeoutMs = ACK_WAIT_TIMEOUT_MS,
   ): Promise<'done' | 'failed' | 'ended' | 'timeout' | 'aborted'> {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.pendingAcks.delete(commandId);
         resolve('timeout');
-      }, ACK_WAIT_TIMEOUT_MS);
+      }, timeoutMs);
       this.pendingAcks.set(commandId, { resolve, timeout, runId });
     });
+  }
+
+  /**
+   * Debug window: invoke a website-registered test callback on a device.
+   * Test sessions only. True when the callback ran and settled successfully.
+   */
+  async runTestCallback(deviceId: string, name: string): Promise<boolean> {
+    if (this.mode !== 'test') {
+      throw new EngineStateError(
+        'Test callbacks are only available in test sessions',
+      );
+    }
+    const wire: WireCommand = { id: randomUUID(), type: 'testCallback', name };
+    const online = this.sendWire(deviceId, wire, 'testCallback');
+    if (!online) return false;
+    const status = await this.waitForAck(
+      wire.id,
+      undefined,
+      TEST_CALLBACK_TIMEOUT_MS,
+    );
+    return status === 'done';
   }
 
   private async callEvent(
@@ -1450,6 +1534,15 @@ export class SessionEngine {
           waiting: false,
         });
       }
+    }
+    // Late attach/reconnect: send the device's starting webpage unless a
+    // website is already showing or a navigate is being redelivered above.
+    if (
+      (this.state === 'running' || this.state === 'paused') &&
+      !this.deviceWebsites.has(deviceId) &&
+      ![...(perDevice?.values() ?? [])].some((w) => w.type === 'navigate')
+    ) {
+      void this.sendStartWebsites(deviceId).catch(() => {});
     }
   }
 

@@ -8,35 +8,26 @@ import type {
   SessionNotification,
   SessionRuns,
   SessionState,
-  WebsiteTestActivity,
-  WebsiteTestRun,
   WireCommand,
 } from '@roomkit/shared';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import type { RuntimeTransport } from '../runtime/runtime-transport';
-import { WebsiteTestService } from '../website-test/website-test.service';
-import type { WebsiteTestTransport } from '../website-test/website-test-transport';
 import { AdminGateway } from './admin.gateway';
+import { ConnectionRegistry } from './connection-registry';
 import { DeviceGateway } from './device.gateway';
 
-/**
- * Bridges the runtime's (and website-test service's) outbound calls onto the
- * two namespaces.
- */
+/** Bridges the runtime's outbound calls onto the socket namespaces. */
 @Injectable()
-export class RuntimeTransportAdapter
-  implements RuntimeTransport, WebsiteTestTransport, OnModuleInit
-{
+export class RuntimeTransportAdapter implements RuntimeTransport, OnModuleInit {
   constructor(
     private readonly deviceGateway: DeviceGateway,
     private readonly adminGateway: AdminGateway,
     private readonly runtime: SessionRuntimeService,
-    private readonly websiteTest: WebsiteTestService,
+    private readonly registry: ConnectionRegistry,
   ) {}
 
   onModuleInit(): void {
     this.runtime.registerTransport(this);
-    this.websiteTest.registerTransport(this);
   }
 
   sendCommand(
@@ -94,22 +85,7 @@ export class RuntimeTransportAdapter
     this.adminGateway.broadcastNotification(notification);
   }
 
-  // ── WebsiteTestTransport ──────────────────────────────────────────────────
-
-  /** Device-room only — website-test states must never hit /admin session:state. */
-  broadcastRunSessionState(state: SessionState): void {
-    this.deviceGateway.broadcastSessionState(state);
-  }
-
-  disconnectRun(runId: string): void {
-    this.deviceGateway.endSession(runId);
-  }
-
-  broadcastRunState(run: WebsiteTestRun): void {
-    this.adminGateway.broadcastWebsiteTestState(run);
-  }
-
-  broadcastActivity(entry: WebsiteTestActivity): void {
-    this.adminGateway.broadcastWebsiteTestActivity(entry);
+  hasAnyDeviceOnline(sessionId: string): boolean {
+    return this.registry.hasAnyForSession(sessionId);
   }
 }

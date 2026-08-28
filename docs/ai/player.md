@@ -6,9 +6,17 @@ RoomKit Player is a Tauri launcher plus one stage webview per configured device 
 
 ## Launcher and windows
 
-The launcher persists the server origin, a stable launcher UUID/name, and manual device entries in the platform app-data directory. It registers on Socket.io `/player`; Studio can then send test-session and website-test start requests. Auto-opened test windows carry temporary codes in their URL and do not mutate manual launcher entries.
+The launcher persists the server origin, a stable launcher UUID/name, and manual device entries in the platform app-data directory. It registers on Socket.io `/player`; Studio can then send test-session start requests. On desktop the launcher has two tabs: the production tab (실제) keeps the unchanged per-device code-entry rows, and the test tab (테스트) launches player-side test sessions. Auto-opened test windows carry temporary codes in their URL and do not mutate manual launcher entries.
 
-Desktop window labels are stable per manual device, so reopening focuses the existing stage. Test/website-test labels also include the session/run scope and replace stale windows whose codes have expired. Android is single-window: the first open request replaces the launcher, additional devices in the same batch are dropped, and returning to the launcher requires restarting the app.
+Desktop window labels are stable per manual device, so reopening focuses the existing stage. Test labels also include the session scope and replace stale windows whose codes have expired; the debug window uses the Tauri label `debug-<first 8 of session ID>`. Android is single-window: the first open request replaces the launcher, additional devices in the same batch are dropped, and returning to the launcher requires restarting the app. Mobile hides the test tab entirely.
+
+## Player test sessions and the debug window
+
+The test tab requires a server admin login (ID/password stored in plaintext in the player `config.json`; the JWT expires after twelve hours and is re-minted silently on 401). It offers a theme select (admin REST `GET /themes`), a multi-select of theme devices to launch windows for, and website URL-override rows pairing a website asset with a replacement URL — a row is auto-added when a selected device has a starting webpage, and an empty URL means no substitution. Selections persist per theme in the player config (`testConfigs`). Starting a test posts `POST /sessions {themeId, mode: 'test', playerId, deviceIds, urlOverrides}`; the server pushes `test:start` to open the device windows, and the launcher opens a debug window.
+
+The debug window (`?debug=<sessionId>&theme=<themeId>`) connects to the admin namespace with the admin JWT and uses the session REST routes. It hosts the session start button (not the launcher) plus pause/resume/end, timer adjust/pause, phase switch/restart, concurrent manual event execution grouped by phase with a live running-run list and abort, a read-only per-event sequence preview with live progress highlight, a per-device panel (online status, test-code copy, current website, navigate to a website asset, reset, page-registered messages and test callbacks), manual media commands per player asset, hint push and hint-code show/hide, a filtered live log feed with backfill, and notifications.
+
+Player-created test sessions auto-end on the server sixty seconds after all their devices disconnect (once any device has connected; reconnect cancels the countdown) and ten minutes after creation if no device ever connected.
 
 ## Stage ownership
 

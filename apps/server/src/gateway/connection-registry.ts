@@ -12,8 +12,6 @@ export interface AttachedDevice {
 export interface DeviceSocketData {
   attach?: AttachedDevice;
   lobby?: Omit<LobbyEntry, 'socket'>;
-  /** Attach belongs to a website-test run, not a session (attach.sessionId = runId). */
-  websiteTest?: boolean;
   /** @roomkit/client version from auth; absent = a client predating reporting. */
   clientVersion?: string;
 }
@@ -26,6 +24,10 @@ export interface DeviceSocketData {
 export interface DeviceVersions {
   clientVersion?: string | null;
   helperVersion?: string | null;
+  /** Message names the loaded website registered declaratively; null = none reported. */
+  helperMessages?: string[] | null;
+  /** Test-callback names the loaded website registered. */
+  helperTestCallbacks?: string[] | null;
 }
 
 export type DeviceSocket = Socket<
@@ -94,6 +96,14 @@ export class ConnectionRegistry {
 
   isOnline(sessionId: string, deviceId: string): boolean {
     return (this.sockets.get(`${sessionId}:${deviceId}`)?.size ?? 0) > 0;
+  }
+
+  /** True while any device socket of the session is connected. */
+  hasAnyForSession(sessionId: string): boolean {
+    for (const key of this.sockets.keys()) {
+      if (key.startsWith(`${sessionId}:`)) return true;
+    }
+    return false;
   }
 
   /** Online devices, for the /admin initial dump. */

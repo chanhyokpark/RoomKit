@@ -28,9 +28,23 @@ export function useRoomKitHelper() {
   useEffect(() => {
     // 이 사이트가 자막과 비디오를 맡는다고 Player에 선언합니다.
     // 선언한 슬롯은 Player가 그리지 않으므로 아래 핸들러가 반드시 렌더링해야 합니다.
+    // messages/testCallbacks에 등록한 이름은 Player에 보고되어 디버그 창에서
+    // 목록으로 보이고, 테스트 세션에서 직접 실행해 볼 수 있습니다.
     const helper = new RoomKitHelper({
       lockdown: import.meta.env.PROD,
       renders: { subtitle: true, video: true, hintCode: false },
+      messages: {
+        // 메시지 애셋 이름별 핸들러. waitUntilEnd 메시지는 반환한 Promise가
+        // 끝난 뒤 ack됩니다.
+        announce: async (payload, envelope) => {
+          addActivity(`메시지 ${envelope.messageName}: ${JSON.stringify(payload)}`);
+          await Promise.resolve();
+        },
+      },
+      testCallbacks: {
+        // 디버그 창에서 인자 없이 실행할 수 있는 테스트 콜백입니다.
+        'clear-activities': () => setActivities([]),
+      },
     });
     helperRef.current = helper;
 
@@ -65,10 +79,12 @@ export function useRoomKitHelper() {
       addActivity('비디오 정지');
     });
 
-    helper.on('message', async (payload, envelope) => {
-      addActivity(`메시지 ${envelope.messageName}: ${JSON.stringify(payload)}`);
-      // async 작업이 끝날 때까지 기다리는 메시지는 이 Promise가 끝난 뒤 ack됩니다.
-      await Promise.resolve();
+    // 등록하지 않은 메시지까지 모두 받고 싶다면 catch-all 리스너도 함께
+    // 쓸 수 있습니다(구버전 방식, deprecated).
+    helper.on('message', (payload, envelope) => {
+      if (envelope.messageName !== 'announce') {
+        addActivity(`메시지 ${envelope.messageName}: ${JSON.stringify(payload)}`);
+      }
     });
 
     return () => {

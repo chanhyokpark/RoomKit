@@ -21,12 +21,18 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
 ```ts
 import { RoomKitHelper } from "@roomkit/helper";
 
-const roomkit = new RoomKitHelper();
-roomkit.trigger("keypad:correct", { digits: "0417" });
-roomkit.on("message", async (payload, message) => {
-  if (message.messageName === "set-screen") await updateScreen(payload);
+const roomkit = new RoomKitHelper({
+  messages: {
+    "set-screen": async (payload) => updateScreen(payload),
+  },
+  testCallbacks: {
+    "화면-깜빡이기": () => flashScreen(),
+  },
 });
+roomkit.trigger("keypad:correct", { digits: "0417" });
 ```
+
+Helper 0.4.0부터는 위처럼 `messages`에 메시지 이름별 handler를, `testCallbacks`에 인자 없는 테스트용 함수를 등록해 주세요. 등록한 이름은 서버에 보고되어 Player 디버그 창에서 목록으로 보고 바로 전송·실행할 수 있습니다. 테스트 콜백은 테스트 세션에서만 실행됩니다. 기존 `roomkit.on("message", ...)`도 동작하지만 `messages` 옵션 사용을 권장합니다.
 
 `triggerAndWait()`는 트리거가 시작한 모든 이벤트가 끝날 때까지 기다립니다. `getRemainingTime()`은 Player가 알고 있는 남은 시간을 가져옵니다. 페이지를 제거할 때는 `destroy()`를 호출해 주세요.
 
@@ -60,9 +66,7 @@ roomkit.on("videoStop", () => element.pause());
 
 ## 개발과 배포
 
-Studio의 **웹 테스트**에서 Player와 장치를 선택하고 Vite 개발 서버 URL을 입력해 주세요. HMR로 페이지가 다시 로드되면 Helper가 새 hello를 보내고 슬롯을 다시 선언합니다. 활동 로그에서 트리거, 메시지 처리와 완료 응답을 확인하실 수 있습니다.
-
-웹 테스트의 트리거는 실행되지 않고 일치하는 이벤트만 기록됩니다. 힌트 요청도 실제 세션 없이 `session_not_running`으로 응답합니다. 전체 이벤트 흐름과 성공한 힌트 단계를 확인할 때는 테스트 세션을 사용해 주세요.
+Player 런처의 **테스트** 탭에서 테마와 장치를 선택하고 **웹사이트 URL 대체**에 Vite 개발 서버 URL을 입력해 테스트를 시작해 주세요. 실제 테스트 세션이 열리므로 트리거로 실행되는 이벤트, 타이머와 힌트 흐름을 그대로 확인할 수 있고, 디버그 창에서 등록한 메시지 전송, 테스트 콜백 실행과 로그를 확인하실 수 있습니다. HMR로 페이지가 다시 로드되면 Helper가 새 hello를 보내고 슬롯과 등록 이름을 다시 선언합니다.
 
 배포할 때는 다음 중 하나를 선택해 주세요.
 

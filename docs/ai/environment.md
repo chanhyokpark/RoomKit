@@ -81,6 +81,6 @@ The repository contains Docker and Kubernetes examples, not a hosted control pla
 - a server URL resolvable and reachable from every Player/custom device;
 - storage CORS/presigned URL behavior compatible with Player media downloads.
 
-Studio reads `PUBLIC_API_URL` as a build-time public value. It reads optional `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` at runtime under adapter-node; these override the shared minimums used by operation/website-test version warnings.
+Studio reads `PUBLIC_API_URL` as a build-time public value. It reads optional `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` at runtime under adapter-node; these override the shared minimums used by operation-screen version warnings.
 
 Do not expose PostgreSQL or MinIO administration ports publicly. The Kubernetes manifests under `k8s/` show the expected services, ingress, and build/deploy flow.

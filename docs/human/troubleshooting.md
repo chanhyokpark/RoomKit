@@ -27,7 +27,7 @@
 
 ## Helper 웹사이트
 
-- 일반 브라우저에서 Helper만 실행하면 Player가 없으므로 아무 응답도 오지 않습니다. Studio 웹 테스트를 사용해 주세요.
+- 일반 브라우저에서 Helper만 실행하면 Player가 없으므로 아무 응답도 오지 않습니다. Player 런처의 테스트 탭에서 웹사이트 URL 대체로 테스트 세션을 시작해 주세요.
 - Helper 이벤트가 오지 않으면 페이지마다 `new RoomKitHelper()`가 실행되는지 확인해 주세요.
 - ZIP 배포 후 JS/CSS가 404이면 Vite `base: './'` 설정과 ZIP 루트의 `index.html`을 확인해 주세요.
 - HTTPS 사이트가 HTTP 서버나 미디어 URL을 직접 요청하지 않도록 해 주세요. Player가 전달한 비디오 URL을 그대로 사용해 주세요.
@@ -42,7 +42,7 @@
 
 ## 버전 경고
 
-- 운영·웹 테스트 화면의 노란 경고는 연결된 Player, Client 또는 Helper가 Studio의 기대 버전보다 낮다는 뜻입니다. 해당 앱/라이브러리를 함께 업데이트해 주세요.
+- 운영 화면의 노란 경고는 연결된 Player, Client 또는 Helper가 Studio의 기대 버전보다 낮다는 뜻입니다. 해당 앱/라이브러리를 함께 업데이트해 주세요.
 - 배포 환경에서 의도적으로 다른 최소 버전을 사용할 때는 Studio의 `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, `PUBLIC_EXPECTED_HELPER_VERSION`을 설정해 주세요.
 
 문제가 계속되면 세션 로그, 장치 콘솔과 사용 중인 Client/Helper 버전을 함께 확인해 주세요.

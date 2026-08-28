@@ -70,7 +70,7 @@ Svelte 5에서는 `HintCounter`를 `<HintphoneSetup>` 아래 컴포넌트 초기
 3. 웹사이트 애셋에 힌트폰 빌드 결과나 외부 URL을 등록해 주세요.
 4. 테스트 세션을 시작하고 코드를 입력해 주세요.
 
-웹 테스트는 힌트 입력과 오류 전달 자체를 확인할 수 있지만 실제 힌트 상태를 실행하지 않으므로 항상 `session_not_running`을 반환합니다. 단계 이동, 정답과 운영자 푸시는 실행 중인 테스트 세션에서 검증해 주세요. 운영자 푸시는 현재 Studio 카드가 아니라 MCP `control_session`의 `push_hint` 또는 `POST /api/sessions/:id/hint`로 사용할 수 있습니다.
+힌트 입력, 단계 이동, 정답과 운영자 푸시는 실행 중인 테스트 세션에서 검증해 주세요. Player 런처의 **테스트** 탭으로 세션을 만들면 디버그 창에서 힌트 푸시와 힌트 코드 표시·숨김도 바로 시험할 수 있습니다. 운영자 푸시는 현재 Studio 카드가 아니라 디버그 창, MCP `control_session`의 `push_hint` 또는 `POST /api/sessions/:id/hint`로 사용할 수 있습니다.
 
 `HintRenderer`는 관리자 입력인 힌트 HTML을 렌더링합니다. 신뢰할 수 없는 사용자가 힌트 내용을 작성할 수 있는 환경이라면 서버에서 별도 정제가 필요합니다.
 

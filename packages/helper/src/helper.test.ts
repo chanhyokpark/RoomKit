@@ -12,7 +12,9 @@ import { HELPER_VERSION } from './version.js';
 type Listener = (event: { data: unknown }) => void;
 
 /** Fake iframe environment: capture outbound posts, allow injecting inbound. */
-function env(options: Pick<RoomKitHelperOptions, 'renders'> = {}) {
+function env(
+  options: Pick<RoomKitHelperOptions, 'renders' | 'messages' | 'testCallbacks'> = {},
+) {
   const posted: unknown[] = [];
   const listeners = new Set<Listener>();
   const helper = new RoomKitHelper({
@@ -49,6 +51,8 @@ describe('RoomKitHelper', () => {
         type: 'hello',
         renders: { subtitle: false, hintCode: false, video: false },
         version: HELPER_VERSION,
+        messages: [],
+        testCallbacks: [],
       },
     ]);
     expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({ type: 'hello' });
@@ -61,6 +65,20 @@ describe('RoomKitHelper', () => {
       type: 'hello',
       renders: { subtitle: true, hintCode: false, video: true },
       version: HELPER_VERSION,
+      messages: [],
+      testCallbacks: [],
+    });
+  });
+
+  it('hello reports registered message and test-callback names', () => {
+    const { posted } = env({
+      messages: { unlock: () => {}, lock: () => {} },
+      testCallbacks: { 'reset-puzzle': () => {} },
+    });
+    expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({
+      type: 'hello',
+      messages: ['unlock', 'lock'],
+      testCallbacks: ['reset-puzzle'],
     });
   });
 
@@ -254,6 +272,101 @@ describe('RoomKitHelper', () => {
       inject({ ...awaited, commandId: undefined });
       await flush();
       expect(posted).toHaveLength(1); // hello only
+    });
+
+    it('a named handler is dispatched by messageName and awaited', async () => {
+      const unlock = vi.fn();
+      const other = vi.fn();
+      const { posted, inject } = env({ messages: { unlock, other } });
+      inject(awaited);
+      await flush();
+      expect(unlock).toHaveBeenCalledExactlyOnceWith({ door: 'north' }, awaited);
+      expect(other).not.toHaveBeenCalled();
+      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
+        type: 'message:done',
+        commandId,
+        ok: true,
+      });
+    });
+
+    it('a rejecting named handler posts ok:false; legacy listeners still run', async () => {
+      const legacy = vi.fn();
+      const { helper, posted, inject } = env({
+        messages: { unlock: () => Promise.reject(new Error('boom')) },
+      });
+      helper.on('message', legacy);
+      inject(awaited);
+      await flush();
+      expect(legacy).toHaveBeenCalledOnce();
+      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
+        type: 'message:done',
+        ok: false,
+      });
+    });
+
+    it('a named handler also runs for fire-and-forget messages', async () => {
+      const unlock = vi.fn();
+      const { posted, inject } = env({ messages: { unlock } });
+      inject({ ...awaited, commandId: undefined });
+      await flush();
+      expect(unlock).toHaveBeenCalledOnce();
+      expect(posted).toHaveLength(1); // hello only — nothing to ack
+    });
+  });
+
+  describe('test callbacks', () => {
+    const requestId = '77777777-7777-4777-8777-777777777777';
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('runs a registered callback and posts a schema-valid ok:true done', async () => {
+      const cb = vi.fn();
+      const { posted, inject } = env({ testCallbacks: { 'reset-puzzle': cb } });
+      inject({
+        source: 'roomkit-player',
+        type: 'test:callback',
+        requestId,
+        name: 'reset-puzzle',
+      });
+      await flush();
+      expect(cb).toHaveBeenCalledOnce();
+      expect(HelperToPlayerSchema.parse(posted[1])).toEqual({
+        source: 'roomkit-helper',
+        type: 'test:callback:done',
+        requestId,
+        ok: true,
+      });
+    });
+
+    it('unknown names and throwing callbacks post ok:false', async () => {
+      const { posted, inject } = env({
+        testCallbacks: {
+          boom: () => {
+            throw new Error('boom');
+          },
+        },
+      });
+      inject({
+        source: 'roomkit-player',
+        type: 'test:callback',
+        requestId,
+        name: 'nope',
+      });
+      await flush();
+      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
+        type: 'test:callback:done',
+        ok: false,
+      });
+      inject({
+        source: 'roomkit-player',
+        type: 'test:callback',
+        requestId,
+        name: 'boom',
+      });
+      await flush();
+      expect(HelperToPlayerSchema.parse(posted[2])).toMatchObject({
+        type: 'test:callback:done',
+        ok: false,
+      });
     });
   });
 

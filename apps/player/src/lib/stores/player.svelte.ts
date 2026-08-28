@@ -3,15 +3,9 @@ import {
 	PLAYER_NAMESPACE,
 	PlayerEvents,
 	PlayerTestStartSchema,
-	PlayerWebsiteTestStartSchema,
-	PlayerWebsiteTestStopSchema,
 	type PlayerTestStart
 } from '@roomkit/shared';
-import {
-	closeWebsiteTestWindows,
-	openTestDeviceWindow,
-	openWebsiteTestWindow
-} from '../windows';
+import { openTestDeviceWindow } from '../windows';
 import { vlog } from '../log';
 import { config } from './config.svelte';
 
@@ -60,24 +54,6 @@ class PlayerStore {
 			vlog('launcher', 'test:start', parsed.data);
 			this.lastTestStart = parsed.data;
 			void this.openWindows(parsed.data);
-		});
-		socket.on(PlayerEvents.websiteTestStart, (payload: unknown) => {
-			const parsed = PlayerWebsiteTestStartSchema.safeParse(payload);
-			if (!parsed.success) {
-				console.warn('[player:launcher] invalid websiteTest:start dropped', payload, parsed.error);
-				return;
-			}
-			vlog('launcher', 'websiteTest:start', parsed.data);
-			void openWebsiteTestWindow(parsed.data.runId, parsed.data.device);
-		});
-		socket.on(PlayerEvents.websiteTestStop, (payload: unknown) => {
-			const parsed = PlayerWebsiteTestStopSchema.safeParse(payload);
-			if (!parsed.success) {
-				console.warn('[player:launcher] invalid websiteTest:stop dropped', payload, parsed.error);
-				return;
-			}
-			vlog('launcher', 'websiteTest:stop', parsed.data);
-			void closeWebsiteTestWindows(parsed.data.runId);
 		});
 	}
 

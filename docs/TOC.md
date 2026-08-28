@@ -8,7 +8,7 @@ RoomKit은 방탈출 게임의 제작, 테스트, 운영과 장치 연동을 한
 2. [설치하고 실행하기](./human/getting-started.md) — 서버, Studio, Player를 실행해 보세요.
 3. [Player 설정하기](./human/player.md) — 장치 창, 캐시, 테스트 도구와 키오스크 모드를 설정하세요.
 4. [테마 제작하기](./human/authoring.md) — 애셋, 페이즈, 이벤트와 커맨드를 구성하세요.
-5. [테스트하고 운영하기](./human/operations.md) — 웹 테스트와 테스트 세션부터 실제 운영까지 확인하세요.
+5. [테스트하고 운영하기](./human/operations.md) — 테스트 세션부터 실제 운영까지 확인하세요.
 
 ## 기능별 문서
 

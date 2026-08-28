@@ -1,7 +1,9 @@
 export {
   RoomKitHelper,
+  type MessageHandler,
   type RoomKitHelperEvents,
   type RoomKitHelperOptions,
+  type TestCallback,
   type TriggerAndWaitOptions,
 } from './helper.js';
 export { HELPER_VERSION } from './version.js';

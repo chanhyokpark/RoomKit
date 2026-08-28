@@ -15,7 +15,6 @@ import { sessionTools } from './tools/sessions.js';
 import { tagTools } from './tools/tags.js';
 import { themeTools } from './tools/themes.js';
 import { uploadTools } from './tools/uploads.js';
-import { websiteTestTools } from './tools/website-test.js';
 
 const state = new SessionState();
 const ctx: ToolContext = {
@@ -34,7 +33,6 @@ const tools = [
   ...uploadTools,
   ...sequenceTools,
   ...sessionTools,
-  ...websiteTestTools,
   ...deviceTools,
 ];
 

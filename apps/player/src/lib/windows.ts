@@ -77,33 +77,40 @@ export async function openTestDeviceWindow(
 }
 
 /**
- * Auto-opened stage window for a studio website test (`websiteTest:start`).
- * Identical to a test-session window — the URL under test arrives as a
- * navigate wire once the device socket attaches, so it survives reconnects
- * and can be re-pointed/reloaded live from studio.
+ * Debug/control window for a player-started test session — session controls,
+ * event execution, logs. Desktop only (the test tab is hidden on mobile).
+ * One debug window per session; a new test run replaces stale ones.
  */
-export async function openWebsiteTestWindow(
-	runId: string,
-	device: TestWindowDevice
-): Promise<void> {
-	return openCodedWindow('wtest', runId, device);
-}
-
-/** Close a website test's window(s); no-op in the browser harness and on mobile. */
-export async function closeWebsiteTestWindows(runId: string): Promise<void> {
-	if (!isTauri() || (await isMobile())) return;
+export async function openDebugWindow(sessionId: string, themeId: string): Promise<void> {
+	const query = `debug=${encodeURIComponent(sessionId)}&theme=${encodeURIComponent(themeId)}`;
+	if (!isTauri()) {
+		window.open(`/?${query}`, `debug-${sessionId.slice(0, 8)}`);
+		return;
+	}
 	const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-	const suffix = `-${runId.slice(0, 8)}`;
+	const windowLabel = `debug-${sessionId.slice(0, 8)}`;
 	for (const w of await WebviewWindow.getAll()) {
-		if (w.label.startsWith('wtest-') && w.label.endsWith(suffix)) {
-			vlog('windows', 'close website test window', w.label);
+		if (w.label.startsWith('debug-') && w.label !== windowLabel) {
+			vlog('windows', 'replace stale debug window', w.label);
 			await w.destroy().catch(() => {});
 		}
 	}
+	const existing = await WebviewWindow.getByLabel(windowLabel);
+	if (existing) {
+		await existing.setFocus();
+		return;
+	}
+	vlog('windows', 'open debug window', windowLabel);
+	new WebviewWindow(windowLabel, {
+		url: `index.html?${query}`,
+		title: 'RoomKit Player — 테스트 디버그',
+		width: 1100,
+		height: 800
+	});
 }
 
 async function openCodedWindow(
-	prefix: 'test' | 'wtest',
+	prefix: 'test',
 	scopeId: string,
 	device: TestWindowDevice
 ): Promise<void> {

@@ -1,4 +1,4 @@
-import type { RoomKitClient } from '@roomkit/client';
+import type { DoneFn, RoomKitClient } from '@roomkit/client';
 import {
 	HelperToPlayerSchema,
 	PLAYER_SOURCE,
@@ -10,7 +10,8 @@ import {
 	type PlayerSubtitle,
 	type PlayerToHelper,
 	type PlayerVideoPlay,
-	type WireMessage
+	type WireMessage,
+	type WireTestCallback
 } from '@roomkit/shared';
 import { connection } from '../stores/connection.svelte';
 import { vlog } from '../log';
@@ -43,6 +44,13 @@ export class HelperBridge {
 	 * reconnect re-attaches the device and drops server-side version state.
 	 */
 	private helperVersion: string | null | undefined;
+	/** Message/test-callback names the site registered in its last hello. */
+	private helperExtras: { messages: string[]; testCallbacks: string[] } = {
+		messages: [],
+		testCallbacks: []
+	};
+	/** In-flight test-callback wires awaiting the helper's done report. */
+	private readonly pendingTestCallbacks = new Map<string, DoneFn>();
 
 	constructor(
 		private readonly iframe: HTMLIFrameElement,
@@ -110,19 +118,34 @@ export class HelperBridge {
 		const onHintError = (error: HintError) =>
 			this.send({ source: PLAYER_SOURCE, type: 'hint:error', error });
 		const onWelcome = () => {
-			if (this.helperVersion !== undefined) this.client.reportHelperInfo(this.helperVersion);
+			if (this.helperVersion !== undefined) {
+				this.client.reportHelperInfo(this.helperVersion, this.helperExtras);
+			}
+		};
+		// Debug-window test callbacks: relay to the site, hold the wire's ack
+		// until the helper's test:callback:done (or the page goes away).
+		const onTestCallback = (wire: WireTestCallback, done: DoneFn) => {
+			this.pendingTestCallbacks.set(wire.id, done);
+			this.send({
+				source: PLAYER_SOURCE,
+				type: 'test:callback',
+				requestId: wire.id,
+				name: wire.name
+			});
 		};
 		this.client
 			.on('message', onMessage)
 			.on('hint', onHint)
 			.on('hintError', onHintError)
-			.on('welcome', onWelcome);
+			.on('welcome', onWelcome)
+			.on('testCallback', onTestCallback);
 		this.cleanups.push(() => {
 			this.client
 				.off('message', onMessage)
 				.off('hint', onHint)
 				.off('hintError', onHintError)
-				.off('welcome', onWelcome);
+				.off('welcome', onWelcome)
+				.off('testCallback', onTestCallback);
 		});
 	}
 
@@ -133,6 +156,10 @@ export class HelperBridge {
 		for (const [id, pending] of this.pendingMessages) {
 			this.pendingMessages.delete(id);
 			pending.reject(new Error('bridge destroyed'));
+		}
+		for (const [id, done] of this.pendingTestCallbacks) {
+			this.pendingTestCallbacks.delete(id);
+			done('failed');
 		}
 	}
 
@@ -145,11 +172,17 @@ export class HelperBridge {
 		const buffered = new Set<string>();
 		for (const m of this.buffered) {
 			if (m.type === 'message' && m.commandId !== undefined) buffered.add(m.commandId);
+			if (m.type === 'test:callback') buffered.add(m.requestId);
 		}
 		for (const [id, pending] of this.pendingMessages) {
 			if (buffered.has(id)) continue;
 			this.pendingMessages.delete(id);
 			pending.reject(new Error(reason));
+		}
+		for (const [id, done] of this.pendingTestCallbacks) {
+			if (buffered.has(id)) continue;
+			this.pendingTestCallbacks.delete(id);
+			done('failed');
 		}
 	}
 
@@ -192,7 +225,11 @@ export class HelperBridge {
 				// Studio warns about outdated helper bundles; null = a bundle
 				// predating version reporting.
 				this.helperVersion = msg.version ?? null;
-				this.client.reportHelperInfo(this.helperVersion);
+				this.helperExtras = {
+					messages: msg.messages,
+					testCallbacks: msg.testCallbacks
+				};
+				this.client.reportHelperInfo(this.helperVersion, this.helperExtras);
 				// Replied to every hello so a reloaded page learns it again; test
 				// mode keeps the site's context menu usable (devtools).
 				this.post({
@@ -242,6 +279,13 @@ export class HelperBridge {
 				this.pendingMessages.delete(msg.commandId);
 				if (msg.ok) pending.resolve();
 				else pending.reject(new Error('message handler failed'));
+				return;
+			}
+			case 'test:callback:done': {
+				const done = this.pendingTestCallbacks.get(msg.requestId);
+				if (!done) return;
+				this.pendingTestCallbacks.delete(msg.requestId);
+				done(msg.ok ? 'done' : 'failed');
 				return;
 			}
 		}

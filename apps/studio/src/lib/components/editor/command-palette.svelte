@@ -12,7 +12,7 @@
 		open?: boolean;
 		/** Render as an always-visible pane instead of a dialog. */
 		inline?: boolean;
-		/** Restrict the palette to these types (e.g. the website-test console). */
+		/** Restrict the palette to these types. */
 		allowedTypes?: CommandType[];
 		onselect: (type: CommandType) => void;
 	} = $props();

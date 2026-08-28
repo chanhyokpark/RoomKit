@@ -17,8 +17,17 @@ export const SessionSchema = z.object({
   timerEndsAt: z.coerce.date().nullable(),
   /** Set while the timer is paused. */
   timerRemainingMs: z.number().int().nullable(),
+  /** Test sessions only: websiteId → replacement URL applied at resolution. */
+  urlOverrides: z.record(z.string(), z.string()).default({}),
 });
 export type Session = z.infer<typeof SessionSchema>;
+
+/** One website-URL substitution row (test sessions only). */
+export const SessionUrlOverrideSchema = z.object({
+  websiteId: z.uuid(),
+  url: z.string().min(1),
+});
+export type SessionUrlOverride = z.infer<typeof SessionUrlOverrideSchema>;
 
 /** Operator-entered test code for one device (test sessions only). */
 export const DeviceCodeInputSchema = z.object({
@@ -40,6 +49,10 @@ export const CreateSessionInputSchema = z
     deviceCodes: z.array(DeviceCodeInputSchema).optional(),
     /** Connected player launcher that should auto-open the device windows. */
     playerId: z.uuid().optional(),
+    /** With `playerId`: mint codes for this device subset only (default: all). */
+    deviceIds: z.array(z.uuid()).optional(),
+    /** Test sessions only: substitute website asset URLs for this session. */
+    urlOverrides: z.array(SessionUrlOverrideSchema).optional(),
   })
   .superRefine((input, ctx) => {
     if (input.mode === 'test') {
@@ -57,20 +70,24 @@ export const CreateSessionInputSchema = z
           message: 'deviceCodes and playerId are mutually exclusive',
         });
       }
+      if (input.deviceIds !== undefined && input.playerId === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['deviceIds'],
+          message: 'deviceIds requires playerId',
+        });
+      }
     }
-    if (input.mode === 'production' && input.deviceCodes !== undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['deviceCodes'],
-        message: 'deviceCodes is only allowed for test sessions',
-      });
-    }
-    if (input.mode === 'production' && input.playerId !== undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['playerId'],
-        message: 'playerId is only allowed for test sessions',
-      });
+    if (input.mode === 'production') {
+      for (const key of ['deviceCodes', 'playerId', 'deviceIds', 'urlOverrides'] as const) {
+        if (input[key] !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: `${key} is only allowed for test sessions`,
+          });
+        }
+      }
     }
   });
 export type CreateSessionInput = z.infer<typeof CreateSessionInputSchema>;
@@ -116,6 +133,13 @@ export type SwitchPhaseInput = z.infer<typeof SwitchPhaseInputSchema>;
 
 export const ManualTriggerInputSchema = z.object({ eventId: z.uuid() });
 export type ManualTriggerInput = z.infer<typeof ManualTriggerInputSchema>;
+
+/**
+ * Debug window: run a website-registered test callback on one device.
+ * POST /sessions/:id/devices/:deviceId/test-callback — test sessions only.
+ */
+export const RunTestCallbackInputSchema = z.object({ name: z.string().min(1) });
+export type RunTestCallbackInput = z.infer<typeof RunTestCallbackInputSchema>;
 
 /** Admin pushes an arbitrary hint step to the theme's hint device(s). */
 export const PushHintInputSchema = z.object({

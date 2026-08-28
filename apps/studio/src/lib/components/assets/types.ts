@@ -30,6 +30,9 @@ export type Draft =
 			displayName: string;
 			isHintDevice: boolean;
 			hintCodeCss: string;
+			/** Null = no starting webpage. */
+			startWebsiteId: string | null;
+			startQuery: { key: string; value: string }[];
 	  }
 	| { kind: 'bgm'; fileKey: string | null; durationMs: number; fadeInMs: number; fadeOutMs: number }
 	| { kind: 'sfx'; fileKey: string | null; durationMs: number }

@@ -4,6 +4,7 @@ import type {
   HelperHintSubmit,
   HelperMessageDone,
   HelperRenderClaims,
+  HelperTestCallbackDone,
   HelperTimerGet,
   HelperTrigger,
   HelperVideoEnded,
@@ -47,6 +48,19 @@ function requestId(): string {
   });
 }
 
+/**
+ * Named handler for one message asset. May return a promise: when the command
+ * was sent with waitUntilEnd, the server sequence waits until it settles (a
+ * rejection fails the command; the sequence still continues).
+ */
+export type MessageHandler = (
+  payload: Record<string, JsonValue>,
+  envelope: PlayerMessage,
+) => void | Promise<unknown>;
+
+/** Parameterless callback invokable from the player's debug window (test only). */
+export type TestCallback = () => void | Promise<void>;
+
 export interface RoomKitHelperOptions {
   /** Test seam; defaults to `window.parent`. */
   parentWindow?: Pick<Window, 'postMessage'>;
@@ -68,6 +82,18 @@ export interface RoomKitHelperOptions {
    * sequences waiting on the video's end block on that report.
    */
   renders?: Partial<HelperRenderClaims>;
+  /**
+   * Message handlers keyed by message asset name, registered at construction.
+   * The names are reported to the player in the hello, so the debug window
+   * can list (and send) exactly the messages this page understands. Prefer
+   * this over `on('message')`, which cannot be enumerated.
+   */
+  messages?: Record<string, MessageHandler>;
+  /**
+   * Named parameterless callbacks for testing, reported to the player like
+   * `messages` and invokable from the debug window (test sessions only).
+   */
+  testCallbacks?: Record<string, TestCallback>;
 }
 
 export interface TriggerAndWaitOptions {
@@ -92,6 +118,9 @@ export interface RoomKitHelperEvents extends Record<string, unknown[]> {
    * Listeners may return a promise: when the command was sent with
    * waitUntilEnd, the server sequence waits until every listener's promise
    * settles (a rejection fails the command; the sequence still continues).
+   * @deprecated Register named handlers via the `messages` constructor option
+   * instead — they are reported to the player for debugging. This catch-all
+   * listener keeps working alongside them.
    */
   message: [Record<string, JsonValue>, PlayerMessage];
   /** A hint step to render (reply to submitHint/requestHintStep, or a push). */
@@ -123,6 +152,10 @@ export class RoomKitHelper {
   };
   /** Player-reported session mode; production (locked down) until told. */
   private mode: SessionMode = 'production';
+  /** Named message handlers from the `messages` option. */
+  private readonly messages: Record<string, MessageHandler>;
+  /** Named test callbacks from the `testCallbacks` option. */
+  private readonly testCallbacks: Record<string, TestCallback>;
   /** blob: URL minted for the current delegated video; revoked on the next play/stop/destroy. */
   private videoUrl: string | null = null;
   /** Injected lockdown stylesheet, kept for removal in destroy(). */
@@ -147,6 +180,8 @@ export class RoomKitHelper {
   constructor(options: RoomKitHelperOptions = {}) {
     this.parent = options.parentWindow ?? window.parent;
     this.self = options.selfWindow ?? window;
+    this.messages = options.messages ?? {};
+    this.testCallbacks = options.testCallbacks ?? {};
     this.self.addEventListener('message', this.onMessage as EventListener);
     if (options.lockdown !== false) this.lockdown();
     // Tells the player this frame is ready (and which slots it renders); the
@@ -160,6 +195,8 @@ export class RoomKitHelper {
         video: options.renders?.video ?? false,
       },
       version: HELPER_VERSION,
+      messages: Object.keys(this.messages),
+      testCallbacks: Object.keys(this.testCallbacks),
     };
     this.post(hello);
     // The player's bridge may not be listening yet (created after this frame
@@ -358,7 +395,8 @@ export class RoomKitHelper {
       | HelperTimerGet
       | HelperVideoEnded
       | HelperVideoError
-      | HelperMessageDone,
+      | HelperMessageDone
+      | HelperTestCallbackDone,
   ): void {
     // '*': the player's (tauri) origin is unknowable from inside the iframe;
     // being embedded by the player is the trust anchor (see shared/helper.ts).
@@ -376,14 +414,34 @@ export class RoomKitHelper {
         if (typeof msg.payload !== 'object' || msg.payload === null) return;
         const payload = msg.payload as Record<string, JsonValue>;
         const envelope = msg as unknown as PlayerMessage;
-        // A commandId means the player awaits our handlers: collect listener
+        const named =
+          typeof envelope.messageName === 'string'
+            ? this.messages[envelope.messageName]
+            : undefined;
+        // A commandId means the player awaits our handlers: collect handler
         // return values and report message:done once they all settle.
         if (typeof msg.commandId !== 'string') {
+          if (named) {
+            try {
+              const result = named(payload, envelope);
+              if (result instanceof Promise) result.catch(() => {});
+            } catch {
+              // Fire-and-forget delivery: a throwing handler has nowhere to report.
+            }
+          }
           this.emitter.emit('message', payload, envelope);
           return;
         }
         const commandId = msg.commandId;
-        const results = this.emitter.emitCollect('message', payload, envelope);
+        const results: unknown[] = [];
+        if (named) {
+          try {
+            results.push(Promise.resolve(named(payload, envelope)));
+          } catch (err) {
+            results.push(Promise.reject(err));
+          }
+        }
+        results.push(...this.emitter.emitCollect('message', payload, envelope));
         void Promise.allSettled(
           results.filter((r): r is Promise<unknown> => r instanceof Promise),
         ).then((settled) => {
@@ -394,6 +452,30 @@ export class RoomKitHelper {
             ok: settled.every((s) => s.status === 'fulfilled'),
           } satisfies HelperMessageDone);
         });
+        return;
+      }
+      case 'test:callback': {
+        if (typeof msg.requestId !== 'string' || typeof msg.name !== 'string')
+          return;
+        const requestId = msg.requestId;
+        const done = (ok: boolean) =>
+          this.post({
+            source: HELPER_SOURCE,
+            type: 'test:callback:done',
+            requestId,
+            ok,
+          } satisfies HelperTestCallbackDone);
+        const callback = this.testCallbacks[msg.name];
+        if (!callback) {
+          done(false);
+          return;
+        }
+        void Promise.resolve()
+          .then(callback)
+          .then(
+            () => done(true),
+            () => done(false),
+          );
         return;
       }
       case 'hint:show': {

@@ -44,6 +44,10 @@ export const HelperHelloSchema = z.object({
   renders: HelperRenderClaimsSchema.default({ subtitle: false, hintCode: false, video: false }),
   /** Helper bundle version; absent on bundles predating version reporting. */
   version: z.string().optional(),
+  /** Message names registered via the `messages` option (declarative handlers). */
+  messages: z.array(z.string()).default([]),
+  /** Parameterless test-callback names registered via the `testCallbacks` option. */
+  testCallbacks: z.array(z.string()).default([]),
 });
 export type HelperHello = z.infer<typeof HelperHelloSchema>;
 
@@ -119,6 +123,18 @@ export const HelperMessageDoneSchema = z.object({
 });
 export type HelperMessageDone = z.infer<typeof HelperMessageDoneSchema>;
 
+/**
+ * A test callback the player asked to run settled. `ok: false` = unknown name
+ * or the callback threw/rejected. The testCallback wire is acked accordingly.
+ */
+export const HelperTestCallbackDoneSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('test:callback:done'),
+  requestId: z.uuid(),
+  ok: z.boolean(),
+});
+export type HelperTestCallbackDone = z.infer<typeof HelperTestCallbackDoneSchema>;
+
 export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperHelloSchema,
   HelperTriggerSchema,
@@ -128,6 +144,7 @@ export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperVideoEndedSchema,
   HelperVideoErrorSchema,
   HelperMessageDoneSchema,
+  HelperTestCallbackDoneSchema,
 ]);
 export type HelperToPlayer = z.infer<typeof HelperToPlayerSchema>;
 
@@ -289,6 +306,19 @@ export const PlayerVideoStopSchema = z.object({
 });
 export type PlayerVideoStop = z.infer<typeof PlayerVideoStopSchema>;
 
+/**
+ * Run a parameterless callback the site registered via `testCallbacks`. Sent
+ * only in test sessions (debug window). The helper MUST answer with
+ * `test:callback:done` carrying the same requestId.
+ */
+export const PlayerTestCallbackSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('test:callback'),
+  requestId: z.uuid(),
+  name: z.string().min(1),
+});
+export type PlayerTestCallback = z.infer<typeof PlayerTestCallbackSchema>;
+
 export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerMessageSchema,
   PlayerHintShowSchema,
@@ -300,5 +330,6 @@ export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerVideoPlaySchema,
   PlayerVideoStopSchema,
   PlayerModeSchema,
+  PlayerTestCallbackSchema,
 ]);
 export type PlayerToHelper = z.infer<typeof PlayerToHelperSchema>;

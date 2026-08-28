@@ -48,6 +48,8 @@ export interface ResolveOptions {
   vars?: Record<string, JsonValue>;
   /** Trigger payload of the run, for {{payload.x}} interpolation. */
   payload?: JsonValue | null;
+  /** Test sessions: websiteId → replacement URL, applied before query params. */
+  urlOverrides?: Record<string, string>;
 }
 
 export interface Resolution {
@@ -325,7 +327,7 @@ export class CommandResolver {
       case 'navigate': {
         const device = await this.getDevice(themeId, cmd.deviceId, opts);
         const website = await this.getAsset(themeId, cmd.websiteId, 'website');
-        let url = this.websiteUrl(website.id, website.data);
+        let url = this.websiteUrl(website.id, website.data, opts.urlOverrides);
         const params = new URLSearchParams();
         for (const { key, value } of cmd.query) {
           if (key === '') continue;
@@ -370,7 +372,7 @@ export class CommandResolver {
       case 'sendWebsiteRequest': {
         const website = await this.getAsset(themeId, cmd.websiteId, 'website');
         const scope = scopeOf(opts);
-        const baseUrl = this.websiteUrl(website.id, website.data);
+        const baseUrl = this.websiteUrl(website.id, website.data, opts.urlOverrides);
         let base: URL;
         let url: URL;
         try {
@@ -610,7 +612,13 @@ export class CommandResolver {
     return this.storage.presignGet(fileKey, MEDIA_URL_EXPIRES_IN);
   }
 
-  private websiteUrl(websiteId: string, data: WebsiteData): string {
+  private websiteUrl(
+    websiteId: string,
+    data: WebsiteData,
+    urlOverrides?: Record<string, string>,
+  ): string {
+    const override = urlOverrides?.[websiteId];
+    if (override !== undefined) return override;
     return data.mode === 'hosted'
       ? `${this.publicServerUrl}/api/sites/${websiteId}/`
       : data.url;

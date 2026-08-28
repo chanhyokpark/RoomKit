@@ -15,6 +15,7 @@ import {
   ListSessionsQuerySchema,
   ManualTriggerInputSchema,
   PushHintInputSchema,
+  RunTestCallbackInputSchema,
   SwitchPhaseInputSchema,
   type AdjustTimerInput,
   type Command,
@@ -22,6 +23,7 @@ import {
   type ListSessionsQuery,
   type ManualTriggerInput,
   type PushHintInput,
+  type RunTestCallbackInput,
   type SwitchPhaseInput,
 } from '@roomkit/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -177,5 +179,18 @@ export class SessionsController {
   ) {
     await this.sessionsService.get(id);
     await this.runtime.pushHint(id, input);
+  }
+
+  /** Run a website-registered test callback on one device (test sessions only). */
+  @Post(':id/devices/:deviceId/test-callback')
+  async runTestCallback(
+    @Param('id') id: string,
+    @Param('deviceId') deviceId: string,
+    @Body(new ZodValidationPipe(RunTestCallbackInputSchema))
+    input: RunTestCallbackInput,
+  ) {
+    await this.sessionsService.get(id);
+    const ok = await this.runtime.runTestCallback(id, deviceId, input.name);
+    return { ok };
   }
 }

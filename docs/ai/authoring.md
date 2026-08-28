@@ -17,7 +17,7 @@ When using MCP, call `describe_asset_kind` before creating an unfamiliar kind. `
 
 ## Asset data responsibilities
 
-- **device**: `code`, `displayName`, `isHintDevice`, and default hint-code overlay CSS.
+- **device**: `code`, `displayName`, `isHintDevice`, default hint-code overlay CSS, and optional `startWebsite` (a website reference plus query pairs; query values support `{{vars.x}}` interpolation like the navigate command).
 - **player**: `speakerDeviceId`, `screenDeviceId`, `subtitleCss`, and optional dialogue/SFX BGM duck percentages. Playback commands target this asset.
 - **bgm**: optional file, placeholder duration, fade-in, and fade-out. Loop is chosen by the command.
 - **sfx**: optional file and placeholder duration.
@@ -30,6 +30,8 @@ When using MCP, call `describe_asset_kind` before creating an unfamiliar kind. `
 - **hint**: unique code, ordered HTML/image steps, optional explicit answer, and arbitrary params.
 - **phase**: ascending `order`.
 - **event**: phase ownership, trigger kind/name, manual/re-entry/once flags, and sequence.
+
+A device `startWebsite` is delivered as a navigate wire on session start (production and test) before `session:start` hook events, so an authored navigate in a start hook wins. It is also redelivered when the device attaches or reconnects mid-session showing no website with no navigate pending.
 
 ## Files and media URLs
 

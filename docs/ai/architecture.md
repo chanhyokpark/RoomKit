@@ -8,7 +8,7 @@
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `apps/server`          | NestJS REST API, Socket.io gateways, sequence runtime, timer, eval sandbox, media/site delivery, and persistence orchestration. |
 | `apps/studio`          | SvelteKit authoring and operation SPA. It uses REST for CRUD and admin sockets for live session state.                          |
-| `apps/player`          | Tauri launcher and stage windows. It uses `@roomkit/client`, owns media playback, embeds websites, and bridges Helper messages. |
+| `apps/player`          | Tauri launcher, stage windows, and a test-session debug window. It uses `@roomkit/client`, owns media playback, embeds websites, and bridges Helper messages. |
 | `apps/mcp`             | Stdio MCP server that exposes Studio operations to AI agents through REST and virtual device sockets.                           |
 | `packages/shared`      | Zod schemas and shared protocol types; the source of truth for asset, command, helper, and wire shapes.                         |
 | `packages/client`      | Direct Socket.io device client with validation, command dedupe, acknowledgment, and reconnect behavior.                         |
@@ -36,6 +36,8 @@ PostgreSQL stores durable metadata and session state. S3-compatible storage hold
 - Player-embedded websites use Helper; standalone devices use Client.
 - Hints are code based and reveal ordered steps, with an optional explicit answer.
 - Eval runs server-side for access to session variables and runtime actions.
+- Ad-hoc website testing uses real test sessions with per-session website URL overrides; the former in-memory website-test runtime was removed. Player's launcher creates these sessions and drives them from a debug window.
+- Player-created test sessions auto-end on the server after all devices disconnect (60-second grace) or when no device ever connects within ten minutes.
 - Subtitles are associated with dialogue audio lines, not time-coded within one line.
 - Team turnover is a new session plus bulk device reset.
 

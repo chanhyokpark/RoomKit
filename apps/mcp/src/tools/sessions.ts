@@ -34,7 +34,7 @@ export const sessionTools = [
   defineTool({
     name: 'create_session',
     description:
-      'Create a session (idle until control_session {type:"start"}). Default mode "test": when neither deviceCodes nor playerId is given, per-device codes are auto-generated for every device asset — connect virtual devices with them via connect_virtual_devices. Pass playerId (a connected player launcher) to open real device windows instead. Production mode takes neither (physical devices register with their asset codes); only one non-ended production session per theme. Defaults to the selected theme.',
+      'Create a session (idle until control_session {type:"start"}). Default mode "test": when neither deviceCodes nor playerId is given, per-device codes are auto-generated for every device asset — connect virtual devices with them via connect_virtual_devices. Pass playerId (a connected player launcher) to open real device windows instead (optionally deviceIds to launch a subset). Test sessions replace the removed website-test runs: pass urlOverrides to substitute website asset URLs (e.g. a local dev server) for the whole session — navigation, timers, and phases are the real engine. Production mode takes neither (physical devices register with their asset codes); only one non-ended production session per theme. Defaults to the selected theme.',
     inputSchema: z.object({
       themeId: z.uuid().optional(),
       mode: z.enum(['test', 'production']).default('test'),
@@ -43,8 +43,16 @@ export const sessionTools = [
         .optional()
         .describe('Operator-chosen test codes per device (test mode only)'),
       playerId: z.uuid().optional().describe('Connected player launcher id (test mode only)'),
+      deviceIds: z
+        .array(z.uuid())
+        .optional()
+        .describe('With playerId: mint codes for this device subset only (default: all)'),
+      urlOverrides: z
+        .array(z.object({ websiteId: z.uuid(), url: z.string().min(1) }))
+        .optional()
+        .describe('Test mode only: substitute website asset URLs for this session'),
     }),
-    handler: async ({ themeId, mode, deviceCodes, playerId }, ctx) => {
+    handler: async ({ themeId, mode, deviceCodes, playerId, deviceIds, urlOverrides }, ctx) => {
       const resolvedThemeId = requireTheme(ctx.state, themeId);
       let codes = deviceCodes;
       let generated: Array<{ deviceId: string; deviceName: string; code: string }> | undefined;
@@ -67,7 +75,14 @@ export const sessionTools = [
 
       const session = await ctx.api.api('/sessions', {
         method: 'POST',
-        body: { themeId: resolvedThemeId, mode, deviceCodes: codes, playerId },
+        body: {
+          themeId: resolvedThemeId,
+          mode,
+          deviceCodes: codes,
+          playerId,
+          deviceIds,
+          urlOverrides,
+        },
         schema: SessionResponseSchema,
       });
       return {

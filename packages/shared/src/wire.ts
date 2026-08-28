@@ -160,7 +160,7 @@ export const WireNavigateSchema = z.object({
   type: z.literal('navigate'),
   websiteId: z.uuid(),
   url: z.url(),
-  /** Recreate the iframe even when the URL is unchanged (website-test reload). */
+  /** Recreate the iframe even when the URL is unchanged (forced reload). */
   force: z.boolean().default(false),
 });
 export type WireNavigate = z.infer<typeof WireNavigateSchema>;
@@ -201,6 +201,18 @@ export const WireMessageSchema = z.object({
 });
 export type WireMessage = z.infer<typeof WireMessageSchema>;
 
+/**
+ * Invoke a parameterless callback the website registered via the helper's
+ * `testCallbacks` option. Test sessions only (debug window). Acked 'done' when
+ * the callback settled, 'failed' on unknown name/throw/timeout.
+ */
+export const WireTestCallbackSchema = z.object({
+  ...wireBase,
+  type: z.literal('testCallback'),
+  name: z.string().min(1),
+});
+export type WireTestCallback = z.infer<typeof WireTestCallbackSchema>;
+
 export const WireCommandSchema = z.union([
   WirePlayCommandSchema,
   WireStopSchema,
@@ -208,6 +220,7 @@ export const WireCommandSchema = z.union([
   WireResetSchema,
   WireMessageSchema,
   WireHintCodeSchema,
+  WireTestCallbackSchema,
 ]);
 export type WireCommand = z.infer<typeof WireCommandSchema>;
 

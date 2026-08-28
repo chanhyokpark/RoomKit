@@ -15,7 +15,6 @@ import { AssetsModule } from './assets/assets.module';
 import { LogsModule } from './logs/logs.module';
 import { RuntimeModule } from './runtime/runtime.module';
 import { SessionsModule } from './sessions/sessions.module';
-import { WebsiteTestModule } from './website-test/website-test.module';
 import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
@@ -34,7 +33,6 @@ import { GatewayModule } from './gateway/gateway.module';
     LogsModule,
     RuntimeModule,
     SessionsModule,
-    WebsiteTestModule,
     GatewayModule,
   ],
   controllers: [HealthController],

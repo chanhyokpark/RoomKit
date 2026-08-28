@@ -42,6 +42,8 @@ export interface RuntimeTransport {
   broadcastSessionMedia(media: SessionMedia): void;
   /** Broadcast to /admin. */
   broadcastNotification(notification: SessionNotification): void;
+  /** True while at least one device socket of the session is connected. */
+  hasAnyDeviceOnline(sessionId: string): boolean;
 }
 
 /** Used until the gateway registers the real transport (and in unit tests). */
@@ -55,4 +57,5 @@ export const NOOP_TRANSPORT: RuntimeTransport = {
   broadcastSessionRuns: () => {},
   broadcastSessionMedia: () => {},
   broadcastNotification: () => {},
+  hasAnyDeviceOnline: () => false,
 };

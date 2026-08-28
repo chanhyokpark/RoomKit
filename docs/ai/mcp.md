@@ -25,13 +25,13 @@ Credentials and token remain in memory. The API client automatically re-authenti
 - Prefer `set_event_sequence`; it fills entry UUIDs, validates schema, preserves trigger settings, and reports dangling references.
 - Treat warnings as unresolved work and re-read the saved event.
 
-The MCP surface does not currently wrap theme archive import/export, bulk media ZIP import, or hosted-site ZIP import. It can duplicate themes and upload individual files; use Studio or authenticated REST for the archive/ZIP-only flows. Connected launcher discovery also comes from Studio's admin socket rather than an MCP list tool, so a real website test needs a `playerId` supplied from Player/Studio.
+The MCP surface does not currently wrap theme archive import/export, bulk media ZIP import, or hosted-site ZIP import. It can duplicate themes and upload individual files; use Studio or authenticated REST for the archive/ZIP-only flows. Connected launcher discovery also comes from Studio's admin socket rather than an MCP list tool, so a test session that opens real Player windows needs a `playerId` supplied from Player/Studio.
 
 ## Test workflow
 
 Create a test session, connect virtual devices, start the session, fire triggers, and inspect both session logs and virtual device state. Pass the last log ID as `afterId` for incremental polling. Use `run_session_command` for isolated playback/navigation/message probes. List/abort session runs when a wait is stuck.
 
-Website tests require a connected Player ID and real window. Create a website test, issue commands or authored events, and inspect activity. Virtual devices cannot validate Helper or rendering.
+The former website-test tools were removed. To test a real website, pass `create_session` a connected `playerId` (optionally `deviceIds` for a device subset) and `urlOverrides` mapping website assets to replacement URLs such as a local dev server; the launcher opens real windows and a debug window, and the session runs the real timer, phases, and hints. Navigate manually with a `run_session_command` navigate. Virtual devices cannot validate Helper or rendering.
 
 ## Destructive operations
 

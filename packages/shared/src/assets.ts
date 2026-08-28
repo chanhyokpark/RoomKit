@@ -35,6 +35,17 @@ export type VideoFrame = z.infer<typeof VideoFrameSchema>;
 
 // Per-kind `data` payloads. Device/Hint `code` is a top-level asset field, not in data.
 
+/**
+ * Website a device navigates to automatically: on session start, and when the
+ * device attaches mid-session with no website currently shown. Query values
+ * support `{{vars.x}}` interpolation like the navigate command.
+ */
+export const DeviceStartWebsiteSchema = z.object({
+  websiteId: z.uuid(),
+  query: z.array(z.object({ key: z.string(), value: z.string() })).default([]),
+});
+export type DeviceStartWebsite = z.infer<typeof DeviceStartWebsiteSchema>;
+
 export const DeviceDataSchema = z.object({
   /** Human-friendly label shown in UIs; `name` stays the logical identifier. */
   displayName: z.string(),
@@ -45,6 +56,8 @@ export const DeviceDataSchema = z.object({
    * the showHintCode command. Trusted admin input, injected raw.
    */
   hintCodeCss: z.string().default(''),
+  /** Optional so legacy rows parse; null = no starting webpage. */
+  startWebsite: DeviceStartWebsiteSchema.nullable().optional(),
 });
 export type DeviceData = z.infer<typeof DeviceDataSchema>;
 

@@ -26,7 +26,7 @@ Placeholder playback has `url: null` and a duration. It follows the same acknowl
 ## Device commands
 
 - `resetDevice` and `resetAllDevices` return targets to initial state.
-- `navigate` resolves the website URL, appends authored query pairs, and waits for the target's load acknowledgment.
+- `navigate` resolves the website URL, appends authored query pairs, and waits for the target's load acknowledgment. A device's authored `startWebsite` uses the same wire, delivered on session start before `session:start` events so a hook's navigate wins. Test-session `urlOverrides` replace the resolved base URL for navigate and `sendWebsiteRequest`; query pairs still append.
 - `sendMessage` validates values against the message asset schema. With awaited handling, the client defers acknowledgment until all message listeners settle.
 - `sendWebsiteRequest` performs an HTTP request from the RoomKit server to a URL built from a website asset and path. GET/HEAD omit a body. Network and non-2xx responses are logged; the sequence continues.
 - `showHintCode` and `hideHintCode` update the default Player overlay or delegated Helper slot.
