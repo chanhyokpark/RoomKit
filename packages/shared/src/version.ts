@@ -16,11 +16,11 @@
  */
 export const EXPECTED_VERSIONS = {
   /** Player app (apps/player package.json / tauri.conf.json). */
-  player: '0.9.0',
+  player: "0.9.1",
   /** @roomkit/client (packages/client). */
-  client: '0.3.0',
+  client: "0.3.0",
   /** @roomkit/helper (packages/helper). */
-  helper: '0.4.0',
+  helper: "0.4.0",
 } as const;
 
 export type VersionedComponent = keyof typeof EXPECTED_VERSIONS;
@@ -31,8 +31,8 @@ export type VersionedComponent = keyof typeof EXPECTED_VERSIONS;
  * missing segments count as 0 ('1.2' == '1.2.0').
  */
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((s) => parseInt(s, 10) || 0);
-  const pb = b.split('.').map((s) => parseInt(s, 10) || 0);
+  const pa = a.split(".").map((s) => parseInt(s, 10) || 0);
+  const pb = b.split(".").map((s) => parseInt(s, 10) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
     if (diff !== 0) return diff;
