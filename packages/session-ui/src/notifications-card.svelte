@@ -26,7 +26,7 @@
 				<AlertDialog.Description>명령으로 전송된 알림입니다.</AlertDialog.Description>
 			</AlertDialog.Header>
 			<AlertDialog.Footer>
-				<AlertDialog.Action>확인</AlertDialog.Action>
+				<AlertDialog.Action onclick={() => (open = false)}>확인</AlertDialog.Action>
 			</AlertDialog.Footer>
 		</AlertDialog.Content>
 	</AlertDialog.Root>

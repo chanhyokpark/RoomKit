@@ -145,7 +145,9 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={deleting}>취소</AlertDialog.Cancel>
+			<AlertDialog.Cancel disabled={deleting} onclick={() => (deleteTarget = null)}>
+				취소
+			</AlertDialog.Cancel>
 			<AlertDialog.Action
 				disabled={deleting}
 				onclick={() => {
