@@ -11,6 +11,7 @@ The server owns every piece of game logic — phases, timers, variables, event s
 - **Never invert this.** A device must not act as the main logic handler that calls the server to control other devices or play media elsewhere. If you find yourself writing device code that orchestrates other devices, move that logic into a server-side event sequence and have the device fire a trigger instead.
 
 This keeps every session reproducible, observable, and controllable from the server (and Studio), regardless of which devices are connected.
+Keep in mind that command sequence can wait until the message was completely processed, so there is no need for 'message processed' event.
 
 ## Recommended sequence
 
