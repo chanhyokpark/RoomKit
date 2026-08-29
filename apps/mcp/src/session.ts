@@ -4,10 +4,11 @@ export interface SelectedTheme {
 }
 
 /**
- * Mutable per-process state established by the connection tools. Nothing is
- * read from env or config files: `login` supplies the server URL and admin
- * credentials (kept in memory only, for silent re-login when the 12h JWT
- * expires), `select_theme` sets the default theme for theme-scoped tools.
+ * Mutable per-process state established by the connection tools. `login`
+ * supplies the server URL and admin credentials (used for silent re-login
+ * when the 12h JWT expires, and persisted to ~/.roomkit/mcp-credentials.json
+ * so later processes auto-login — see creds.ts), `select_theme` sets the
+ * default theme for theme-scoped tools.
  */
 export class SessionState {
   /** Server origin, e.g. http://localhost:3000 (no /api suffix). */
@@ -29,7 +30,7 @@ export class ToolError extends Error {
 export function requireLogin(state: SessionState): void {
   if (!state.apiUrl) {
     throw new ToolError(
-      'Not logged in. Call the `login` tool first — ask the user for the RoomKit server URL, admin id, and password.',
+      'Not logged in and no saved credentials were found. Call the `login` tool — ask the user for the RoomKit server URL, admin id, and password.',
     );
   }
 }

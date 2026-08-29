@@ -1,19 +1,29 @@
 import { z } from 'zod';
 import { AssetSchema, SessionSchema, ThemeSchema } from '@roomkit/shared';
+import { CREDENTIALS_PATH, loadCredentials } from '../creds.js';
 import { defineTool } from '../registry.js';
-import { requireLogin, ToolError } from '../session.js';
+import { ToolError } from '../session.js';
 
 export const connectionTools = [
   defineTool({
     name: 'login',
     description:
-      'Connect to a RoomKit server and authenticate as admin. Must be called before any other tool. Ask the user for the server URL (e.g. http://localhost:3000), admin id, and password — never guess credentials. Credentials are kept in memory only, for automatic re-login when the token expires.',
+      `Connect to a RoomKit server and authenticate as admin. Successful credentials are saved to ${CREDENTIALS_PATH} and reused automatically (on process start and when the token expires), so normally you never need to call this or bother the user: only ask the user for credentials when a command failed because token expiration triggered a re-login that the saved credentials could not satisfy (or no credentials are saved yet). Call with no arguments to retry with the saved credentials; omitted fields fall back to the saved values. Never guess credentials.`,
     inputSchema: z.object({
-      url: z.string().min(1).describe('Server origin, e.g. http://localhost:3000 (with or without /api)'),
-      id: z.string().min(1).describe('Admin id'),
-      password: z.string().min(1).describe('Admin password'),
+      url: z.string().min(1).optional().describe('Server origin, e.g. http://localhost:3000 (with or without /api)'),
+      id: z.string().min(1).optional().describe('Admin id'),
+      password: z.string().min(1).optional().describe('Admin password'),
     }),
     handler: async ({ url, id, password }, ctx) => {
+      const saved = loadCredentials();
+      url ??= saved?.url;
+      id ??= saved?.id;
+      password ??= saved?.password;
+      if (!url || !id || !password) {
+        throw new ToolError(
+          `No saved credentials at ${CREDENTIALS_PATH} — ask the user for the server URL, admin id, and password, then call login with all three.`,
+        );
+      }
       await ctx.api.login(url, id, password);
       const themes = await ctx.api.api('/themes', { schema: z.array(ThemeSchema) });
       return {
@@ -74,9 +84,15 @@ export const connectionTools = [
     handler: async (_input, ctx) => {
       const { state } = ctx;
       if (!state.apiUrl) {
-        return { loggedIn: false, note: 'Call login first (ask the user for URL/id/password).' };
+        try {
+          await ctx.api.ensureLogin();
+        } catch (err) {
+          return {
+            loggedIn: false,
+            note: err instanceof Error ? err.message : String(err),
+          };
+        }
       }
-      requireLogin(state);
       const activeSessions = await ctx.api.api('/sessions', {
         query: { active: 'true', themeId: state.selectedTheme?.id },
         schema: z.array(SessionSchema),

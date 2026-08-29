@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod';
+import { CREDENTIALS_PATH, loadCredentials, saveCredentials } from './creds.js';
 import { requireLogin, SessionState, ToolError } from './session.js';
 
 /** Error thrown for non-2xx API responses. `body` is the parsed NestJS error payload. */
@@ -33,6 +34,7 @@ async function parseJsonSafe(res: Response): Promise<unknown> {
 
 export interface ApiOptions<T> {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  /** JSON payload, or a FormData for multipart uploads (sent as-is). */
   body?: unknown;
   query?: Record<string, string | undefined>;
   /** When given, the response JSON is validated/coerced through this schema. */
@@ -44,7 +46,8 @@ export class ApiClient {
 
   /**
    * Verifies the credentials against the server before committing them to
-   * state, so a failed login never clobbers a working connection.
+   * state, so a failed login never clobbers a working connection. Successful
+   * credentials are persisted so future MCP processes auto-login.
    */
   async login(url: string, id: string, password: string): Promise<void> {
     const base = url.replace(/\/+$/, '').replace(/\/api$/, '');
@@ -53,6 +56,27 @@ export class ApiClient {
     this.state.adminId = id;
     this.state.adminPassword = password;
     this.state.token = accessToken;
+    saveCredentials({ url: base, id, password });
+  }
+
+  /**
+   * Makes the client usable without an explicit `login` call: when the
+   * process has no session yet, silently logs in with the credentials saved
+   * by a previous login. Throws agent-facing guidance when that is impossible.
+   */
+  async ensureLogin(): Promise<void> {
+    if (this.state.apiUrl) return;
+    const saved = loadCredentials();
+    if (!saved) requireLogin(this.state);
+    try {
+      await this.login(saved!.url, saved!.id, saved!.password);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new ToolError(
+        `Auto-login with the saved credentials (${CREDENTIALS_PATH}) failed: ${detail}. ` +
+          'Ask the user for the server URL, admin id, and password, then call `login`.',
+      );
+    }
   }
 
   private async rawLogin(
@@ -82,7 +106,7 @@ export class ApiClient {
   }
 
   async api<T = unknown>(path: string, opts: ApiOptions<T> = {}): Promise<T> {
-    requireLogin(this.state);
+    await this.ensureLogin();
     let res = await this.request(path, opts);
 
     // The admin JWT expires after 12h — re-login once with the stored
@@ -97,7 +121,7 @@ export class ApiClient {
         this.state.token = accessToken;
       } catch {
         throw new ToolError(
-          'The session expired and automatic re-login failed. Call `login` again with valid credentials.',
+          'The session expired and automatic re-login failed. Ask the user for valid credentials and call `login` again.',
         );
       }
       res = await this.request(path, opts);
@@ -114,13 +138,21 @@ export class ApiClient {
     for (const [key, value] of Object.entries(opts.query ?? {})) {
       if (value !== undefined) url.searchParams.set(key, value);
     }
+    // FormData is passed through so fetch sets the multipart boundary itself.
+    const isForm = opts.body instanceof FormData;
     const headers: Record<string, string> = {};
-    if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+    if (opts.body !== undefined && !isForm) {
+      headers['Content-Type'] = 'application/json';
+    }
     if (this.state.token) headers['Authorization'] = `Bearer ${this.state.token}`;
     return fetch(url, {
       method: opts.method ?? 'GET',
       headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: isForm
+        ? (opts.body as FormData)
+        : opts.body !== undefined
+          ? JSON.stringify(opts.body)
+          : undefined,
     });
   }
 }

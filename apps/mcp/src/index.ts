@@ -7,6 +7,7 @@ import { SessionState } from './session.js';
 import { VirtualDeviceManager } from './virtual-device.js';
 import { assetTools } from './tools/assets.js';
 import { connectionTools } from './tools/connection.js';
+import { deployTools } from './tools/deploy.js';
 import { deviceTools } from './tools/devices.js';
 import { discoveryTools } from './tools/discovery.js';
 import { documentationTools } from './tools/docs.js';
@@ -31,6 +32,7 @@ const tools = [
   ...tagTools,
   ...assetTools,
   ...uploadTools,
+  ...deployTools,
   ...sequenceTools,
   ...sessionTools,
   ...deviceTools,
