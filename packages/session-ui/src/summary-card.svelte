@@ -23,6 +23,7 @@
 		);
 	});
 	const totalHints = $derived(summary?.hints.reduce((sum, hint) => sum + hint.shows, 0) ?? 0);
+	const distinctHints = $derived(summary?.hints.filter((hint) => hint.shows > 0).length ?? 0);
 	const totalAdminPushes = $derived(
 		summary?.hints.reduce((sum, hint) => sum + hint.adminPushes, 0) ?? 0
 	);
@@ -117,7 +118,7 @@
 				{/if}
 				<div class="rounded-md border p-3">
 					<p class="text-xs text-muted-foreground">힌트 사용</p>
-					<p class="font-medium">{totalHints}회</p>
+					<p class="font-medium">{totalHints}회(중복 제외 {distinctHints}회)</p>
 					{#if totalAdminPushes > 0}
 						<p class="text-xs text-muted-foreground">관리자 푸시 {totalAdminPushes}회</p>
 					{/if}
