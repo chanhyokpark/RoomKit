@@ -160,7 +160,10 @@ export const HintDataSchema = z.object({
    * wire it is addressed as step index `steps.length`. Null = no answer.
    */
   answer: HintStepSchema.nullable().default(null),
-  /** Free-form JSON forwarded with the hint code wire for website-side rendering. */
+  /**
+   * Free-form JSON forwarded with the hint code wire and every hint:show
+   * payload for client-side rendering.
+   */
   params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type HintData = z.infer<typeof HintDataSchema>;

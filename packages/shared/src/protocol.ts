@@ -187,6 +187,8 @@ export const HintShowSchema = z.object({
   isAnswer: z.boolean().default(false),
   textHtml: z.string(),
   imageUrl: z.url().nullable(),
+  /** Hint asset's free-form params, forwarded for client-side rendering. */
+  params: z.record(z.string(), JsonValueSchema).default({}),
 });
 export type HintShow = z.infer<typeof HintShowSchema>;
 

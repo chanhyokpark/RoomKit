@@ -35,7 +35,7 @@ Navigation destroys claims. Every new document must construct Helper again. `des
 
 - `trigger(event, payload?)` reports a JSON trigger without a response.
 - `triggerAndWait(event, payload?, { timeoutMs? })` resolves after all event runs started by that trigger finish. Default timeout is ten minutes; timeout does not cancel server runs.
-- `submitHint(code)` and `requestHintStep(hintId, step)` implement hint navigation.
+- `submitHint(code)` and `requestHintStep(hintId, step)` implement hint navigation. The resulting `hint` event payload includes the hint asset's free-form `params` for custom rendering.
 - `getRemainingTime({ resync?, timeoutMs? })` requests Player's timer snapshot. It rejects when no Player answers.
 - `sessionMode` is `production` until Player reports `test` or `production`.
 - `on`/`off` subscribe to `message`, hint events, and claimed render slots.

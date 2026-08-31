@@ -61,7 +61,7 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-svelte"
 </HintphoneSetup>
 ```
 
-Svelte 5에서는 `HintCounter`를 `<HintphoneSetup>` 아래 컴포넌트 초기화 시 생성하면 동일한 네 가지 사용량을 반응형 `counter.stats`로 확인할 수 있습니다. React의 `useHintphone()`과 Svelte의 `getHintphone()`은 연결 객체, 컨트롤러와 현재 상태가 필요한 커스텀 UI용 API입니다.
+Svelte 5에서는 `HintCounter`를 `<HintphoneSetup>` 아래 컴포넌트 초기화 시 생성하면 동일한 네 가지 사용량을 반응형 `counter.stats`로 확인할 수 있습니다. React의 `useHintphone()`과 Svelte의 `getHintphone()`은 연결 객체, 컨트롤러와 현재 상태가 필요한 커스텀 UI용 API입니다. 표시 중인 힌트(`snapshot.hint`)에는 힌트 애셋의 JSON 파라미터가 `params`로 포함되므로 커스텀 렌더링에 활용할 수 있습니다.
 
 ## 서버 설정
 

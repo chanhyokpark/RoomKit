@@ -27,7 +27,7 @@ When using MCP, call `describe_asset_kind` before creating an unfamiliar kind. `
 - **file**: arbitrary public website resource; it returns 404 until `fileKey` is set.
 - **website**: external URL or hosted-site storage metadata.
 - **message**: display name plus fields (`key`, `label`, `type`, `required`). Concrete values belong to send-message commands.
-- **hint**: unique code, ordered HTML/image steps, optional explicit answer, and arbitrary params.
+- **hint**: unique code, ordered HTML/image steps, optional explicit answer, and arbitrary params forwarded with the code overlay and every shown step.
 - **phase**: ascending `order`.
 - **event**: phase ownership, trigger kind/name, manual/re-entry/once flags, and sequence.
 

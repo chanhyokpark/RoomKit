@@ -97,6 +97,7 @@ describe('Hint flow (e2e)', () => {
           { textHtml: '<p>step one</p>', imageKey: null },
           { textHtml: '<p>step two</p>', imageKey: 'themes/test/hint2.png' },
         ],
+        params: { accent: '#ff0000' },
       },
     });
     const session = await post('/api/sessions', {
@@ -137,6 +138,7 @@ describe('Hint flow (e2e)', () => {
       stepCount: 2,
       textHtml: '<p>step one</p>',
       imageUrl: null,
+      params: { accent: '#ff0000' },
     });
 
     const nextPromise = waitForEvent<HintShow>(socket, 'hint:show');

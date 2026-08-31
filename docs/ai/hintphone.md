@@ -40,7 +40,7 @@ Both setup components show a built-in unstyled device-code dialog in client mode
 
 ## Hint state contract
 
-A successful hint payload contains `hintId`, code, zero-based step, step count, answer flags, trusted HTML, and optional image URL. The controller requests exact step numbers; it does not mutate server-side progress. When a hint has an explicit answer, requesting `stepCount` returns `isAnswer: true`.
+A successful hint payload contains `hintId`, code, zero-based step, step count, answer flags, trusted HTML, optional image URL, and the hint asset's free-form `params` (same JSON on every step of the hint) for custom rendering. The controller requests exact step numbers; it does not mutate server-side progress. When a hint has an explicit answer, requesting `stepCount` returns `isAnswer: true`.
 
 Error reasons are `unknown_code`, `unknown_hint`, `invalid_step`, `not_hint_device`, and `session_not_running`. Pending UI must clear on both hint and error events.
 

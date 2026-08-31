@@ -96,6 +96,7 @@ export class HintService {
       imageUrl: s.imageKey
         ? await this.storage.presignGet(s.imageKey, MEDIA_URL_EXPIRES_IN)
         : null,
+      params: hint.data.params,
     };
   }
 
