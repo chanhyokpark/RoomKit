@@ -2,9 +2,11 @@ import { Injectable } from '@nestjs/common';
 import {
   BgmDataSchema,
   DialogueDataSchema,
+  EventDataSchema,
   PlayerDataSchema,
   SfxDataSchema,
   VideoDataSchema,
+  type Command,
   type DeviceAssetEntry,
   type DeviceAssetManifest,
 } from '@roomkit/shared';
@@ -12,16 +14,28 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { MEDIA_URL_EXPIRES_IN } from '../runtime/command-resolver';
 
+type MediaKind = 'bgm' | 'sfx' | 'dialogue' | 'video';
+
+/** One play command's media reference: which asset plays on which player. */
+interface MediaUsage {
+  kind: MediaKind;
+  assetId: string;
+  playerId: string;
+}
+
 /**
  * Builds the per-device media manifest for `assets:manifest`.
  *
- * Which files a device can ever be told to play is determined by Player asset
- * membership: audio (bgm/sfx/dialogue lines) goes to speaker devices, video to
- * screen devices (screen-side dialogue needs no files — subtitleHtml rides in
- * the wire command). Which *specific* asset targets which player is decided
- * per-command, so the manifest over-approximates to all theme media of the
- * relevant kinds. The cache is an optimization only: wire commands always
- * carry presigned URLs, so an uncached file just streams.
+ * Which files a device can ever be told to play is derived from the theme's
+ * event sequences: every play command names its media asset and player, and
+ * the player maps audio (bgm/sfx/dialogue) to its speaker device and video to
+ * its screen device (screen-side dialogue needs no files — subtitleHtml rides
+ * in the wire command). All events are walked regardless of reachability
+ * (manual, hint-triggered, and callEvent targets included), so the union
+ * covers everything the runtime can resolve; eval scripts can only trigger
+ * events, never play media directly. The cache is an optimization only: wire
+ * commands always carry presigned URLs, so an uncached file just streams —
+ * which also makes mid-session theme edits safe, merely uncached.
  */
 @Injectable()
 export class DeviceAssetsService {
@@ -36,26 +50,49 @@ export class DeviceAssetsService {
   ): Promise<DeviceAssetManifest> {
     const players = await this.prisma.asset.findMany({
       where: { themeId, kind: 'player' },
-      select: { data: true },
+      select: { id: true, data: true },
     });
-    let isSpeaker = false;
-    let isScreen = false;
+    const playerDevices = new Map<
+      string,
+      { speakerDeviceId: string; screenDeviceId: string }
+    >();
     for (const row of players) {
       const parsed = PlayerDataSchema.safeParse(row.data);
       if (!parsed.success) continue; // tolerate invalid rows, like the resolver
-      if (parsed.data.speakerDeviceId === deviceId) isSpeaker = true;
-      if (parsed.data.screenDeviceId === deviceId) isScreen = true;
+      playerDevices.set(row.id, {
+        speakerDeviceId: parsed.data.speakerDeviceId,
+        screenDeviceId: parsed.data.screenDeviceId,
+      });
     }
 
-    const kinds = [
-      ...(isSpeaker ? (['bgm', 'sfx', 'dialogue'] as const) : []),
-      ...(isScreen ? (['video'] as const) : []),
-    ];
+    const events = await this.prisma.asset.findMany({
+      where: { themeId, kind: 'event' },
+      select: { data: true },
+    });
+    const requiredIds = new Set<string>();
+    for (const row of events) {
+      const parsed = EventDataSchema.safeParse(row.data);
+      if (!parsed.success) continue;
+      for (const usage of collectMediaUsages(parsed.data.sequence)) {
+        const player = playerDevices.get(usage.playerId);
+        if (!player) continue; // dangling ref — the runtime skips it too
+        const target =
+          usage.kind === 'video'
+            ? player.screenDeviceId
+            : player.speakerDeviceId;
+        if (target === deviceId) requiredIds.add(usage.assetId);
+      }
+    }
+
     const entries: DeviceAssetEntry[] = [];
     const seen = new Set<string>();
-    if (kinds.length > 0) {
+    if (requiredIds.size > 0) {
       const assets = await this.prisma.asset.findMany({
-        where: { themeId, kind: { in: [...kinds] } },
+        where: {
+          themeId,
+          id: { in: [...requiredIds] },
+          kind: { in: ['bgm', 'sfx', 'dialogue', 'video'] },
+        },
         select: { id: true, kind: true, name: true, data: true },
       });
       for (const asset of assets) {
@@ -83,6 +120,56 @@ export class DeviceAssetsService {
       entries,
     };
   }
+}
+
+/**
+ * Media play references in a sequence, recursing into dialogue line cues.
+ * Commands with an unset media or player ref are omitted — the runtime skips
+ * them, so no device will ever receive that file.
+ */
+function collectMediaUsages(sequence: readonly Command[]): MediaUsage[] {
+  const usages: MediaUsage[] = [];
+  for (const cmd of sequence) {
+    switch (cmd.type) {
+      case 'playBgm':
+        if (cmd.bgmId !== null && cmd.playerId !== null)
+          usages.push({
+            kind: 'bgm',
+            assetId: cmd.bgmId,
+            playerId: cmd.playerId,
+          });
+        break;
+      case 'playSfx':
+        if (cmd.sfxId !== null && cmd.playerId !== null)
+          usages.push({
+            kind: 'sfx',
+            assetId: cmd.sfxId,
+            playerId: cmd.playerId,
+          });
+        break;
+      case 'playVideo':
+        if (cmd.videoId !== null && cmd.playerId !== null)
+          usages.push({
+            kind: 'video',
+            assetId: cmd.videoId,
+            playerId: cmd.playerId,
+          });
+        break;
+      case 'playDialogue':
+        if (cmd.dialogueId !== null && cmd.playerId !== null)
+          usages.push({
+            kind: 'dialogue',
+            assetId: cmd.dialogueId,
+            playerId: cmd.playerId,
+          });
+        for (const cue of cmd.lineCues)
+          usages.push(...collectMediaUsages(cue.sequence));
+        break;
+      default:
+        break;
+    }
+  }
+  return usages;
 }
 
 function assetFiles(asset: {
