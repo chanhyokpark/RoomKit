@@ -433,6 +433,65 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.0)(tsx@4.23.1)
 
+  packages/helper-react:
+    dependencies:
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@roomkit/helper':
+        specifier: workspace:*
+        version: link:../helper
+      '@roomkit/hintphone-core':
+        specifier: workspace:*
+        version: link:../hintphone-core
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.20)(tsx@4.23.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/helper-svelte:
+    dependencies:
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
+    devDependencies:
+      '@roomkit/helper':
+        specifier: workspace:*
+        version: link:../helper
+      '@roomkit/hintphone-core':
+        specifier: workspace:*
+        version: link:../hintphone-core
+      '@sveltejs/package':
+        specifier: ^2.5.4
+        version: 2.5.8(svelte@5.56.6(@typescript-eslint/types@8.64.0))(typescript@5.9.3)
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^7.1.2
+        version: 7.2.0(svelte@5.56.6(@typescript-eslint/types@8.64.0))(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1))
+      svelte:
+        specifier: ^5.56.1
+        version: 5.56.6(@typescript-eslint/types@8.64.0)
+      svelte-check:
+        specifier: ^4.3.4
+        version: 4.7.3(picomatch@4.0.5)(svelte@5.56.6(@typescript-eslint/types@8.64.0))(typescript@5.9.3)
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.20)(tsx@4.23.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vite:
+        specifier: ^8.0.16
+        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)
+
   packages/hintphone-core:
     dependencies:
       socket.io-client:

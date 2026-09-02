@@ -24,8 +24,9 @@ RoomKit은 방탈출 게임의 제작, 테스트, 운영과 장치 연동을 한
 
 ## 바로 실행할 수 있는 예제
 
-- [`templates/hintphone`](../templates/hintphone/README.md) — React 힌트폰
-- [`templates/web`](../templates/web/README.md) — Helper 기반 자막·비디오 커스텀 렌더링
+- [`templates/web`](../templates/web/README.md) — Player 안 웹사이트 (React + Tailwind + `@roomkit/helper-react`)
+- [`templates/web_svelte`](../templates/web_svelte/README.md) — Player 안 웹사이트 (SvelteKit + `@roomkit/helper-svelte`)
+- [`templates/hintphone`](../templates/hintphone/README.md) — React 힌트폰 (deprecated 패키지 사용)
 - [`templates/web_custom`](../templates/web_custom/README.md) — `@roomkit/client` 기반 독립 장치
 
 AI 에이전트나 구현 세부 계약이 필요하시면 [영문 AI 문서 목차](./TOC_AI.md)를 참고해 주세요.

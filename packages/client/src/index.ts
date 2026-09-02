@@ -2,6 +2,7 @@ export {
   RoomKitClient,
   type ConnectionStatus,
   type DoneFn,
+  type GetRemainingTimeOptions,
   type RoomKitClientEvents,
   type RoomKitClientOptions,
 } from './client.js';

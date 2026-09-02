@@ -49,9 +49,10 @@ function requestId(): string {
 }
 
 /**
- * Named handler for one message asset. May return a promise: when the command
- * was sent with waitUntilEnd, the server sequence waits until it settles (a
- * rejection fails the command; the sequence still continues).
+ * Listener for player-relayed messages (the 'message' event). May return a
+ * promise: when the command was sent with waitUntilEnd, the server sequence
+ * waits until it settles (a rejection fails the command; the sequence still
+ * continues).
  */
 export type MessageHandler = (
   payload: Record<string, JsonValue>,
@@ -83,12 +84,12 @@ export interface RoomKitHelperOptions {
    */
   renders?: Partial<HelperRenderClaims>;
   /**
-   * Message handlers keyed by message asset name, registered at construction.
-   * The names are reported to the player in the hello, so the debug window
-   * can list (and send) exactly the messages this page understands. Prefer
-   * this over `on('message')`, which cannot be enumerated.
+   * Message asset names this page handles, reported to the player in the
+   * hello so the debug window can list (and send) them. Purely declarative —
+   * delivery is not filtered by this list; register the actual handlers with
+   * `on('message')` (checking `envelope.messageName`).
    */
-  messages?: Record<string, MessageHandler>;
+  messages?: string[];
   /**
    * Named parameterless callbacks for testing, reported to the player like
    * `messages` and invokable from the debug window (test sessions only).
@@ -100,6 +101,15 @@ export interface TriggerAndWaitOptions {
   /** Reply timeout; the promise rejects when it elapses. Default 600000ms. */
   timeoutMs?: number;
 }
+
+/**
+ * State of the postMessage bridge to the player:
+ * - 'connecting': hello sent, no player reply yet.
+ * - 'connected': a player message arrived — the page runs inside the player.
+ * - 'timeout': every hello retry went unanswered (~20s); the page was almost
+ *   certainly opened outside the player.
+ */
+export type HelperBridgeState = 'connecting' | 'connected' | 'timeout';
 
 export interface GetRemainingTimeOptions {
   /**
@@ -118,9 +128,8 @@ export interface RoomKitHelperEvents extends Record<string, unknown[]> {
    * Listeners may return a promise: when the command was sent with
    * waitUntilEnd, the server sequence waits until every listener's promise
    * settles (a rejection fails the command; the sequence still continues).
-   * @deprecated Register named handlers via the `messages` constructor option
-   * instead — they are reported to the player for debugging. This catch-all
-   * listener keeps working alongside them.
+   * Declare the handled names in the `messages` option so the debug window
+   * can list them.
    */
   message: [Record<string, JsonValue>, PlayerMessage];
   /** A hint step to render (reply to submitHint/requestHintStep, or a push). */
@@ -134,6 +143,10 @@ export interface RoomKitHelperEvents extends Record<string, unknown[]> {
   videoPlay: [Omit<PlayerVideoPlay, 'source' | 'type'>];
   /** Claimed video slot: stop the playback with this commandId. */
   videoStop: [Omit<PlayerVideoStop, 'source' | 'type'>];
+  /** Bridge state changed (see {@link HelperBridgeState}). */
+  bridge: [HelperBridgeState];
+  /** Player-reported session mode changed. */
+  mode: [SessionMode];
 }
 
 /**
@@ -152,8 +165,10 @@ export class RoomKitHelper {
   };
   /** Player-reported session mode; production (locked down) until told. */
   private mode: SessionMode = 'production';
-  /** Named message handlers from the `messages` option. */
-  private readonly messages: Record<string, MessageHandler>;
+  /** Bridge state; 'connected' on the first player message. */
+  private bridge: HelperBridgeState = 'connecting';
+  /** Declared message names from the `messages` option. */
+  private readonly messages: string[];
   /** Named test callbacks from the `testCallbacks` option. */
   private readonly testCallbacks: Record<string, TestCallback>;
   /** blob: URL minted for the current delegated video; revoked on the next play/stop/destroy. */
@@ -180,7 +195,7 @@ export class RoomKitHelper {
   constructor(options: RoomKitHelperOptions = {}) {
     this.parent = options.parentWindow ?? window.parent;
     this.self = options.selfWindow ?? window;
-    this.messages = options.messages ?? {};
+    this.messages = options.messages ?? [];
     this.testCallbacks = options.testCallbacks ?? {};
     this.self.addEventListener('message', this.onMessage as EventListener);
     if (options.lockdown !== false) this.lockdown();
@@ -195,7 +210,7 @@ export class RoomKitHelper {
         video: options.renders?.video ?? false,
       },
       version: HELPER_VERSION,
-      messages: Object.keys(this.messages),
+      messages: this.messages,
       testCallbacks: Object.keys(this.testCallbacks),
     };
     this.post(hello);
@@ -205,7 +220,10 @@ export class RoomKitHelper {
     // to every hello). Bounded so a page opened outside the player goes quiet.
     let attempts = 0;
     this.helloTimer = setInterval(() => {
-      if (++attempts >= HELLO_RETRY_MAX) this.stopHelloRetry();
+      if (++attempts >= HELLO_RETRY_MAX) {
+        this.stopHelloRetry();
+        this.setBridge('timeout');
+      }
       this.post(hello);
     }, HELLO_RETRY_MS);
   }
@@ -220,6 +238,17 @@ export class RoomKitHelper {
   /** Session mode as reported by the player ('production' until told otherwise). */
   get sessionMode(): SessionMode {
     return this.mode;
+  }
+
+  /** Bridge state; 'timeout' means the page runs outside the player. */
+  get bridgeState(): HelperBridgeState {
+    return this.bridge;
+  }
+
+  private setBridge(state: HelperBridgeState): void {
+    if (state === this.bridge) return;
+    this.bridge = state;
+    this.emitter.emit('bridge', state);
   }
 
   /**
@@ -409,39 +438,20 @@ export class RoomKitHelper {
     if (msg.source !== PLAYER_SOURCE) return;
     // Any player message means the bridge is up and has seen our hello.
     this.stopHelloRetry();
+    this.setBridge('connected');
     switch (msg.type) {
       case 'message': {
         if (typeof msg.payload !== 'object' || msg.payload === null) return;
         const payload = msg.payload as Record<string, JsonValue>;
         const envelope = msg as unknown as PlayerMessage;
-        const named =
-          typeof envelope.messageName === 'string'
-            ? this.messages[envelope.messageName]
-            : undefined;
-        // A commandId means the player awaits our handlers: collect handler
+        // A commandId means the player awaits our listeners: collect their
         // return values and report message:done once they all settle.
         if (typeof msg.commandId !== 'string') {
-          if (named) {
-            try {
-              const result = named(payload, envelope);
-              if (result instanceof Promise) result.catch(() => {});
-            } catch {
-              // Fire-and-forget delivery: a throwing handler has nowhere to report.
-            }
-          }
           this.emitter.emit('message', payload, envelope);
           return;
         }
         const commandId = msg.commandId;
-        const results: unknown[] = [];
-        if (named) {
-          try {
-            results.push(Promise.resolve(named(payload, envelope)));
-          } catch (err) {
-            results.push(Promise.reject(err));
-          }
-        }
-        results.push(...this.emitter.emitCollect('message', payload, envelope));
+        const results = this.emitter.emitCollect('message', payload, envelope);
         void Promise.allSettled(
           results.filter((r): r is Promise<unknown> => r instanceof Promise),
         ).then((settled) => {
@@ -549,7 +559,10 @@ export class RoomKitHelper {
       }
       case 'mode': {
         if (msg.mode !== 'test' && msg.mode !== 'production') return;
-        this.mode = msg.mode;
+        if (this.mode !== msg.mode) {
+          this.mode = msg.mode;
+          this.emitter.emit('mode', this.mode);
+        }
         return;
       }
       default:

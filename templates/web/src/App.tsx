@@ -1,105 +1,68 @@
-import { useEffect, useRef } from 'react';
-import { useRoomKitHelper, type DelegatedVideo, type Subtitle } from './use-roomkit-helper';
+import { RoomKitProvider, useRoomKit, useRoomKitMessage } from '@roomkit/helper-react';
+import { addLog, clearLogs, useLogs } from './logs';
 
 export function App() {
-  const roomkit = useRoomKitHelper();
+  return (
+    // Helper는 앱 최상단(top layout)에서 한 번만 초기화하세요. 옵션은 mount 시
+    // 한 번만 읽히며, 페이지를 새로 이동(navigation)하면 선언이 사라집니다.
+    <RoomKitProvider
+      options={{
+        // 일반 브라우저에서 개발할 때 우클릭·텍스트 선택을 막지 않습니다.
+        lockdown: import.meta.env.PROD,
+        // ── 메시지 선언 ─────────────────────────────────────────────────
+        // 이 사이트가 처리하는 메시지 애셋 이름 목록입니다. Player에 보고되어
+        // 테스트 세션의 디버그 창 목록에서 바로 보낼 수 있습니다(전달 자체는
+        // 이 목록과 무관합니다). 실제 처리는 페이지에서 useRoomKitMessage로
+        // 등록하세요.
+        messages: ['announce'],
+        // 디버그 창에서 인자 없이 실행할 수 있는 테스트 콜백입니다(테스트 세션 전용).
+        testCallbacks: {
+          'clear-logs': clearLogs,
+        },
+      }}
+    >
+      <Page />
+    </RoomKitProvider>
+  );
+}
+
+function Page() {
+  const rk = useRoomKit();
+  const logs = useLogs();
+
+  // ── 메시지 처리 ────────────────────────────────────────────────────────
+  // 이름을 넘기면 해당 메시지만, 핸들러만 넘기면 모든 메시지를 받습니다.
+  // waitUntilEnd 메시지는 핸들러가 반환한 Promise가 끝난 뒤에 ack됩니다.
+  useRoomKitMessage((payload, envelope) => {
+    addLog(`${envelope.messageName}: ${JSON.stringify(payload)}`);
+  });
 
   return (
-    <main className="stage">
-      <section className="puzzle">
-        <p className="eyebrow">ROOMKIT HELPER TEMPLATE</p>
-        <h1>관측 기록 보관소</h1>
-        <p className="description">Player가 보내는 자막과 비디오를 이 React 화면에서 직접 렌더링합니다.</p>
-        <div className="actions">
-          <button onClick={() => roomkit.trigger('archive:opened')}>보관소 열기</button>
-          <button onClick={() => roomkit.trigger('archive:solved')}>해결 트리거</button>
-          <button onClick={roomkit.refreshTimer}>남은 시간 확인</button>
-        </div>
-        <strong className="timer">{formatRemaining(roomkit.remainingMs)}</strong>
-      </section>
+    <main>
+      {rk.outsidePlayer && (
+        <p role="alert">
+          ⚠️ 이 페이지가 RoomKit Player 밖에서 열렸습니다. Player 런처의 테스트
+          탭에서 웹사이트 URL 대체로 실행해 주세요.
+        </p>
+      )}
 
-      <VideoLayer video={roomkit.video} onFinish={roomkit.finishVideo} />
-      <SubtitleLayer subtitle={roomkit.subtitle} />
+      {/* ── 페이지 콘텐츠 ────────────────────────────────────────────────
+          아래 디버그 출력을 지우고 여기에 테마 페이지를 만드세요. Tailwind CSS
+          클래스를 바로 사용할 수 있고, 게임 이벤트는
+          rk.trigger('이벤트이름', payload)로 서버에 보고합니다.
+          힌트폰이 필요하면 <HintInput />과 <HintRenderer hint={rk.hint} />를
+          사용하세요. */}
+      <p>bridge: {rk.bridge}</p>
+      <p>sessionMode: {rk.sessionMode}</p>
+      <p>remainingMs: {rk.remainingMs ?? '(타이머 없음)'} (자동 갱신)</p>
+      <p>hint: {JSON.stringify(rk.hint.data)}</p>
 
-      <aside className="activity">
-        <h2>Helper 활동</h2>
-        {roomkit.activities.length === 0
-          ? <p>웹 테스트에서 커맨드를 보내 주세요.</p>
-          : roomkit.activities.map((item) => <p key={item.id}>{item.text}</p>)}
-      </aside>
+      <p>메시지 로그:</p>
+      {logs.length === 0 ? (
+        <p>아직 받은 메시지가 없습니다. 디버그 창에서 announce를 보내 보세요.</p>
+      ) : (
+        logs.map((log) => <p key={log.id}>{log.text}</p>)
+      )}
     </main>
   );
-}
-
-function SubtitleLayer({ subtitle }: { subtitle: Subtitle }) {
-  if (!subtitle) return null;
-  const align = subtitle.params.align === 'left' || subtitle.params.align === 'right'
-    ? subtitle.params.align
-    : 'center';
-  const speaker = typeof subtitle.params.speaker === 'string' ? subtitle.params.speaker : null;
-
-  return (
-    <section className="custom-subtitle" data-align={align} aria-live="polite">
-      {/* Studio에서 작성한 자막 CSS는 신뢰된 관리자 입력으로 현재 자막에만 적용합니다. */}
-      <style>{subtitle.css}</style>
-      {speaker && <span className="custom-subtitle-speaker">{speaker}</span>}
-      <div
-        className="custom-subtitle-content rk-subtitle"
-        dangerouslySetInnerHTML={{ __html: subtitle.html }}
-      />
-      <small>{subtitle.lineIndex + 1} / {subtitle.lineCount}</small>
-    </section>
-  );
-}
-
-function VideoLayer({
-  video,
-  onFinish,
-}: {
-  video: DelegatedVideo | null;
-  onFinish: (commandId: string, failed?: boolean) => void;
-}) {
-  const ref = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (!video?.url || !ref.current) return;
-    // 자동 재생이 브라우저 정책으로 거부되어도 실패 ack를 보내 시퀀스가 멈추지 않게 합니다.
-    void ref.current.play().catch(() => onFinish(video.commandId, true));
-  }, [onFinish, video]);
-
-  if (!video) return null;
-  const frame = video.frame;
-  const style = frame
-    ? { left: `${frame.x}%`, top: `${frame.y}%`, width: `${frame.width}%`, height: `${frame.height}%` }
-    : { inset: '0' };
-  const objectFit = video.params.objectFit === 'contain' ? 'contain' : 'cover';
-  const muted = video.params.muted === true;
-
-  return (
-    <section className="custom-video" style={style}>
-      {video.url ? (
-        <video
-          key={video.commandId}
-          ref={ref}
-          src={video.url}
-          style={{ objectFit }}
-          muted={muted}
-          playsInline
-          onEnded={() => onFinish(video.commandId)}
-          onError={() => onFinish(video.commandId, true)}
-        />
-      ) : (
-        <div className="video-placeholder">
-          <strong>{video.assetName}</strong>
-          <span>플레이스홀더 · {Math.round((video.durationMs ?? 0) / 100) / 10}초</span>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function formatRemaining(ms: number | null) {
-  if (ms === null) return '타이머 정보 없음';
-  const seconds = Math.ceil(ms / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }

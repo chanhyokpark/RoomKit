@@ -34,8 +34,9 @@ Keep in mind that command sequence can wait until the message was completely pro
 
 ## Executable examples
 
-- [`templates/hintphone`](../templates/hintphone/README.md): React hintphone using the Helper transport.
-- [`templates/web`](../templates/web/README.md): React Helper site with delegated subtitle and video rendering.
+- [`templates/web`](../templates/web/README.md): minimal in-player website — Vite + React + Tailwind with `@roomkit/helper-react`.
+- [`templates/web_svelte`](../templates/web_svelte/README.md): minimal in-player website — SvelteKit (static adapter) + Tailwind with `@roomkit/helper-svelte`.
+- [`templates/hintphone`](../templates/hintphone/README.md): React hintphone on the deprecated `@roomkit/hintphone-react`.
 - [`templates/web_custom`](../templates/web_custom/README.md): standalone React screen device using `@roomkit/client` directly.
 
 ## Documentation tool contract

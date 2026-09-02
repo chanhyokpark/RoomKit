@@ -1,3 +1,9 @@
+/**
+ * @deprecated `@roomkit/hintphone-react` is superseded by
+ * `@roomkit/helper-react`, which carries the same hint components plus the
+ * full helper API (player-embedded sites only; use `@roomkit/client` for
+ * standalone devices).
+ */
 export {
   HintphoneProvider,
   useHintphone,

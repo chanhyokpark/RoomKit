@@ -1,0 +1,7 @@
+packages:
+  - "."
+
+onlyBuiltDependencies:
+  - "@roomkit/helper-svelte"
+  - "@tailwindcss/oxide"
+  - esbuild

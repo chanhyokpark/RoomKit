@@ -22,29 +22,31 @@
 
 ## 라이브러리 설치
 
-`@roomkit/client`, `@roomkit/helper`와 힌트폰 컴포넌트 라이브러리(`@roomkit/hintphone-react`, `@roomkit/hintphone-svelte`)는 npm 레지스트리 없이 GitHub에서 바로 설치할 수 있습니다.
+`@roomkit/client`, `@roomkit/helper`와 Helper 프레임워크 래퍼(`@roomkit/helper-react`, `@roomkit/helper-svelte`)는 npm 레지스트리 없이 GitHub에서 바로 설치할 수 있습니다.
 pnpm 10부터 git 의존성의 빌드 스크립트 실행을 허용해야 하므로, 사용하는 프로젝트의 `pnpm-workspace.yaml`에 먼저 추가하세요:
 
 ```yaml
 onlyBuiltDependencies:
   - "@roomkit/client"
   - "@roomkit/helper"
-  - "@roomkit/hintphone-react"
-  - "@roomkit/hintphone-svelte"
+  - "@roomkit/helper-react"
+  - "@roomkit/helper-svelte"
 ```
 
 ```sh
 pnpm add "github:chanhyokpark/RoomKit#path:packages/client"
 pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
-pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-react"
-pnpm add "github:chanhyokpark/RoomKit#path:packages/hintphone-svelte"
+pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-react"
+pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-svelte"
 ```
+
+기존 힌트폰 패키지(`@roomkit/hintphone-react`, `@roomkit/hintphone-svelte`)는 deprecated이며 Helper 래퍼로 대체되었습니다.
 
 - 설치 시점에 저장소를 클론해 자동으로 빌드합니다(`prepare` 스크립트).
 - 특정 브랜치/태그에 고정하려면 `github:chanhyokpark/RoomKit#<ref>&path:packages/client` 형태를 사용하세요.
 - private 저장소인 경우 git 인증(ssh 키 등)이 필요합니다.
 
-사용법은 [커스텀 장치 문서](./docs/human/custom-devices.md), [Helper 웹사이트 문서](./docs/human/websites.md), [힌트폰 문서](./docs/human/hintphone.md)를 참고해 주세요. 바로 실행할 수 있는 프로젝트는 [React 템플릿](./templates/README.md)에 있습니다.
+사용법은 [커스텀 장치 문서](./docs/human/custom-devices.md), [Helper 웹사이트 문서](./docs/human/websites.md), [힌트폰 문서](./docs/human/hintphone.md)를 참고해 주세요. 바로 실행할 수 있는 프로젝트는 [템플릿](./templates/README.md)에 있습니다.
 
 ### MCP 서버
 

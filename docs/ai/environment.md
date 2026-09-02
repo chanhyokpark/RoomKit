@@ -50,7 +50,7 @@ RoomKit libraries are private package manifests installed directly from git. pnp
 onlyBuiltDependencies:
   - "@roomkit/client"
   - "@roomkit/helper"
-  - "@roomkit/hintphone-react"
+  - "@roomkit/helper-react"
 ```
 
 Then install the required package:
@@ -61,7 +61,7 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
 
 Pin production consumers to a tag or commit using `#<ref>&path:packages/helper`. Package `prepare` scripts build each package's distributable JavaScript and type declarations during installation.
 
-The same allow-list rule applies to `@roomkit/hintphone-svelte`. The React and Svelte hintphone packages bundle their internal controller transport, so consumers install the UI package they use rather than a separate core package.
+The same allow-list rule applies to `@roomkit/helper-svelte` and the deprecated `@roomkit/hintphone-react`/`@roomkit/hintphone-svelte`. The framework wrapper packages bundle the helper and hint controller internally, so consumers install the UI package they use rather than a separate core package.
 
 ## Website builds
 

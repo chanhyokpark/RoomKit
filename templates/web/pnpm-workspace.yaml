@@ -2,5 +2,6 @@ packages:
   - "."
 
 onlyBuiltDependencies:
-  - "@roomkit/helper"
+  - "@roomkit/helper-react"
+  - "@tailwindcss/oxide"
   - esbuild

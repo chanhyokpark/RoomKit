@@ -2,6 +2,8 @@
 
 [문서 홈](../TOC.md) · [React 예제](../../templates/hintphone/README.md)
 
+> **Deprecated:** `@roomkit/hintphone-react`/`@roomkit/hintphone-svelte`는 `@roomkit/helper-react`/`@roomkit/helper-svelte`로 대체되었습니다. Helper 래퍼가 같은 힌트 컴포넌트에 Helper 전체 API를 더해 제공하니 Player 안에서 실행되는 힌트폰은 [Helper로 웹사이트 만들기](./websites.md)를 참고해 주세요. Player 밖 독립 실행형 힌트폰만 이 패키지(client 모드)를 계속 사용합니다.
+
 `@roomkit/hintphone-react`와 `@roomkit/hintphone-svelte`는 코드 입력, 단계 이동, 정답 표시와 사용 통계를 제공하는 headless 컴포넌트 라이브러리입니다. 스타일은 프로젝트에서 직접 적용해 주세요.
 
 ## React 설정

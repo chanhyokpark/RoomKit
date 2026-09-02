@@ -3,6 +3,11 @@
   it via context with the other components. In client mode without a device
   code it shows a minimal unstyled <dialog> asking for one (replace it with
   the `codeDialog` snippet, style it via `.rk-code-dialog*`).
+
+  @deprecated Use `@roomkit/helper-svelte` (<RoomKitSetup>) — it carries the
+  same hint components plus the full helper API. Sites running outside the
+  player should use `@roomkit/client` directly. This package receives no new
+  features.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';

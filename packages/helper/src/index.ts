@@ -1,5 +1,7 @@
 export {
   RoomKitHelper,
+  type GetRemainingTimeOptions,
+  type HelperBridgeState,
   type MessageHandler,
   type RoomKitHelperEvents,
   type RoomKitHelperOptions,
@@ -10,6 +12,8 @@ export { HELPER_VERSION } from './version.js';
 export type {
   HelperRenderClaims,
   HintError,
+  JsonValue,
+  SessionMode,
   HintShow,
   PlayerHintCode,
   PlayerMessage,

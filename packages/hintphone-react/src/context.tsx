@@ -49,6 +49,11 @@ export interface HintphoneProviderProps {
  * it available to the other components via context. In client mode without a
  * device code it shows a minimal unstyled `<dialog>` asking for one
  * (customizable via `renderCodeDialog`, styleable via `.rk-code-dialog`).
+ *
+ * @deprecated Use `@roomkit/helper-react` (`RoomKitProvider`) — it carries the
+ * same hint components plus the full helper API. Sites running outside the
+ * player should use `@roomkit/client` directly. This package receives no new
+ * features.
  */
 export function HintphoneProvider({
   options,

@@ -38,8 +38,11 @@ const HINT: HintShow = {
   code: '0417',
   step: 0,
   stepCount: 2,
+  hasAnswer: false,
+  isAnswer: false,
   textHtml: '<p>hint</p>',
   imageUrl: null,
+  params: {},
 };
 
 describe('RoomKitHelper', () => {
@@ -72,7 +75,7 @@ describe('RoomKitHelper', () => {
 
   it('hello reports registered message and test-callback names', () => {
     const { posted } = env({
-      messages: { unlock: () => {}, lock: () => {} },
+      messages: ['unlock', 'lock'],
       testCallbacks: { 'reset-puzzle': () => {} },
     });
     expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({
@@ -274,43 +277,18 @@ describe('RoomKitHelper', () => {
       expect(posted).toHaveLength(1); // hello only
     });
 
-    it('a named handler is dispatched by messageName and awaited', async () => {
-      const unlock = vi.fn();
-      const other = vi.fn();
-      const { posted, inject } = env({ messages: { unlock, other } });
+    it('declared names do not filter delivery — listeners see every message', async () => {
+      const onMessage = vi.fn();
+      const { helper, posted, inject } = env({ messages: ['something-else'] });
+      helper.on('message', onMessage);
       inject(awaited);
       await flush();
-      expect(unlock).toHaveBeenCalledExactlyOnceWith({ door: 'north' }, awaited);
-      expect(other).not.toHaveBeenCalled();
+      expect(onMessage).toHaveBeenCalledExactlyOnceWith({ door: 'north' }, awaited);
       expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
         type: 'message:done',
         commandId,
         ok: true,
       });
-    });
-
-    it('a rejecting named handler posts ok:false; legacy listeners still run', async () => {
-      const legacy = vi.fn();
-      const { helper, posted, inject } = env({
-        messages: { unlock: () => Promise.reject(new Error('boom')) },
-      });
-      helper.on('message', legacy);
-      inject(awaited);
-      await flush();
-      expect(legacy).toHaveBeenCalledOnce();
-      expect(HelperToPlayerSchema.parse(posted[1])).toMatchObject({
-        type: 'message:done',
-        ok: false,
-      });
-    });
-
-    it('a named handler also runs for fire-and-forget messages', async () => {
-      const unlock = vi.fn();
-      const { posted, inject } = env({ messages: { unlock } });
-      inject({ ...awaited, commandId: undefined });
-      await flush();
-      expect(unlock).toHaveBeenCalledOnce();
-      expect(posted).toHaveLength(1); // hello only — nothing to ack
     });
   });
 
@@ -555,6 +533,46 @@ describe('RoomKitHelper', () => {
     expect(helper.sessionMode).toBe('test');
     inject({ source: 'roomkit-player', type: 'mode', mode: 'production' });
     expect(helper.sessionMode).toBe('production');
+  });
+
+  it('emits mode only on change', () => {
+    const { helper, inject } = env();
+    const onMode = vi.fn();
+    helper.on('mode', onMode);
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'production' }); // no change
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'test' });
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'test' }); // repeat
+    expect(onMode).toHaveBeenCalledTimes(1);
+    expect(onMode).toHaveBeenCalledWith('test');
+  });
+
+  it('bridge state connects on the first player message', () => {
+    const { helper, inject } = env();
+    const onBridge = vi.fn();
+    helper.on('bridge', onBridge);
+    expect(helper.bridgeState).toBe('connecting');
+    inject({ source: 'not-the-player', type: 'mode', mode: 'test' }); // ignored
+    expect(helper.bridgeState).toBe('connecting');
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'production' });
+    expect(helper.bridgeState).toBe('connected');
+    inject({ source: 'roomkit-player', type: 'mode', mode: 'production' });
+    expect(onBridge).toHaveBeenCalledTimes(1);
+    expect(onBridge).toHaveBeenCalledWith('connected');
+  });
+
+  it('bridge state times out when every hello retry goes unanswered', () => {
+    vi.useFakeTimers();
+    try {
+      const { helper } = env();
+      const onBridge = vi.fn();
+      helper.on('bridge', onBridge);
+      vi.advanceTimersByTime(800 * 25);
+      expect(helper.bridgeState).toBe('timeout');
+      expect(onBridge).toHaveBeenCalledWith('timeout');
+      helper.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('ignores malformed, wrong-source, and unknown messages', () => {

@@ -48,6 +48,7 @@ class FakeConnection implements HintphoneEventSource {
       isAnswer: false,
       textHtml: '<p>hi</p>',
       imageUrl: null,
+      params: {},
       ...partial,
     };
     this.emitter.emit('hint', hint);

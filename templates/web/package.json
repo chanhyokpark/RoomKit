@@ -1,6 +1,6 @@
 {
-  "name": "roomkit-helper-web-template",
-  "version": "0.1.0",
+  "name": "roomkit-web-template",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.28.2",
@@ -12,14 +12,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@roomkit/helper": "github:chanhyokpark/RoomKit#path:packages/helper",
+    "@roomkit/helper-react": "github:chanhyokpark/RoomKit#path:packages/helper-react",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "tailwindcss": "^4.0.0",
     "typescript": "^5.9.0",
     "vite": "^7.0.0"
   }

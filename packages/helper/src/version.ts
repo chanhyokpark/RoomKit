@@ -4,4 +4,4 @@
  * literal (not a build-time define) so the iife embed and source-aliased
  * consumers agree. Keep in sync with package.json — asserted in helper.test.ts.
  */
-export const HELPER_VERSION = '0.4.0';
+export const HELPER_VERSION = '0.5.0';
