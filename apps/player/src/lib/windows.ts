@@ -4,6 +4,13 @@ import type { DeviceEntry } from './stores/config.svelte';
 
 let mobileNavigated = false;
 
+/** Window creation is async — surface failures that would otherwise be silent. */
+function logCreationError(win: import('@tauri-apps/api/webviewWindow').WebviewWindow): void {
+	void win.once('tauri://error', (e) => {
+		vlog('windows', 'window creation failed', win.label, e.payload);
+	});
+}
+
 /**
  * Mobile builds host a single webview, so "opening a window" means navigating
  * the launcher itself to the stage URL. One-shot: extra opens in the same
@@ -46,13 +53,15 @@ export async function openDeviceWindow(device: DeviceEntry): Promise<void> {
 		await existing.setFocus();
 		return;
 	}
-	new WebviewWindow(label, {
-		url,
-		title: `RoomKit Player — ${device.label || device.deviceCode}`,
-		width: 1280,
-		height: 720,
-		fullscreen: device.kiosk
-	});
+	logCreationError(
+		new WebviewWindow(label, {
+			url,
+			title: `RoomKit Player — ${device.label || device.deviceCode}`,
+			width: 1280,
+			height: 720,
+			fullscreen: device.kiosk
+		})
+	);
 }
 
 export interface TestWindowDevice {
@@ -101,12 +110,14 @@ export async function openDebugWindow(sessionId: string, themeId: string): Promi
 		return;
 	}
 	vlog('windows', 'open debug window', windowLabel);
-	new WebviewWindow(windowLabel, {
-		url: `index.html?${query}`,
-		title: 'RoomKit Player — 테스트 디버그',
-		width: 1100,
-		height: 800
-	});
+	logCreationError(
+		new WebviewWindow(windowLabel, {
+			url: `index.html?${query}`,
+			title: 'RoomKit Player — 테스트 디버그',
+			width: 1100,
+			height: 800
+		})
+	);
 }
 
 async function openCodedWindow(
@@ -141,10 +152,12 @@ async function openCodedWindow(
 		return;
 	}
 	vlog('windows', 'open window', windowLabel, { device: device.deviceName, label });
-	new WebviewWindow(windowLabel, {
-		url: `index.html?${query}`,
-		title: `RoomKit Player — ${label}`,
-		width: 1280,
-		height: 720
-	});
+	logCreationError(
+		new WebviewWindow(windowLabel, {
+			url: `index.html?${query}`,
+			title: `RoomKit Player — ${label}`,
+			width: 1280,
+			height: 720
+		})
+	);
 }

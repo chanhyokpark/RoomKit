@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "RoomKit Player",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "identifier": "app.roomkit.player",
   "build": {
     "frontendDist": "../dist",
@@ -17,8 +17,7 @@
         "width": 760,
         "height": 680,
         "resizable": true,
-        "fullscreen": false,
-        "additionalBrowserArgs": "--autoplay-policy=no-user-gesture-required"
+        "fullscreen": false
       }
     ],
     "security": {

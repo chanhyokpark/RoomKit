@@ -5,6 +5,18 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  // All webviews share one WebView2 environment (keyed to the user data
+  // folder), and environment creation fails when webviews disagree on browser
+  // arguments — a per-window `additionalBrowserArgs` in tauri.conf.json made
+  // every JS-opened window (test/debug/device) close instantly on Windows.
+  // Apply the autoplay policy process-wide instead so every webview matches.
+  #[cfg(target_os = "windows")]
+  if std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_none() {
+    std::env::set_var(
+      "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+      "--autoplay-policy=no-user-gesture-required",
+    );
+  }
   tauri::Builder::default()
     .plugin(tauri_plugin_store::Builder::default().build())
     .plugin(tauri_plugin_os::init())
