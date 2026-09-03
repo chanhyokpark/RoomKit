@@ -1,3 +1,4 @@
+<!-- Rendered by Stage only in test sessions; production shows none of this. -->
 <script lang="ts">
 	import { stage } from '../stores/stage.svelte';
 

@@ -92,7 +92,10 @@
 					onerror={() => engine?.video.handleError()}
 				></video>
 			{/if}
-			<PlaceholderOverlay />
+			<!-- Test-only: production plays fileless assets as silence/black. -->
+			{#if connection.isTest}
+				<PlaceholderOverlay />
+			{/if}
 			<SubtitleOverlay />
 			<HintCodeOverlay />
 			<ConnectionBadge />

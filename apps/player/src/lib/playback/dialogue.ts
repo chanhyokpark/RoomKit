@@ -28,8 +28,8 @@ interface ActiveDialogue {
  * - 'both' renders its own subtitles locally and ignores the relay.
  *
  * Placeholder lines (url null) simulate for durationMs; subtitles and the
- * progress relay behave exactly as with real files. A chip is shown while a
- * dialogue containing placeholder lines runs on the speaker.
+ * progress relay behave exactly as with real files. A chip is shown while the
+ * dialogue runs on the speaker (rendered in test sessions only).
  *
  * Line cues: a line flagged `holdBefore` makes the speaker pause, report
  * `waiting` progress, and resume when the server relays a plain progress for
@@ -68,9 +68,7 @@ export class DialogueChannel {
 			kind: 'dialogue',
 			skip: () => this.endSpeaker(entry, 'done')
 		});
-		if (cmd.lines.some((line) => line.url === null)) {
-			stage.addPlaceholder({ id: cmd.id, channel: 'dialogue', name: cmd.assetName });
-		}
+		stage.addPlaceholder({ id: cmd.id, channel: 'dialogue', name: cmd.assetName });
 		void this.runSpeaker(entry);
 	}
 

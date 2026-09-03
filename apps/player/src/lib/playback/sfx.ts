@@ -18,9 +18,9 @@ export class SfxChannel {
 	play(cmd: WirePlaySfx, done: DoneFn): void {
 		let set = this.active.get(cmd.playerId);
 		if (!set) this.active.set(cmd.playerId, (set = new Set()));
+		stage.addPlaceholder({ id: cmd.id, channel: 'sfx', name: cmd.assetName });
 
 		if (cmd.url === null || cmd.fileKey === null) {
-			stage.addPlaceholder({ id: cmd.id, channel: 'sfx', name: cmd.assetName });
 			const entry: ActiveSfx = {
 				audio: null,
 				cancelSimulation: null,
@@ -46,6 +46,7 @@ export class SfxChannel {
 		set.add(entry);
 		const settle = (status?: 'done' | 'failed') => {
 			set.delete(entry);
+			stage.removePlaceholder(cmd.id);
 			done(status);
 		};
 		audio.addEventListener('ended', () => settle());

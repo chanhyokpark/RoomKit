@@ -10,8 +10,10 @@ import { simulate } from './simulate';
  * play replaces (and acks) the previous one. The <video> element lives in
  * Stage.svelte and reports ended/error back here.
  *
- * Placeholder video (url null) renders a centered card on the surface and
- * simulates for durationMs; the skip button routes through finish() as usual.
+ * Placeholder video (url null) renders a centered card on the surface (test
+ * sessions only — production keeps the surface black) and simulates for
+ * durationMs; the skip button routes through finish() as usual. File-backed
+ * plays get an overlay chip instead of the card.
  *
  * When the embedded website has claimed the video slot, playback is delegated:
  * no <video> element renders (videoSrc stays null); the site receives the
@@ -72,6 +74,10 @@ export class VideoChannel {
 		}
 		if (placeholder) {
 			this.active.cancelSimulation = simulate(cmd.durationMs ?? 0, () => this.finish());
+		}
+		// Overlay chip for plays the centered card doesn't already announce.
+		if (delegated || !placeholder) {
+			stage.addPlaceholder({ id: cmd.id, channel: 'video', name: cmd.assetName });
 		}
 		stage.addSkippable({ id: cmd.id, kind: 'video', skip: () => this.finish() });
 	}
@@ -170,6 +176,7 @@ export class VideoChannel {
 		if (!active) return;
 		this.active = null;
 		active.cancelSimulation?.();
+		stage.removePlaceholder(active.commandId);
 		stage.removeSkippable(active.commandId);
 		active.done(status);
 	}

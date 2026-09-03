@@ -63,8 +63,9 @@ function applyVolume(entry: ActiveBgm): void {
  * acks on playback start, non-looping on end — the wire contract. done() is
  * idempotent, so every termination path may call it.
  *
- * Placeholder BGM (url null) shows an overlay chip and simulates for
- * durationMs; looping placeholders ack immediately and stay until stopped.
+ * Every track shows an overlay chip (rendered in test sessions only).
+ * Placeholder BGM (url null) simulates for durationMs; looping placeholders
+ * ack immediately and stay until stopped.
  *
  * Fades come from the BGM asset via the play wire: fadeInMs ramps from 0 on
  * play; fadeOutMs is stored and applied when the track is stopped or replaced
@@ -90,9 +91,9 @@ export class BgmChannel {
 
 	play(cmd: WirePlayBgm, done: DoneFn): void {
 		this.stop(cmd.playerId); // replace: ack the old one out (crossfade)
+		stage.addPlaceholder({ id: cmd.id, channel: 'bgm', name: cmd.assetName });
 
 		if (cmd.url === null || cmd.fileKey === null) {
-			stage.addPlaceholder({ id: cmd.id, channel: 'bgm', name: cmd.assetName });
 			const entry: ActiveBgm = {
 				audio: null,
 				baseVolume: 1,
@@ -153,11 +154,13 @@ export class BgmChannel {
 		} else {
 			audio.addEventListener('ended', () => {
 				this.active.delete(cmd.playerId);
+				stage.removePlaceholder(cmd.id);
 				done();
 			});
 		}
 		audio.addEventListener('error', () => {
 			this.active.delete(cmd.playerId);
+			stage.removePlaceholder(cmd.id);
 			done('failed');
 		});
 		void audio.play().catch(() => done('failed'));
