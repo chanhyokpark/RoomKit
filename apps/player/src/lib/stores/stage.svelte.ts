@@ -52,12 +52,18 @@ export interface Skippable {
 	skip: () => void;
 }
 
-/** A running placeholder (fileless) simulation, rendered as an overlay chip. */
+/** A running playback, rendered as an overlay chip (test sessions only). */
 export interface PlaceholderChip {
-	/** Wire command id of the simulated playback. */
+	/** Wire command id of the playback. */
 	id: string;
 	channel: PlayChannel;
 	name: string;
+	/**
+	 * Stops this playback locally with wire-stop semantics (the chip's close
+	 * button) — the same effect as the session UI's per-media stop button,
+	 * minus the server round trip. Must be a no-op once the playback ended.
+	 */
+	stop: () => void;
 }
 
 const NO_CLAIMS: HelperRenderClaims = { subtitle: false, hintCode: false, video: false };
@@ -92,7 +98,7 @@ class StageStore {
 	private navigateDone: (() => void) | null = null;
 	/** Running skippable playbacks — the test overlay renders one button each. */
 	skippables = $state<Skippable[]>([]);
-	/** Running placeholder simulations — rendered as corner chips. */
+	/** Running playbacks — rendered as corner chips with a close button. */
 	placeholders = $state<PlaceholderChip[]>([]);
 
 	addSkippable(entry: Skippable): void {

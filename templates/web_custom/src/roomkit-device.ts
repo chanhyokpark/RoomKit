@@ -57,6 +57,9 @@ interface ActiveAudio {
   finish: (status?: 'done' | 'failed') => void;
 }
 
+const DUCK_ATTACK_MS = 250;
+const DUCK_RELEASE_MS = 1000;
+
 interface DialogueRun {
   command: WirePlayDialogue;
   done: DoneFn;
@@ -462,7 +465,14 @@ export class RoomKitDevice {
     if (command.value >= 1) this.bgmVolumes.delete(command.playerId);
     else this.bgmVolumes.set(command.playerId, command.value);
     const audio = this.bgm.get(command.playerId)?.audio;
-    if (audio) audio.volume = this.bgmTargetVolume(command.playerId);
+    if (!audio) return;
+    // durationMs > 0 ramps from the current audible volume to the new target.
+    this.fadeVolume(
+      audio,
+      audio.volume,
+      this.bgmTargetVolume(command.playerId),
+      command.durationMs,
+    );
   }
 
   private addDuck(playerId: string, commandId: string, factor: number) {
@@ -490,8 +500,11 @@ export class RoomKitDevice {
 
   private applyDuck(playerId: string) {
     const audio = this.bgm.get(playerId)?.audio;
-    if (audio)
-      this.fadeVolume(audio, audio.volume, this.bgmTargetVolume(playerId), 250);
+    if (!audio) return;
+    const target = this.bgmTargetVolume(playerId);
+    // Duck quickly (attack) so dialogue/SFX is heard at once; release slowly.
+    const rampMs = target < audio.volume ? DUCK_ATTACK_MS : DUCK_RELEASE_MS;
+    this.fadeVolume(audio, audio.volume, target, rampMs);
   }
 
   private fadeAndFinish(active: ActiveAudio) {

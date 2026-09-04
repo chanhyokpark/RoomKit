@@ -15,6 +15,8 @@ interface ActiveBgm {
 	cancelSimulation: (() => void) | null;
 	cancelFade: (() => void) | null;
 	cancelDuck: (() => void) | null;
+	/** Ramp from adjustBgmVolume (durationMs > 0) still in progress. */
+	cancelVolumeRamp: (() => void) | null;
 	/** From the play wire (the BGM asset's setting); applied on stop/replace. */
 	fadeOutMs: number;
 	commandId: string;
@@ -22,7 +24,10 @@ interface ActiveBgm {
 }
 
 const FADE_TICK_MS = 50;
-export const DUCK_RAMP_MS = 250;
+/** Duck attack: BGM drops quickly so dialogue/SFX is heard from its first beat. */
+export const DUCK_ATTACK_MS = 250;
+/** Duck release: BGM comes back slowly so the return is not a jarring jump. */
+export const DUCK_RELEASE_MS = 1000;
 
 /** Linearly ramps a value to `target` over `durationMs`; returns a cancel fn. */
 function fadeValue(
@@ -91,7 +96,15 @@ export class BgmChannel {
 
 	play(cmd: WirePlayBgm, done: DoneFn): void {
 		this.stop(cmd.playerId); // replace: ack the old one out (crossfade)
-		stage.addPlaceholder({ id: cmd.id, channel: 'bgm', name: cmd.assetName });
+		stage.addPlaceholder({
+			id: cmd.id,
+			channel: 'bgm',
+			name: cmd.assetName,
+			// Guarded by command id so a stale chip can't stop a replacement track.
+			stop: () => {
+				if (this.active.get(cmd.playerId)?.commandId === cmd.id) this.stop(cmd.playerId);
+			}
+		});
 
 		if (cmd.url === null || cmd.fileKey === null) {
 			const entry: ActiveBgm = {
@@ -102,6 +115,7 @@ export class BgmChannel {
 				cancelSimulation: null,
 				cancelFade: null,
 				cancelDuck: null,
+				cancelVolumeRamp: null,
 				fadeOutMs: cmd.fadeOutMs,
 				commandId: cmd.id,
 				done
@@ -129,6 +143,7 @@ export class BgmChannel {
 			cancelSimulation: null,
 			cancelFade: null,
 			cancelDuck: null,
+			cancelVolumeRamp: null,
 			fadeOutMs: cmd.fadeOutMs,
 			commandId: cmd.id,
 			done
@@ -166,20 +181,44 @@ export class BgmChannel {
 		void audio.play().catch(() => done('failed'));
 	}
 
-	/** Applies and remembers a direct BGM base-volume adjustment. */
-	setVolume(playerId: string, value: number): void {
+	/**
+	 * Applies and remembers a direct BGM base-volume adjustment. With
+	 * durationMs > 0 the current track ramps linearly from its present factor;
+	 * the remembered value is the target either way, so a later track starts
+	 * at the final volume even if the ramp was cut short.
+	 */
+	setVolume(playerId: string, value: number, durationMs = 0): void {
 		const factor = Math.max(0, Math.min(1, value));
 		if (factor >= 1) this.volumeFactors.delete(playerId);
 		else this.volumeFactors.set(playerId, factor);
 		const entry = this.active.get(playerId);
 		if (!entry) return;
-		entry.volumeFactor = factor;
-		applyVolume(entry);
+		entry.cancelVolumeRamp?.();
+		entry.cancelVolumeRamp = null;
+		if (!entry.audio || durationMs <= 0) {
+			entry.volumeFactor = factor;
+			applyVolume(entry);
+			return;
+		}
+		entry.cancelVolumeRamp = fadeValue(
+			entry.volumeFactor,
+			factor,
+			durationMs,
+			(current) => {
+				entry.volumeFactor = current;
+				applyVolume(entry);
+			},
+			() => {
+				entry.cancelVolumeRamp = null;
+			}
+		);
 	}
 
 	/**
 	 * Ramps the player's duck factor (1 = no duck). Remembered per player so a
 	 * track that starts while dialogue/SFX still plays comes in already ducked.
+	 * Going down uses the short attack ramp; coming back up uses the longer
+	 * release ramp.
 	 */
 	setDuck(playerId: string, factor: number): void {
 		if (factor >= 1) this.duckFactors.delete(playerId);
@@ -187,10 +226,11 @@ export class BgmChannel {
 		const entry = this.active.get(playerId);
 		if (!entry?.audio) return;
 		entry.cancelDuck?.();
+		const rampMs = factor < entry.duckFactor ? DUCK_ATTACK_MS : DUCK_RELEASE_MS;
 		entry.cancelDuck = fadeValue(
 			entry.duckFactor,
 			factor,
-			DUCK_RAMP_MS,
+			rampMs,
 			(value) => {
 				entry.duckFactor = value;
 				applyVolume(entry);
@@ -208,6 +248,7 @@ export class BgmChannel {
 		entry.cancelSimulation?.();
 		entry.cancelFade?.();
 		entry.cancelDuck?.();
+		entry.cancelVolumeRamp?.();
 		stage.removePlaceholder(entry.commandId);
 		const { audio } = entry;
 		if (audio) {

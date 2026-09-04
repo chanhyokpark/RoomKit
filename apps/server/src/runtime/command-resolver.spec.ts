@@ -33,6 +33,7 @@ describe('CommandResolver', () => {
       type: 'adjustBgmVolume',
       playerId,
       value: 35,
+      durationMs: 1500,
     });
 
     expect(prisma.asset.findFirst).toHaveBeenCalledWith({
@@ -46,6 +47,7 @@ describe('CommandResolver', () => {
           type: 'bgmVolume',
           playerId,
           value: 0.35,
+          durationMs: 1500,
         },
       },
     ]);

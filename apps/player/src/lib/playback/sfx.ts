@@ -18,7 +18,17 @@ export class SfxChannel {
 	play(cmd: WirePlaySfx, done: DoneFn): void {
 		let set = this.active.get(cmd.playerId);
 		if (!set) this.active.set(cmd.playerId, (set = new Set()));
-		stage.addPlaceholder({ id: cmd.id, channel: 'sfx', name: cmd.assetName });
+		const playerSet = set;
+		const chip = (entry: ActiveSfx) =>
+			stage.addPlaceholder({
+				id: cmd.id,
+				channel: 'sfx',
+				name: cmd.assetName,
+				// Only this one-shot; other SFX overlapping on the player keep going.
+				stop: () => {
+					if (playerSet.has(entry)) this.stopEntry(entry, playerSet);
+				}
+			});
 
 		if (cmd.url === null || cmd.fileKey === null) {
 			const entry: ActiveSfx = {
@@ -28,6 +38,7 @@ export class SfxChannel {
 				done
 			};
 			set.add(entry);
+			chip(entry);
 			entry.cancelSimulation = simulate(cmd.durationMs ?? 0, () => {
 				set.delete(entry);
 				stage.removePlaceholder(cmd.id);
@@ -44,6 +55,7 @@ export class SfxChannel {
 			done
 		};
 		set.add(entry);
+		chip(entry);
 		const settle = (status?: 'done' | 'failed') => {
 			set.delete(entry);
 			stage.removePlaceholder(cmd.id);
@@ -55,16 +67,21 @@ export class SfxChannel {
 	}
 
 	stop(playerId: string): void {
-		for (const entry of this.active.get(playerId) ?? []) {
-			entry.cancelSimulation?.();
-			stage.removePlaceholder(entry.commandId);
-			if (entry.audio) {
-				entry.audio.pause();
-				entry.audio.removeAttribute('src');
-			}
-			entry.done();
-		}
+		const set = this.active.get(playerId);
+		if (!set) return;
+		for (const entry of [...set]) this.stopEntry(entry, set);
 		this.active.delete(playerId);
+	}
+
+	private stopEntry(entry: ActiveSfx, set: Set<ActiveSfx>): void {
+		set.delete(entry);
+		entry.cancelSimulation?.();
+		stage.removePlaceholder(entry.commandId);
+		if (entry.audio) {
+			entry.audio.pause();
+			entry.audio.removeAttribute('src');
+		}
+		entry.done();
 	}
 
 	stopAll(): void {

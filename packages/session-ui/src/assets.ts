@@ -30,7 +30,7 @@ export function commandLabel(entry: SequenceEntry, assets: Asset[]): string {
     case 'stopBgm':
       return `BGM 정지${entry.allPlayers ? ' (전체)' : `: ${name(entry.playerId)}`}`;
     case 'adjustBgmVolume':
-      return `BGM 볼륨 조정: ${name(entry.playerId)} → ${entry.value}%`;
+      return `BGM 볼륨 조정: ${name(entry.playerId)} → ${entry.value}%${entry.durationMs > 0 ? ` (${entry.durationMs}ms)` : ''}`;
     case 'playSfx':
       return `효과음 재생: ${name(entry.sfxId)}`;
     case 'stopSfx':

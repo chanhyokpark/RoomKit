@@ -183,6 +183,7 @@ export class CommandResolver {
                 type: 'bgmVolume',
                 playerId: player.id,
                 value: cmd.value / 100,
+                durationMs: cmd.durationMs,
               },
             },
           ],

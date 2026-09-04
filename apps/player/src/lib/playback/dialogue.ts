@@ -68,7 +68,15 @@ export class DialogueChannel {
 			kind: 'dialogue',
 			skip: () => this.endSpeaker(entry, 'done')
 		});
-		stage.addPlaceholder({ id: cmd.id, channel: 'dialogue', name: cmd.assetName });
+		stage.addPlaceholder({
+			id: cmd.id,
+			channel: 'dialogue',
+			name: cmd.assetName,
+			// Wire-stop semantics (clears the subtitle), unlike skip.
+			stop: () => {
+				if (this.active.get(cmd.playerId) === entry) this.stop(cmd.playerId);
+			}
+		});
 		void this.runSpeaker(entry);
 	}
 

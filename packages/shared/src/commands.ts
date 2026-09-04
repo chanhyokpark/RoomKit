@@ -90,6 +90,8 @@ const nonDialogueOptions = [
     playerId: assetRef,
     /** Persistent BGM base volume for this player (percent, until device reset). */
     value: z.number().min(0).max(100),
+    /** Linear ramp from the current base volume to `value`. 0 = immediate. */
+    durationMs: z.number().int().nonnegative().default(0),
   }),
   z.object({
     type: z.literal('wait'),

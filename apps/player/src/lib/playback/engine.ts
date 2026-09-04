@@ -43,7 +43,7 @@ export class PlaybackEngine {
 		};
 		client.on('play', (cmd, done) => this.onPlay(cmd, done));
 		client.on('stop', (cmd) => this.onStop(cmd));
-		client.on('bgmVolume', (cmd) => this.bgm.setVolume(cmd.playerId, cmd.value));
+		client.on('bgmVolume', (cmd) => this.bgm.setVolume(cmd.playerId, cmd.value, cmd.durationMs));
 		client.on('progress', (progress) => this.dialogue.onProgress(progress));
 		client.on('reset', () => this.resetAll());
 		client.on('navigate', (url, cmd, done) => stage.navigate(url, done, cmd.force));

@@ -736,7 +736,7 @@ describe('Runtime (e2e)', () => {
     const eventId = await createEvent(themeId, 'bgm-cycle', {
       sequence: [
         entry({ type: 'playBgm', bgmId, playerId, loop: true }),
-        entry({ type: 'adjustBgmVolume', playerId, value: 35 }),
+        entry({ type: 'adjustBgmVolume', playerId, value: 35, durationMs: 800 }),
         entry({ type: 'stopBgm', playerId, allPlayers: false }),
       ],
     });
@@ -757,7 +757,7 @@ describe('Runtime (e2e)', () => {
     const volume = transport.ofType('bgmVolume')[0];
     expect(volume).toMatchObject({
       deviceId: speakerId,
-      wire: { playerId, value: 0.35 },
+      wire: { playerId, value: 0.35, durationMs: 800 },
     });
     const stop = transport.ofType('stop')[0];
     expect(stop.wire).toMatchObject({ channel: 'bgm', playerId });

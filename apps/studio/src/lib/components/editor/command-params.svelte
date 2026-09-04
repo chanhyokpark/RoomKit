@@ -135,6 +135,25 @@
 				}}
 			/>
 		</Field.Field>
+		<Field.Field class="w-32 gap-1">
+			<Field.FieldLabel for={`bgm-volume-duration-${entry.id}`}>변화 시간 (ms)</Field.FieldLabel>
+			<Input
+				id={`bgm-volume-duration-${entry.id}`}
+				class="h-8"
+				type="number"
+				min="0"
+				step="100"
+				value={entry.durationMs}
+				onchange={(changeEvent) => {
+					if (entry.type === 'adjustBgmVolume')
+						entry.durationMs = parseMs(changeEvent.currentTarget.value, entry.durationMs, 0);
+					onchanged();
+				}}
+			/>
+		</Field.Field>
+		<span class="text-xs text-muted-foreground">
+			{entry.durationMs > 0 ? secondsHint(entry.durationMs) : '즉시 적용'}
+		</span>
 	{:else if entry.type === 'stopDialogue' || entry.type === 'stopSfx' || entry.type === 'stopVideo' || entry.type === 'stopBgm'}
 		<AssetSelect
 			kind="player"

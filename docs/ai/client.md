@@ -39,7 +39,7 @@ Message listeners may return promises. For `awaitHandled` commands, Client waits
 
 Every play command has id, channel, player/asset identity, and either URL/file metadata or placeholder duration.
 
-- **BGM:** implement loop and fades. A loop acknowledges at start. Store fade-out for later stop/replacement. Handle `bgmVolume` by applying `cmd.value` (0–1) as the player's persistent base volume until reset; fade and duck factors multiply it.
+- **BGM:** implement loop and fades. A loop acknowledges at start. Store fade-out for later stop/replacement. Handle `bgmVolume` by applying `cmd.value` (0–1) as the player's persistent base volume until reset, ramping linearly over `cmd.durationMs` when it is above 0; fade and duck factors multiply it.
 - **SFX:** play independently and apply optional `bgmDuck` while active.
 - **Dialogue speaker:** play ordered lines; emit `sendProgress(id, index)` as each starts. For `holdBefore`, emit waiting progress first and wait for the server's non-waiting progress before starting that line. Finish after the last line.
 - **Dialogue screen:** acknowledge play immediately, retain the dialogue command, and render line subtitle HTML on matching progress. Clear at end unless `keepSubtitleAfterEnd`, and always clear on stop.
@@ -207,7 +207,7 @@ interface WirePlaySfx {
   id: string; type: 'play'; channel: 'sfx';
   playerId: string; assetId: string; assetName: string;
   fileKey: string | null; url: string | null; durationMs: number | null;
-  bgmDuck?: number;   // 0..1 BGM factor while the SFX plays; absent = no ducking
+  bgmDuck?: number;   // 0..1 BGM factor while the SFX plays; absent = no ducking. Ramp down fast (~250ms), release slowly (~1s)
 }
 
 interface WireDialogueLine {
@@ -243,7 +243,7 @@ interface WireStop {
   playerId: string | null;            // null = every player on this channel
 }
 
-interface WireBgmVolume { id: string; type: 'bgmVolume'; playerId: string; value: number } // 0..1, until reset
+interface WireBgmVolume { id: string; type: 'bgmVolume'; playerId: string; value: number; durationMs: number } // 0..1, until reset; ramp ms (0 = instant)
 
 interface WireNavigate {
   id: string; type: 'navigate';

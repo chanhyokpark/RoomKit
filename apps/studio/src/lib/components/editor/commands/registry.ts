@@ -83,7 +83,7 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 	adjustBgmVolume: {
 		label: 'BGM 볼륨 조정',
 		icon: Volume1Icon,
-		create: () => ({ type: 'adjustBgmVolume', playerId: null, value: 100 })
+		create: () => ({ type: 'adjustBgmVolume', playerId: null, value: 100, durationMs: 0 })
 	},
 	resetDevice: {
 		label: '장치 리셋',

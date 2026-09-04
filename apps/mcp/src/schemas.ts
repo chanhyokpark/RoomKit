@@ -42,7 +42,7 @@ export function commandsDoc(): unknown {
       'Asset reference fields (deviceId, playerId, bgmId, ...) take an asset UUID or null. Null/dangling refs are not fatal: the runtime logs and skips that command.',
       'playDialogue.lineCues wedge commands between dialogue lines: {afterLineId: <dialogue line id>, sequence: [...commands]}. playDialogue itself is not allowed inside a cue (use callEvent instead). A cue after the last line never runs.',
       'waitUntilEnd on play commands makes the sequence wait for playback to finish before the next entry. wait.durationMs pauses the sequence.',
-      'adjustBgmVolume.value is a 0..100 percent base volume for one player; it persists through later BGM tracks until that device is reset, while fades and ducking still multiply it.',
+      'adjustBgmVolume.value is a 0..100 percent base volume for one player; it persists through later BGM tracks until that device is reset, while fades and ducking still multiply it. Optional adjustBgmVolume.durationMs (default 0) ramps the playing track to the new volume over that many ms; the sequence does not wait for the ramp.',
       'switchPhase changes the session phase; callEvent runs another event (waitUntilFinish to await it); eval runs JS in a server sandbox (returning false aborts the sequence); endTheme ends the game with a success/fail verdict.',
       'sendMessage.values, navigate query values, and sendWebsiteRequest path/body/headers support {{vars.x}} and {{payload.x}} template interpolation at run time.',
       'sendWebsiteRequest sends HTTP from the RoomKit server to a URL resolved from a website asset; waitUntilEnd waits through the complete response body.',

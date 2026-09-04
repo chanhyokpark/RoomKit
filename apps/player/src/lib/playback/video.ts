@@ -77,7 +77,14 @@ export class VideoChannel {
 		}
 		// Overlay chip for plays the centered card doesn't already announce.
 		if (delegated || !placeholder) {
-			stage.addPlaceholder({ id: cmd.id, channel: 'video', name: cmd.assetName });
+			stage.addPlaceholder({
+				id: cmd.id,
+				channel: 'video',
+				name: cmd.assetName,
+				stop: () => {
+					if (this.active?.commandId === cmd.id) this.finish();
+				}
+			});
 		}
 		stage.addSkippable({ id: cmd.id, kind: 'video', skip: () => this.finish() });
 	}

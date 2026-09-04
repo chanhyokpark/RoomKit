@@ -16,7 +16,7 @@ const HELP = [
   'help · list <devices|players|events|phases|hints|bgm|sfx|video|dialogues|websites|messages>',
   'playBgm|playSfx|playVideo|playDialogue <asset> [player] [wait]',
   'stopBgm|stopSfx|stopVideo|stopDialogue [player|all]',
-  'adjustBgmVolume <player> <0..100>',
+  'adjustBgmVolume <player> <0..100> [durationMs]',
   'navigate <device> <website> [key=value ...] · resetDevice <device> · resetAllDevices',
   'callEvent <event> [wait] · switchPhase <phase>',
   'showHintCode <hint> <device> · hideHintCode [device|all]',
@@ -109,12 +109,22 @@ export function parseConsole(input: string, assets: Asset[]): ConsoleResult {
       return command({ type: 'stopBgm', ...stopTarget(assets, args[0]) });
     case 'adjustbgmvolume': {
       const value = Number(args[1]);
-      if (!Number.isFinite(value) || value < 0 || value > 100)
-        throw new ConsoleError('사용법: adjustBgmVolume <player> <0..100>');
+      const durationMs = args[2] === undefined ? 0 : Number(args[2]);
+      if (
+        !Number.isFinite(value) ||
+        value < 0 ||
+        value > 100 ||
+        !Number.isInteger(durationMs) ||
+        durationMs < 0
+      )
+        throw new ConsoleError(
+          '사용법: adjustBgmVolume <player> <0..100> [durationMs]',
+        );
       return command({
         type: 'adjustBgmVolume',
         playerId: player(assets, args[0]),
         value,
+        durationMs,
       });
     }
     case 'stopsfx':

@@ -161,6 +161,8 @@ export const WireBgmVolumeSchema = z.object({
   type: z.literal('bgmVolume'),
   playerId: z.uuid(),
   value: z.number().min(0).max(1),
+  /** Linear ramp from the current base volume to `value`. 0 = immediate. */
+  durationMs: z.number().int().nonnegative().default(0),
 });
 export type WireBgmVolume = z.infer<typeof WireBgmVolumeSchema>;
 

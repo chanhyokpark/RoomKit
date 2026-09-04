@@ -1,5 +1,6 @@
 <!-- Rendered by Stage only in test sessions; production shows none of this. -->
 <script lang="ts">
+	import XIcon from '@lucide/svelte/icons/x';
 	import { stage } from '../stores/stage.svelte';
 
 	const CHANNEL_LABELS: Record<string, string> = {
@@ -34,9 +35,19 @@
 	<div class="absolute bottom-3 left-3 z-30 flex flex-col items-start gap-1.5">
 		{#each stage.placeholders as chip (chip.id)}
 			<span
-				class="rounded-full border border-neutral-600 bg-black/70 px-3 py-1 text-xs text-neutral-300"
+				class="flex items-center gap-1.5 rounded-full border border-neutral-600 bg-black/70 py-1 pr-1.5 pl-3 text-xs text-neutral-300"
 			>
 				{CHANNEL_LABELS[chip.channel] ?? chip.channel} · {chip.name}
+				<!-- Same effect as the session UI's per-media stop button. -->
+				<button
+					type="button"
+					class="flex size-5 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-700 hover:text-white"
+					title="재생 정지"
+					aria-label="재생 정지"
+					onclick={() => chip.stop()}
+				>
+					<XIcon class="size-3.5" />
+				</button>
 			</span>
 		{/each}
 	</div>

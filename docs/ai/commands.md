@@ -19,7 +19,7 @@ Dialogue, SFX, video, and BGM play commands reference a media asset and player a
 - **Dialogue** routes voice to the speaker device and subtitle progress to the screen device. Line cues are mini-sequences anchored after a dialogue line ID. The speaker holds before the following line, the cue runs, and playback resumes. Missing/last-line anchors are skipped with warnings. Stopping dialogue clears subtitle state and resolves playback normally.
 - **SFX** mixes with dialogue and BGM. Player-level SFX ducking reduces BGM while any SFX is active.
 - **Video** routes to the screen device using the authored full-screen/percentage frame. A Helper page that claims video replaces Player's renderer and must report end/error.
-- **BGM** applies asset fade-in/fade-out. Looping BGM acknowledges on start and cannot meaningfully be waited to natural completion. `adjustBgmVolume` sets one player's persistent base volume from 0–100%; it also applies to later tracks and resets with the device. Fade and dialogue/SFX duck factors continue to multiply that base volume.
+- **BGM** applies asset fade-in/fade-out. Looping BGM acknowledges on start and cannot meaningfully be waited to natural completion. `adjustBgmVolume` sets one player's persistent base volume from 0–100%; it also applies to later tracks and resets with the device. Its optional `durationMs` (default 0) ramps the current track linearly to the new volume instead of switching instantly; the sequence does not wait for the ramp. Fade and dialogue/SFX duck factors continue to multiply that base volume.
 
 Placeholder playback has `url: null` and a duration. It follows the same acknowledgment rules. Stop commands are normal completion, not run abortion.
 
