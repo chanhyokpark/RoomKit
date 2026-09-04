@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './config/env';
 import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { ThemeEventsModule } from './theme-events/theme-events.module';
 import { AuthModule } from './auth/auth.module';
 import { StorageModule } from './storage/storage.module';
 import { UploadsModule } from './uploads/uploads.module';
@@ -21,6 +22,7 @@ import { GatewayModule } from './gateway/gateway.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     PrismaModule,
+    ThemeEventsModule,
     AuthModule,
     StorageModule,
     UploadsModule,

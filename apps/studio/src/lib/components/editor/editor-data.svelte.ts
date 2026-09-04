@@ -3,6 +3,7 @@ import { toast } from 'svelte-sonner';
 import type { Asset, AssetKind, Tag } from '@roomkit/shared';
 import { listAssets } from '$lib/api/assets';
 import { listTags } from '$lib/api/tags';
+import { watchThemeAssets } from '$lib/api/live';
 
 export type PhaseAsset = Extract<Asset, { kind: 'phase' }>;
 export type EventAsset = Extract<Asset, { kind: 'event' }>;
@@ -10,7 +11,8 @@ export type EventAsset = Extract<Asset, { kind: 'event' }>;
 /**
  * All assets of the theme, shared by every editor component via context.
  * Pickers, name resolution, and dangling-reference checks all read from here;
- * every mutation performed in the editor calls refresh() afterwards.
+ * every mutation performed in the editor calls refresh() afterwards, and
+ * server `theme:assets` broadcasts refresh it when someone else edits.
  */
 export class EditorData {
 	readonly themeId: string;
@@ -20,6 +22,7 @@ export class EditorData {
 	loading = $state(true);
 
 	#requestId = 0;
+	#unwatch: () => void;
 
 	// Rebuilt wholesale by $derived and never mutated, so a plain Map is fine.
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -34,6 +37,11 @@ export class EditorData {
 	constructor(themeId: string) {
 		this.themeId = themeId;
 		void this.refresh();
+		this.#unwatch = watchThemeAssets(themeId, () => void this.refresh());
+	}
+
+	dispose(): void {
+		this.#unwatch();
 	}
 
 	byKind<K extends AssetKind>(kind: K): Extract<Asset, { kind: K }>[] {

@@ -9,6 +9,7 @@
 	import * as Empty from '$lib/components/ui/empty';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { deleteAsset, listAssets } from '$lib/api/assets';
+	import { watchThemeAssets } from '$lib/api/live';
 	import { listTags } from '$lib/api/tags';
 	import TagManagerDialog from '$lib/components/tags/tag-manager-dialog.svelte';
 	import { playback } from '$lib/stores/playback.svelte';
@@ -53,6 +54,15 @@
 		return () => playback.stop();
 	});
 
+	// Refetch when anyone (another tab, another operator) changes this theme's
+	// assets or tags. Silent: no skeleton flash over an already-rendered list.
+	$effect(() =>
+		watchThemeAssets(themeId, () => {
+			void refreshAssets(activeKind, tagId, { silent: true });
+			void refreshTags();
+		})
+	);
+
 	// Keep the kind tab and tag filter shareable via the URL.
 	$effect(() => {
 		const url = new URL(page.url);
@@ -66,9 +76,13 @@
 
 	void refreshTags();
 
-	async function refreshAssets(kind: AssetKind = activeKind, tag: string = tagId): Promise<void> {
+	async function refreshAssets(
+		kind: AssetKind = activeKind,
+		tag: string = tagId,
+		{ silent = false } = {}
+	): Promise<void> {
 		const rid = ++requestId;
-		loading = true;
+		if (!silent) loading = true;
 		try {
 			const result = await listAssets(themeId, { kind, tagId: tag || undefined });
 			if (rid === requestId) assets = result;

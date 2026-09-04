@@ -78,5 +78,4 @@ export class PlayerRegistry {
     }
     return true;
   }
-
 }

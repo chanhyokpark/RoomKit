@@ -11,6 +11,7 @@ import * as mime from 'mime-types';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { ThemeEventsService } from '../theme-events/theme-events.service';
 import {
   forEachZipEntry,
   isDirectoryEntry,
@@ -65,6 +66,7 @@ export class ZipImportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly themeEvents: ThemeEventsService,
   ) {}
 
   /** Extracts media files from the zip to S3 and creates one asset per file (or dialogue group). */
@@ -123,6 +125,7 @@ export class ZipImportsService {
       kind === 'dialogue'
         ? await this.createDialogueAssets(themeId, uploaded)
         : await this.createMediaAssets(themeId, kind, uploaded);
+    if (created.length > 0) this.themeEvents.assetsChanged(themeId);
     return { created, skipped };
   }
 

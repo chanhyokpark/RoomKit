@@ -17,6 +17,7 @@ import {
 } from '@roomkit/shared';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
+import { ThemeEventsService } from '../theme-events/theme-events.service';
 
 const HINT_CODE_ATTEMPTS = 20;
 
@@ -28,7 +29,10 @@ function isUniqueViolation(e: unknown): boolean {
 
 @Injectable()
 export class AssetsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly themeEvents: ThemeEventsService,
+  ) {}
 
   list(themeId: string, filter: { kind?: AssetKind; tagId?: string }) {
     return this.prisma.asset.findMany({
@@ -72,15 +76,19 @@ export class AssetsService {
     };
 
     if (input.kind === 'hint' && input.code === undefined) {
-      return this.createHintWithGeneratedCode(base);
+      const hint = await this.createHintWithGeneratedCode(base);
+      this.themeEvents.assetsChanged(themeId);
+      return hint;
     }
 
     const code = 'code' in input ? input.code : null;
     try {
-      return await this.prisma.asset.create({
+      const created = await this.prisma.asset.create({
         data: { ...base, code },
         include: { tags: true },
       });
+      this.themeEvents.assetsChanged(themeId);
+      return created;
     } catch (e) {
       if (isUniqueViolation(e)) {
         throw new ConflictException(
@@ -120,7 +128,7 @@ export class AssetsService {
     await this.checkTagsBelongToTheme(themeId, input.tagIds);
 
     try {
-      return await this.prisma.asset.update({
+      const updated = await this.prisma.asset.update({
         where: { id },
         data: {
           name: input.name,
@@ -133,6 +141,8 @@ export class AssetsService {
         },
         include: { tags: true },
       });
+      this.themeEvents.assetsChanged(themeId);
+      return updated;
     } catch (e) {
       if (isUniqueViolation(e)) {
         throw new ConflictException(
@@ -146,6 +156,7 @@ export class AssetsService {
   async remove(themeId: string, id: string) {
     await this.get(themeId, id);
     await this.prisma.asset.delete({ where: { id } });
+    this.themeEvents.assetsChanged(themeId);
   }
 
   private async createHintWithGeneratedCode(

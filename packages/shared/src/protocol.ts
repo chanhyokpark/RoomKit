@@ -72,7 +72,15 @@ export const AdminEvents = {
   playerStatus: 'player:status',
   /** Operator notification pushed by the `notify` sequence command. */
   notification: 'notification',
+  /** A theme's assets or tags changed via REST — refetch to stay in sync. */
+  themeAssets: 'theme:assets',
 } as const;
+
+/** /admin `theme:assets` payload. */
+export const ThemeAssetsChangedSchema = z.object({
+  themeId: z.string(),
+});
+export type ThemeAssetsChanged = z.infer<typeof ThemeAssetsChangedSchema>;
 
 /** Events on the /player namespace (player launcher, not device windows). */
 export const PlayerEvents = {

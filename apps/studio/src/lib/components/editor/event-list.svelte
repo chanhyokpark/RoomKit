@@ -75,7 +75,11 @@
 		<EventCard
 			{event}
 			selected={event.id === selectedEventId}
-			onselect={() => (selectedEventId = event.id)}
+			onselect={() => {
+				selectedEventId = event.id;
+				// Every click re-fetches so the sequence shown is never stale.
+				void editorData.refresh();
+			}}
 			onedit={() => onedit(event)}
 			ondelete={() => (deleteTarget = event)}
 		/>

@@ -88,7 +88,11 @@ describe('Player test sessions (e2e)', () => {
     const themeId = await createTheme();
     const devA = await createDevice(themeId, 'subset-a');
     await createDevice(themeId, 'subset-b');
-    const websiteId = await createWebsite(themeId, 'site', 'http://site.example/');
+    const websiteId = await createWebsite(
+      themeId,
+      'site',
+      'http://site.example/',
+    );
 
     const playerId = crypto.randomUUID();
     const player = track(connectPlayer(url, playerId, 'e2e player'));
@@ -132,13 +136,23 @@ describe('Player test sessions (e2e)', () => {
     await auth(
       request(server())
         .post('/api/sessions')
-        .send({ themeId, mode: 'test', deviceCodes: [], deviceIds: [crypto.randomUUID()] }),
+        .send({
+          themeId,
+          mode: 'test',
+          deviceCodes: [],
+          deviceIds: [crypto.randomUUID()],
+        }),
     ).expect(400);
     // unknown device id
     await auth(
       request(server())
         .post('/api/sessions')
-        .send({ themeId, mode: 'test', playerId, deviceIds: [crypto.randomUUID()] }),
+        .send({
+          themeId,
+          mode: 'test',
+          playerId,
+          deviceIds: [crypto.randomUUID()],
+        }),
     ).expect(400);
     // unknown override website
     await auth(
@@ -166,7 +180,11 @@ describe('Player test sessions (e2e)', () => {
   it('applies urlOverrides when resolving navigate commands', async () => {
     const themeId = await createTheme();
     const deviceId = await createDevice(themeId, 'nav-dev');
-    const websiteId = await createWebsite(themeId, 'nav-site', 'http://original.example/page');
+    const websiteId = await createWebsite(
+      themeId,
+      'nav-site',
+      'http://original.example/page',
+    );
     const code = nextTestCode();
 
     const withOverrides = await auth(
@@ -183,7 +201,9 @@ describe('Player test sessions (e2e)', () => {
 
     const device = track(connectDevice(url, code));
     await waitForEvent(device, 'welcome');
-    await auth(request(server()).post(`/api/sessions/${sessionId}/start`)).expect(201);
+    await auth(
+      request(server()).post(`/api/sessions/${sessionId}/start`),
+    ).expect(201);
 
     const wire = waitForEvent<WireCommand>(device, 'command');
     await auth(
@@ -202,12 +222,18 @@ describe('Player test sessions (e2e)', () => {
       expect(navigate.url).toBe('http://localhost:5175/dev?k=v');
     }
 
-    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(201);
+    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(
+      201,
+    );
   });
 
   it('navigates devices to their starting webpage on start and on late attach', async () => {
     const themeId = await createTheme();
-    const websiteId = await createWebsite(themeId, 'start-site', 'http://start.example/');
+    const websiteId = await createWebsite(
+      themeId,
+      'start-site',
+      'http://start.example/',
+    );
     const devEarly = await createDevice(themeId, 'start-early', {
       startWebsite: { websiteId, query: [{ key: 'room', value: 'alpha' }] },
     });
@@ -235,7 +261,9 @@ describe('Player test sessions (e2e)', () => {
     const early = track(connectDevice(url, codeEarly));
     await waitForEvent(early, 'welcome');
     const earlyWire = waitForEvent<WireCommand>(early, 'command');
-    await auth(request(server()).post(`/api/sessions/${sessionId}/start`)).expect(201);
+    await auth(
+      request(server()).post(`/api/sessions/${sessionId}/start`),
+    ).expect(201);
     const earlyNavigate = await earlyWire;
     expect(earlyNavigate.type).toBe('navigate');
     if (earlyNavigate.type === 'navigate') {
@@ -251,7 +279,9 @@ describe('Player test sessions (e2e)', () => {
       expect(lateNavigate.url).toBe('http://start.example/');
     }
 
-    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(201);
+    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(
+      201,
+    );
   });
 
   it('runs test callbacks through the device ack and rejects production sessions', async () => {
@@ -300,18 +330,24 @@ describe('Player test sessions (e2e)', () => {
     ).expect(201);
     expect(offlineRes.body).toEqual({ ok: false });
 
-    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(201);
+    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(
+      201,
+    );
 
     // Production sessions reject test callbacks.
     const prod = await auth(
-      request(server()).post('/api/sessions').send({ themeId, mode: 'production' }),
+      request(server())
+        .post('/api/sessions')
+        .send({ themeId, mode: 'production' }),
     ).expect(201);
     await auth(
       request(server())
         .post(`/api/sessions/${prod.body.id}/devices/${deviceId}/test-callback`)
         .send({ name: 'reset-puzzle' }),
     ).expect(400);
-    await auth(request(server()).post(`/api/sessions/${prod.body.id}/end`)).expect(201);
+    await auth(
+      request(server()).post(`/api/sessions/${prod.body.id}/end`),
+    ).expect(201);
   });
 
   it('relays helper-registered message and callback names via device:status', async () => {
@@ -363,6 +399,8 @@ describe('Player test sessions (e2e)', () => {
     expect(status.helperMessages).toEqual(['unlock', 'announce']);
     expect(status.helperTestCallbacks).toEqual(['reset-puzzle']);
 
-    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(201);
+    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(
+      201,
+    );
   });
 });

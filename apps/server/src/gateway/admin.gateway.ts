@@ -16,11 +16,13 @@ import {
   type SessionNotification,
   type SessionRuns,
   type SessionState,
+  type ThemeAssetsChanged,
 } from '@roomkit/shared';
 import type { Namespace, Socket } from 'socket.io';
 import { PlayerRegistry } from '../players/player-registry';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
+import { ThemeEventsService } from '../theme-events/theme-events.service';
 import { ConnectionRegistry } from './connection-registry';
 
 const ADMINS_ROOM = 'admins';
@@ -43,7 +45,12 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
     private readonly registry: ConnectionRegistry,
     private readonly players: PlayerRegistry,
     private readonly prisma: PrismaService,
-  ) {}
+    themeEvents: ThemeEventsService,
+  ) {
+    themeEvents.onAssetsChanged((themeId) =>
+      this.broadcastThemeAssets({ themeId }),
+    );
+  }
 
   afterInit(): void {
     this.server.use((socket, next) => {
@@ -139,4 +146,7 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
     this.server.to(ADMINS_ROOM).emit(AdminEvents.notification, notification);
   }
 
+  broadcastThemeAssets(payload: ThemeAssetsChanged): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.themeAssets, payload);
+  }
 }

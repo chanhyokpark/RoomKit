@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import WorkflowIcon from '@lucide/svelte/icons/workflow';
 	import type { Asset } from '@roomkit/shared';
@@ -23,6 +24,8 @@
 	const editorData = provideEditorData(themeId);
 
 	const isMobile = new IsMobile();
+
+	onDestroy(() => editorData.dispose());
 
 	/** 'common' or a phase asset id. */
 	let workspace = $state(page.url.searchParams.get('phase') ?? 'common');

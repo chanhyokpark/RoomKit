@@ -85,7 +85,9 @@ describe('Player gateway (e2e)', () => {
     await waitForEvent(admin, 'connect');
 
     const onlinePromise = waitForEvent<PlayerStatus>(admin, 'player:status');
-    const player = track(connectPlayer(url, playerId, '플레이어-abcd', '9.9.9'));
+    const player = track(
+      connectPlayer(url, playerId, '플레이어-abcd', '9.9.9'),
+    );
     expect(await onlinePromise).toEqual({
       playerId,
       playerName: '플레이어-abcd',

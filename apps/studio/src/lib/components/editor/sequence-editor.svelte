@@ -37,6 +37,8 @@
 	/** Null appends; a number inserts the palette selection at that index. */
 	let paletteInsertIndex = $state<number | null>(null);
 	let saveState = $state<'saved' | 'saving' | 'error'>('saved');
+	/** True between dnd consider and finalize; blocks remote sequence adoption. */
+	let dragging = $state(false);
 
 	const TRIGGER_LABELS: Record<TriggerKind, string> = {
 		device: '장치 트리거',
@@ -52,6 +54,16 @@
 	$effect(() => {
 		// A dismissed insertion palette must not affect the next inline append.
 		if (!paletteOpen) paletteInsertIndex = null;
+	});
+
+	// Adopt a sequence refreshed from the server (another operator's edit, or a
+	// re-click on this event) — but never over unsaved local edits: those win
+	// and overwrite on the next flush.
+	$effect(() => {
+		const remote = $state.snapshot(event.data.sequence) as SequenceEntry[];
+		if (dragging || saveTimer || saving || saveState !== 'saved') return;
+		if (JSON.stringify(remote) === JSON.stringify($state.snapshot(entries))) return;
+		entries = structuredClone(remote);
 	});
 
 	// ── autosave ─────────────────────────────────────────────────────────────
@@ -148,10 +160,12 @@
 	type DndEvent = CustomEvent<{ items: SequenceEntry[] }>;
 
 	function handleDndConsider(dndEvent: DndEvent): void {
+		dragging = true;
 		entries = dndEvent.detail.items;
 	}
 
 	function handleDndFinalize(dndEvent: DndEvent): void {
+		dragging = false;
 		entries = dndEvent.detail.items;
 		scheduleSave(true);
 	}
