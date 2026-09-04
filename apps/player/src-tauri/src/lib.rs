@@ -20,6 +20,9 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_store::Builder::default().build())
     .plugin(tauri_plugin_os::init())
+    // Vibration/haptic feedback relayed from helper sites (mobile only; the
+    // desktop implementation is a no-op).
+    .plugin(tauri_plugin_haptics::init())
     .invoke_handler(tauri::generate_handler![
       cache::cache_download,
       cache::cache_list,

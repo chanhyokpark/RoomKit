@@ -2,6 +2,7 @@ import type { DoneFn, RoomKitClient } from '@roomkit/client';
 import {
 	HelperToPlayerSchema,
 	PLAYER_SOURCE,
+	type HelperHaptics,
 	type HelperTimerGet,
 	type HintError,
 	type HintShow,
@@ -14,6 +15,7 @@ import {
 	type WireTestCallback
 } from '@roomkit/shared';
 import { connection } from '../stores/connection.svelte';
+import { runHaptics } from '../haptics';
 import { vlog } from '../log';
 import { stage } from '../stores/stage.svelte';
 
@@ -267,6 +269,9 @@ export class HelperBridge {
 			case 'timer:get':
 				void this.answerTimer(msg);
 				return;
+			case 'haptics':
+				void this.answerHaptics(msg);
+				return;
 			case 'video:ended':
 				stage.videoDelegate?.ended(msg.commandId);
 				return;
@@ -300,6 +305,22 @@ export class HelperBridge {
 			requestId: msg.requestId,
 			remainingMs
 		});
+	}
+
+	/** Never rejects: a plugin failure is relayed as ok:false with its message. */
+	private async answerHaptics(msg: HelperHaptics): Promise<void> {
+		try {
+			await runHaptics(msg.request);
+			this.send({ source: PLAYER_SOURCE, type: 'haptics:result', requestId: msg.requestId, ok: true });
+		} catch (err) {
+			this.send({
+				source: PLAYER_SOURCE,
+				type: 'haptics:result',
+				requestId: msg.requestId,
+				ok: false,
+				error: err instanceof Error ? err.message : String(err)
+			});
+		}
 	}
 
 	private send(msg: PlayerToHelper): void {

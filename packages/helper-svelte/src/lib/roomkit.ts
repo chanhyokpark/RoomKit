@@ -1,13 +1,16 @@
 import { onDestroy } from 'svelte';
 import type {
   GetRemainingTimeOptions,
+  HapticsApi,
   HelperBridgeState,
   HintCodeState,
   HintCounterStats,
   HintError,
   HintShow,
+  ImpactFeedbackStyle,
   JsonValue,
   MessageHandler,
+  NotificationFeedbackType,
   PlayerMessage,
   RoomKitApi,
   RoomKitHelper,
@@ -67,6 +70,31 @@ class RoomKitHint implements RoomKitHintApi {
   }
 }
 
+/** Haptics facade over the (possibly not yet mounted) core. */
+class RoomKitHaptics implements HapticsApi {
+  constructor(private readonly ctx: RoomKitContextState) {}
+
+  private get api(): HapticsApi | null {
+    return this.ctx.core?.helper.haptics ?? null;
+  }
+  private notMounted(): Promise<never> {
+    return Promise.reject(new Error('[roomkit] RoomKitSetup not mounted'));
+  }
+
+  vibrate(duration: number): Promise<void> {
+    return this.api?.vibrate(duration) ?? this.notMounted();
+  }
+  impactFeedback(style: ImpactFeedbackStyle): Promise<void> {
+    return this.api?.impactFeedback(style) ?? this.notMounted();
+  }
+  notificationFeedback(type: NotificationFeedbackType): Promise<void> {
+    return this.api?.notificationFeedback(type) ?? this.notMounted();
+  }
+  selectionFeedback(): Promise<void> {
+    return this.api?.selectionFeedback() ?? this.notMounted();
+  }
+}
+
 /**
  * Per-component RoomKit view returned by {@link getRoomKit}. Value getters
  * are rune-backed — read them in templates, `$derived` or `$effect` to react
@@ -77,10 +105,13 @@ class RoomKitHint implements RoomKitHintApi {
  */
 export class RoomKit implements RoomKitApi {
   readonly hint: RoomKitHintApi;
+  /** The player device's haptics (mirrors `@tauri-apps/plugin-haptics`). */
+  readonly haptics: HapticsApi;
   private readonly cleanups: (() => void)[] = [];
 
   constructor(private readonly ctx: RoomKitContextState) {
     this.hint = new RoomKitHint(ctx);
+    this.haptics = new RoomKitHaptics(ctx);
   }
 
   get bridge(): HelperBridgeState {

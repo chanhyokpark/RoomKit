@@ -71,4 +71,6 @@ Tauri 앱의 스테이지는 서버에 연결될 때 해당 장치 역할에 필
 
 Android는 여러 데스크톱 창을 지원하지 않아 한 번에 한 장치만 실행합니다. 장치를 열거나 Studio가 테스트를 시작하면 런처 화면 자체가 첫 번째 스테이지로 바뀌며, 같은 요청의 나머지 장치는 열리지 않습니다. 런처로 돌아가려면 앱을 완전히 종료한 뒤 다시 실행해 주세요. 여러 창이 필요한 **테스트** 탭은 모바일에서 표시되지 않습니다.
 
+웹사이트가 헬퍼의 `haptics` API로 요청하는 진동·햅틱 피드백은 Android/iOS Player에서만 실제로 동작하며(Tauri haptics 플러그인), 데스크톱 Player는 요청을 받아도 아무 일 없이 성공으로 응답합니다.
+
 데스크톱 앱은 `pnpm --filter player build:app`, Android APK는 Android SDK/NDK를 준비한 뒤 `pnpm --filter player build:android`로 빌드할 수 있습니다.

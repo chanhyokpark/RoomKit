@@ -29,6 +29,7 @@ Both wrappers expose one `rk` surface (`RoomKitApi`):
 - Reactive values: `rk.bridge` (`connecting`/`connected`/`timeout`), `rk.outsidePlayer` (render a warning when true), `rk.sessionMode`, `rk.remainingMs` (auto-updating timer — polls the player's local snapshot every second; `timerPollMs` tunes/disables it), and the claimed `rk.subtitle`/`rk.hintCode`/`rk.video` slot values.
 - Hint facade `rk.hint`: `data` (current step/answer), `error`, `pending`, `hasPrev`/`hasNext`/`nextIsAnswer`, `counts` (usage stats), and actions `submit(code)`/`prev()`/`next()`/`showAnswer()`/`dismiss()`/`resetCounts()`.
 - Actions: `rk.trigger(event, payload?)`, `rk.refreshTimer()`, `rk.videoEnded/videoError(commandId)`, `rk.triggerAndWait(...)` (not recommended, see above), and `rk.helper` as the raw escape hatch.
+- Haptics `rk.haptics`: `vibrate(ms)`, `impactFeedback(style)`, `notificationFeedback(type)`, `selectionFeedback()` — the player device's haptics (see [Haptics](#haptics)).
 
 Svelte — `getRoomKit()` returns a per-component view; values are rune-backed (observe with `$effect`/templates), and callback registrations are scoped to the instance and auto-removed when the component is destroyed (`rk.destroy()` does the same manually without touching other components):
 
@@ -88,8 +89,20 @@ Navigation destroys claims. Every new document must construct Helper again. `des
 - `sessionMode` is `production` until Player reports `test` or `production`.
 - `bridgeState` is `connecting` until any Player message arrives (`connected`), or `timeout` once every hello retry went unanswered (~20s) — the page was opened outside Player.
 - `on`/`off` subscribe to `message`, hint events, claimed render slots, and `bridge`/`mode` state changes.
+- `haptics` runs vibration/haptic feedback on the Player device (see below).
 
 Handle messages with `on('message')`, dispatching on `envelope.messageName` — multi-page sites can register per page instead of pre-registering everything. The `messages` option is a plain name array whose only job is surfacing those names in the debug window's per-device panel; it never filters delivery. Awaited send-message commands carry a command ID. Helper waits for every message listener's returned promise and posts `message:done`; one rejection marks handling failed but does not stop the server sequence.
+
+## Haptics
+
+`helper.haptics` mirrors [`@tauri-apps/plugin-haptics`](https://v2.tauri.app/plugin/haptics/) one to one — same names, arguments and semantics — and runs each call on the Player device through that plugin:
+
+- `vibrate(duration)` — vibrate for `duration` milliseconds.
+- `impactFeedback(style)` — `'light' | 'medium' | 'heavy' | 'soft' | 'rigid'`.
+- `notificationFeedback(type)` — `'success' | 'warning' | 'error'`.
+- `selectionFeedback()`.
+
+Each method posts a `haptics` request and resolves on the Player's `haptics:result`. It rejects with the plugin's error text when the call failed, after ten seconds when no Player answers (page opened outside Player), and with `helper destroyed` on `destroy()`. Feedback is real only on Android and iOS Player builds; desktop Player accepts every call as a no-op and resolves. Sites should treat haptics as an optional embellishment — never gate game flow on the promise.
 
 ## Test callbacks
 
@@ -230,6 +243,17 @@ interface RoomKitHelperOptions {
 interface TriggerAndWaitOptions { timeoutMs?: number }                     // default 600000
 interface GetRemainingTimeOptions { resync?: boolean; timeoutMs?: number } // defaults false / 10000
 
+// Mirrors @tauri-apps/plugin-haptics. Real feedback on Android/iOS, no-op on desktop;
+// rejects on plugin error, after 10s without a player, or on destroy().
+type ImpactFeedbackStyle = 'light' | 'medium' | 'heavy' | 'soft' | 'rigid';
+type NotificationFeedbackType = 'success' | 'warning' | 'error';
+interface HapticsApi {
+  vibrate(duration: number): Promise<void>; // milliseconds
+  impactFeedback(style: ImpactFeedbackStyle): Promise<void>;
+  notificationFeedback(type: NotificationFeedbackType): Promise<void>;
+  selectionFeedback(): Promise<void>;
+}
+
 interface RoomKitHelperEvents {
   message: [Record<string, JsonValue>, PlayerMessage];
   hint: [HintShow];                   // reply to submitHint/requestHintStep, or an operator push
@@ -247,6 +271,7 @@ class RoomKitHelper {
   constructor(options?: RoomKitHelperOptions);
   get sessionMode(): SessionMode;         // 'production' until the player reports
   get bridgeState(): HelperBridgeState;   // 'timeout' = page runs outside the player
+  readonly haptics: HapticsApi;           // the player device's haptics
   trigger(event: string, payload?: JsonValue): void;
   /** Not recommended (see General API). Rejects on timeout or bridge-less page. */
   triggerAndWait(event: string, payload?: JsonValue, options?: TriggerAndWaitOptions): Promise<void>;
@@ -258,7 +283,7 @@ class RoomKitHelper {
   videoError(commandId: string): void;   // delegated video failed (play fails over)
   on<K extends keyof RoomKitHelperEvents>(event: K, listener: (...args: RoomKitHelperEvents[K]) => void): this;
   off<K extends keyof RoomKitHelperEvents>(event: K, listener: (...args: RoomKitHelperEvents[K]) => void): this;
-  /** Terminal: removes listeners/lockdown, rejects pending trigger waits, resolves pending timer gets with null. */
+  /** Terminal: removes listeners/lockdown, rejects pending trigger/haptics waits, resolves pending timer gets with null. */
   destroy(): void;
 }
 
@@ -312,6 +337,7 @@ interface RoomKitApi {
   readonly video: VideoState;
   readonly helper: RoomKitHelper | null; // raw escape hatch; null before the provider/setup mounted
   readonly hint: RoomKitHintApi;
+  readonly haptics: HapticsApi;          // player device haptics; rejects before mount
   trigger(event: string, payload?: JsonValue): void;
   /** Not recommended; rejects before mount. */
   triggerAndWait(event: string, payload?: JsonValue, options?: TriggerAndWaitOptions): Promise<void>;

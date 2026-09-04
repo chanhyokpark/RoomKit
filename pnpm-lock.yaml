@@ -58,6 +58,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.9.0
         version: 2.11.1
+      '@tauri-apps/plugin-haptics':
+        specifier: ^2.3.3
+        version: 2.3.3
       '@tauri-apps/plugin-os':
         specifier: ^2.3.1
         version: 2.3.2
@@ -2309,6 +2312,9 @@ packages:
     resolution: {integrity: sha512-R8xGtMpwyetawSqm9kYOuMmEqkhUbvcUy8n0aNXIxollKBLESUu5f4Fx+64hgASYm1H+jSWq6jCW6zqTnH6hqQ==}
     engines: {node: '>= 10'}
     hasBin: true
+
+  '@tauri-apps/plugin-haptics@2.3.3':
+    resolution: {integrity: sha512-NueC58Woi2BMVIrOQHWl+mq5LqqiMDtAgaqk5sJHi7GF1dba+SNWPhKblKjTcjRdFZZ+X+gf4rl/GUhMJDyKOg==}
 
   '@tauri-apps/plugin-os@2.3.2':
     resolution: {integrity: sha512-n+nXWeuSeF9wcEsSPmRnBEGrRgOy6jjkSU+UVCOV8YUGKb2erhDOxis7IqRXiRVHhY8XMKks00BJ0OAdkpf6+A==}
@@ -7545,6 +7551,10 @@ snapshots:
       '@tauri-apps/cli-win32-arm64-msvc': 2.11.4
       '@tauri-apps/cli-win32-ia32-msvc': 2.11.4
       '@tauri-apps/cli-win32-x64-msvc': 2.11.4
+
+  '@tauri-apps/plugin-haptics@2.3.3':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
 
   '@tauri-apps/plugin-os@2.3.2':
     dependencies:

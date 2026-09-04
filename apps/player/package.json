@@ -1,7 +1,7 @@
 {
   "name": "player",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -19,6 +19,7 @@
     "@roomkit/session-ui": "workspace:*",
     "@roomkit/shared": "workspace:*",
     "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-haptics": "^2.3.3",
     "@tauri-apps/plugin-os": "^2.3.1",
     "@tauri-apps/plugin-store": "^2.4.0",
     "socket.io-client": "^4.8.3",

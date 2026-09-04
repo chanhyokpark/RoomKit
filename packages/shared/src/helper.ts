@@ -135,6 +135,34 @@ export const HelperTestCallbackDoneSchema = z.object({
 });
 export type HelperTestCallbackDone = z.infer<typeof HelperTestCallbackDoneSchema>;
 
+// Mirrors @tauri-apps/plugin-haptics (ImpactFeedbackStyle / NotificationFeedbackType).
+export const ImpactFeedbackStyleSchema = z.enum(['light', 'medium', 'heavy', 'soft', 'rigid']);
+export type ImpactFeedbackStyle = z.infer<typeof ImpactFeedbackStyleSchema>;
+export const NotificationFeedbackTypeSchema = z.enum(['success', 'warning', 'error']);
+export type NotificationFeedbackType = z.infer<typeof NotificationFeedbackTypeSchema>;
+
+/** One haptics call, mapped 1:1 onto the tauri haptics plugin's commands. */
+export const HapticsRequestSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('vibrate'), duration: z.number().int().nonnegative() }),
+  z.object({ kind: z.literal('impact'), style: ImpactFeedbackStyleSchema }),
+  z.object({ kind: z.literal('notification'), type: NotificationFeedbackTypeSchema }),
+  z.object({ kind: z.literal('selection') }),
+]);
+export type HapticsRequest = z.infer<typeof HapticsRequestSchema>;
+
+/**
+ * Ask the player to run a haptics call on its device (tauri haptics plugin:
+ * vibration/feedback on Android and iOS, a no-op on desktop); answered with
+ * a `PlayerHapticsResult` carrying the same `requestId`.
+ */
+export const HelperHapticsSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('haptics'),
+  requestId: z.uuid(),
+  request: HapticsRequestSchema,
+});
+export type HelperHaptics = z.infer<typeof HelperHapticsSchema>;
+
 export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperHelloSchema,
   HelperTriggerSchema,
@@ -145,6 +173,7 @@ export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperVideoErrorSchema,
   HelperMessageDoneSchema,
   HelperTestCallbackDoneSchema,
+  HelperHapticsSchema,
 ]);
 export type HelperToPlayer = z.infer<typeof HelperToPlayerSchema>;
 
@@ -319,6 +348,16 @@ export const PlayerTestCallbackSchema = z.object({
 });
 export type PlayerTestCallback = z.infer<typeof PlayerTestCallbackSchema>;
 
+/** Reply to a `HelperHaptics`; `ok: false` carries the plugin's error text. */
+export const PlayerHapticsResultSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('haptics:result'),
+  requestId: z.uuid(),
+  ok: z.boolean(),
+  error: z.string().optional(),
+});
+export type PlayerHapticsResult = z.infer<typeof PlayerHapticsResultSchema>;
+
 export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerMessageSchema,
   PlayerHintShowSchema,
@@ -331,5 +370,6 @@ export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerVideoStopSchema,
   PlayerModeSchema,
   PlayerTestCallbackSchema,
+  PlayerHapticsResultSchema,
 ]);
 export type PlayerToHelper = z.infer<typeof PlayerToHelperSchema>;

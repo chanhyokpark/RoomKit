@@ -7,6 +7,7 @@
 import {
   RoomKitHelper,
   type GetRemainingTimeOptions,
+  type HapticsApi,
   type HelperBridgeState,
   type HintError,
   type HintShow,
@@ -167,6 +168,13 @@ export interface RoomKitApi {
   readonly helper: RoomKitHelper | null;
   /** Hint navigation facade. */
   readonly hint: RoomKitHintApi;
+  /**
+   * The player device's haptics, mirroring `@tauri-apps/plugin-haptics`
+   * (`vibrate`, `impactFeedback`, `notificationFeedback`, `selectionFeedback`).
+   * Real feedback on Android/iOS, a no-op on desktop; rejects outside the
+   * player or before the provider/setup has mounted.
+   */
+  readonly haptics: HapticsApi;
   /** Report a game event through the player's device connection. */
   trigger(event: string, payload?: JsonValue): void;
   /**

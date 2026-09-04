@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import type { HapticsApi } from '@roomkit/helper';
 import {
   Emitter,
   IDLE_ROOMKIT_SNAPSHOT,
@@ -75,6 +76,27 @@ export function RoomKitProvider({ options, children }: RoomKitProviderProps) {
 
 const noopSubscribe = () => () => {};
 
+const NOT_MOUNTED = () => Promise.reject(new Error('[roomkit] RoomKitProvider not mounted'));
+
+/** Haptics facade that survives the core being null (rejects instead). */
+function createHaptics(core: RoomKitCore | null): HapticsApi {
+  const haptics = core?.helper.haptics;
+  if (!haptics) {
+    return {
+      vibrate: NOT_MOUNTED,
+      impactFeedback: NOT_MOUNTED,
+      notificationFeedback: NOT_MOUNTED,
+      selectionFeedback: NOT_MOUNTED,
+    };
+  }
+  return {
+    vibrate: (duration) => haptics.vibrate(duration),
+    impactFeedback: (style) => haptics.impactFeedback(style),
+    notificationFeedback: (type) => haptics.notificationFeedback(type),
+    selectionFeedback: () => haptics.selectionFeedback(),
+  };
+}
+
 function createView(core: RoomKitCore | null, snapshot: RoomKitSnapshot): RoomKitApi {
   return {
     bridge: snapshot.bridge,
@@ -100,6 +122,7 @@ function createView(core: RoomKitCore | null, snapshot: RoomKitSnapshot): RoomKi
       dismiss: () => core?.controller.dismiss(),
       resetCounts: () => core?.resetHintCounts(),
     },
+    haptics: createHaptics(core),
     trigger: (event, payload) => core?.trigger(event, payload),
     triggerAndWait: (event, payload, opts) =>
       core

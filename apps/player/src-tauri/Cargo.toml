@@ -28,3 +28,4 @@ futures-util = "0.3"
 # Loopback media server: serves the cache to helper iframes with Range support.
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
+tauri-plugin-haptics = "2.3.3"

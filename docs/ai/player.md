@@ -8,7 +8,7 @@ RoomKit Player is a Tauri launcher plus one stage webview per configured device 
 
 The launcher persists the server origin, a stable launcher UUID/name, and manual device entries in the platform app-data directory. It registers on Socket.io `/player`; Studio can then send test-session start requests. On desktop the launcher has two tabs: the production tab (실제) keeps the unchanged per-device code-entry rows, and the test tab (테스트) launches player-side test sessions. Auto-opened test windows carry temporary codes in their URL and do not mutate manual launcher entries.
 
-Desktop window labels are stable per manual device, so reopening focuses the existing stage. Test labels also include the session scope and replace stale windows whose codes have expired; the debug window uses the Tauri label `debug-<first 8 of session ID>`. Android is single-window: the first open request replaces the launcher, additional devices in the same batch are dropped, and returning to the launcher requires restarting the app. Mobile hides the test tab entirely.
+Desktop window labels are stable per manual device, so reopening focuses the existing stage. Test labels also include the session scope and replace stale windows whose codes have expired; the debug window uses the Tauri label `debug-<first 8 of session ID>`. Android is single-window: the first open request replaces the launcher, additional devices in the same batch are dropped, and returning to the launcher requires restarting the app. Mobile hides the test tab entirely. Helper `haptics` requests are relayed to the tauri haptics plugin (real vibration/feedback on Android/iOS; desktop is a no-op that still answers ok).
 
 ## Player test sessions and the debug window
 

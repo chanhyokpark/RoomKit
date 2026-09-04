@@ -524,6 +524,67 @@ describe('RoomKitHelper', () => {
     }
   });
 
+  it('haptics posts schema-valid requests mirroring the tauri plugin and resolves on ok', async () => {
+    const { helper, posted, inject } = env();
+    const calls = [
+      helper.haptics.vibrate(200),
+      helper.haptics.impactFeedback('heavy'),
+      helper.haptics.notificationFeedback('success'),
+      helper.haptics.selectionFeedback(),
+    ];
+    const requests = posted.slice(1).map((m) => HelperToPlayerSchema.parse(m));
+    expect(requests.map((r) => (r as { request: unknown }).request)).toEqual([
+      { kind: 'vibrate', duration: 200 },
+      { kind: 'impact', style: 'heavy' },
+      { kind: 'notification', type: 'success' },
+      { kind: 'selection' },
+    ]);
+    for (const r of requests) {
+      expect(r.type).toBe('haptics');
+      inject({
+        source: 'roomkit-player',
+        type: 'haptics:result',
+        requestId: (r as { requestId: string }).requestId,
+        ok: true,
+      });
+    }
+    await expect(Promise.all(calls)).resolves.toEqual([undefined, undefined, undefined, undefined]);
+  });
+
+  it('haptics rejects with the player error, ignores other requests, times out, and dies with destroy', async () => {
+    vi.useFakeTimers();
+    try {
+      const { helper, posted, inject } = env();
+      const failing = helper.haptics.vibrate(50);
+      const requestId = (HelperToPlayerSchema.parse(posted[1]) as { requestId: string })
+        .requestId;
+      inject({
+        source: 'roomkit-player',
+        type: 'haptics:result',
+        requestId,
+        ok: false,
+        error: 'unsupported',
+      });
+      await expect(failing).rejects.toThrow('unsupported');
+
+      const timingOut = helper.haptics.selectionFeedback();
+      inject({
+        source: 'roomkit-player',
+        type: 'haptics:result',
+        requestId: '33333333-3333-4333-8333-333333333333',
+        ok: true,
+      });
+      vi.advanceTimersByTime(10_000);
+      await expect(timingOut).rejects.toThrow('haptics request timed out');
+
+      const destroyed = helper.haptics.impactFeedback('light');
+      helper.destroy();
+      await expect(destroyed).rejects.toThrow('helper destroyed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('tracks the player-reported session mode, ignoring bogus values', () => {
     const { helper, inject } = env();
     expect(helper.sessionMode).toBe('production');

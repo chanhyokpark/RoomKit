@@ -1,4 +1,6 @@
 import type {
+  HapticsRequest,
+  HelperHaptics,
   HelperHello,
   HelperHintNext,
   HelperHintSubmit,
@@ -11,7 +13,9 @@ import type {
   HelperVideoError,
   HintError,
   HintShow,
+  ImpactFeedbackStyle,
   JsonValue,
+  NotificationFeedbackType,
   PlayerHintCode,
   PlayerMessage,
   PlayerSubtitle,
@@ -32,6 +36,7 @@ import { HELPER_VERSION } from './version.js';
 const HELPER_SOURCE = 'roomkit-helper';
 const PLAYER_SOURCE = 'roomkit-player';
 const TIMER_TIMEOUT_MS = 10_000;
+const HAPTICS_TIMEOUT_MS = 10_000;
 /** Event runs can be long (waits, videos) — the trigger wait is generous. */
 const TRIGGER_TIMEOUT_MS = 600_000;
 const HELLO_RETRY_MS = 800;
@@ -122,6 +127,25 @@ export interface GetRemainingTimeOptions {
   timeoutMs?: number;
 }
 
+/**
+ * The player device's haptics, mirroring `@tauri-apps/plugin-haptics` one to
+ * one (same names, arguments and semantics). The player runs each call
+ * through the tauri haptics plugin: real vibration/feedback on Android and
+ * iOS, a silent no-op on desktop. Every method resolves once the player has
+ * run the call and rejects when the plugin reports an error or no player
+ * answers within 10s (the page runs outside the player).
+ */
+export interface HapticsApi {
+  /** Vibrate for `duration` milliseconds. */
+  vibrate(duration: number): Promise<void>;
+  /** Impact feedback: 'light' | 'medium' | 'heavy' | 'soft' | 'rigid'. */
+  impactFeedback(style: ImpactFeedbackStyle): Promise<void>;
+  /** Notification feedback: 'success' | 'warning' | 'error'. */
+  notificationFeedback(type: NotificationFeedbackType): Promise<void>;
+  /** Selection-changed feedback. */
+  selectionFeedback(): Promise<void>;
+}
+
 export interface RoomKitHelperEvents extends Record<string, unknown[]> {
   /**
    * Payload of a "send message to device" command, relayed by the player.
@@ -182,6 +206,22 @@ export class RoomKitHelper {
     string,
     { resolve: (remainingMs: number | null) => void; timeout: ReturnType<typeof setTimeout> }
   >();
+  /** In-flight haptics requests, keyed by requestId. */
+  private readonly pendingHaptics = new Map<
+    string,
+    {
+      resolve: () => void;
+      reject: (err: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
+  /** The player device's haptics (see {@link HapticsApi}). */
+  readonly haptics: HapticsApi = {
+    vibrate: (duration) => this.requestHaptics({ kind: 'vibrate', duration }),
+    impactFeedback: (style) => this.requestHaptics({ kind: 'impact', style }),
+    notificationFeedback: (type) => this.requestHaptics({ kind: 'notification', type }),
+    selectionFeedback: () => this.requestHaptics({ kind: 'selection' }),
+  };
   /** In-flight awaited triggers, keyed by requestId. */
   private readonly pendingTriggers = new Map<
     string,
@@ -368,6 +408,24 @@ export class RoomKitHelper {
     });
   }
 
+  private requestHaptics(request: HapticsRequest): Promise<void> {
+    const id = requestId();
+    const msg: HelperHaptics = {
+      source: HELPER_SOURCE,
+      type: 'haptics',
+      requestId: id,
+      request,
+    };
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingHaptics.delete(id);
+        reject(new Error('haptics request timed out'));
+      }, HAPTICS_TIMEOUT_MS);
+      this.pendingHaptics.set(id, { resolve, reject, timeout });
+      this.post(msg);
+    });
+  }
+
   on<K extends keyof RoomKitHelperEvents>(
     event: K,
     listener: (...args: RoomKitHelperEvents[K]) => void,
@@ -413,6 +471,11 @@ export class RoomKitHelper {
       pending.reject(new Error('helper destroyed'));
     }
     this.pendingTriggers.clear();
+    for (const pending of this.pendingHaptics.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('helper destroyed'));
+    }
+    this.pendingHaptics.clear();
   }
 
   private post(
@@ -425,7 +488,8 @@ export class RoomKitHelper {
       | HelperVideoEnded
       | HelperVideoError
       | HelperMessageDone
-      | HelperTestCallbackDone,
+      | HelperTestCallbackDone
+      | HelperHaptics,
   ): void {
     // '*': the player's (tauri) origin is unknowable from inside the iframe;
     // being embedded by the player is the trust anchor (see shared/helper.ts).
@@ -517,6 +581,19 @@ export class RoomKitHelper {
         clearTimeout(pending.timeout);
         if (msg.ok === true) pending.resolve();
         else pending.reject(new Error('trigger failed'));
+        return;
+      }
+      case 'haptics:result': {
+        if (typeof msg.requestId !== 'string') return;
+        const pending = this.pendingHaptics.get(msg.requestId);
+        if (!pending) return;
+        this.pendingHaptics.delete(msg.requestId);
+        clearTimeout(pending.timeout);
+        if (msg.ok === true) pending.resolve();
+        else
+          pending.reject(
+            new Error(typeof msg.error === 'string' ? msg.error : 'haptics failed'),
+          );
         return;
       }
       case 'subtitle': {

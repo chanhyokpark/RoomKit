@@ -19,6 +19,10 @@
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-cursor-visible",
     "store:default",
-    "os:default"
+    "os:default",
+    "haptics:allow-vibrate",
+    "haptics:allow-impact-feedback",
+    "haptics:allow-notification-feedback",
+    "haptics:allow-selection-feedback"
   ]
 }
