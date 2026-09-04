@@ -22,7 +22,7 @@
 	} = $props();
 
 	let name = $state('');
-	let timeLimitMinutes = $state('');
+	let timeLimitMinutes = $state<string | number | null>('');
 	let submitting = $state(false);
 	let errorMessage = $state<string | null>(null);
 
@@ -37,7 +37,9 @@
 	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();
 		if (submitting) return;
-		const minutes = timeLimitMinutes.trim() === '' ? null : Number(timeLimitMinutes);
+		// bind:value on a number input coerces the state to number | null.
+		const minutesText = String(timeLimitMinutes ?? '').trim();
+		const minutes = minutesText === '' ? null : Number(minutesText);
 		if (minutes !== null && (!Number.isFinite(minutes) || minutes <= 0)) {
 			errorMessage = '제한 시간은 0보다 큰 숫자여야 합니다.';
 			return;

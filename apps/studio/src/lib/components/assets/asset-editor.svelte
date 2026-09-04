@@ -332,10 +332,10 @@
 				return null;
 			}
 			case 'phase': {
-				const order = Number(draft.orderText);
-				return draft.orderText.trim() !== '' && Number.isInteger(order)
-					? null
-					: '순서는 정수여야 합니다.';
+				// bind:value on a number input coerces the state to number | null.
+				const orderText = String(draft.orderText ?? '').trim();
+				const order = Number(orderText);
+				return orderText !== '' && Number.isInteger(order) ? null : '순서는 정수여야 합니다.';
 			}
 			case 'event':
 				if (draft.triggerKind === 'device' && !draft.triggerName.trim())

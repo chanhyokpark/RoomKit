@@ -65,7 +65,8 @@ export type Draft =
 	  }
 	| { kind: 'website'; mode: 'external' | 'hosted'; url: string; sitePrefix: string | null }
 	| { kind: 'message'; displayName: string; fields: MessageField[] }
-	| { kind: 'phase'; orderText: string }
+	/** orderText may become number | null via the number-input binding. */
+	| { kind: 'phase'; orderText: string | number | null }
 	| {
 			kind: 'event';
 			/** Phase asset id; empty string = common event. */

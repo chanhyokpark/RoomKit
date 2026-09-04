@@ -2,7 +2,7 @@
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 
-	let { orderText = $bindable() }: { orderText: string } = $props();
+	let { orderText = $bindable() }: { orderText: string | number | null } = $props();
 </script>
 
 <Field.Field>
