@@ -94,9 +94,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          # Real devices are arm64; add armv7-linux-androideabi (and --target
-          # armv7 below) if 32-bit tablets ever show up.
-          targets: aarch64-linux-android
+          # arm64 covers most devices; armv7 is needed for 32-bit-only phones
+          # (Android Go, Galaxy A0x, some MediaTek) which otherwise refuse to
+          # install with "app isn't compatible with your phone".
+          targets: aarch64-linux-android,armv7-linux-androideabi
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -116,7 +117,7 @@ jobs:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
 
       - name: Build APK
-        run: pnpm --filter player tauri android build --apk --target aarch64
+        run: pnpm --filter player tauri android build --apk --target aarch64 --target armv7
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
 
@@ -131,7 +132,11 @@ jobs:
         run: |
           OUT=apps/player/src-tauri/gen/android/app/build/outputs/apk
           BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)"
-          UNSIGNED=$(find "$OUT" -name '*-unsigned.apk' -print -quit)
+          # Prefer the universal APK (all built ABIs in one file); fall back
+          # to whatever single-ABI APK exists.
+          UNSIGNED=$(find "$OUT/universal" -name '*-unsigned.apk' -print -quit 2>/dev/null)
+          [ -n "$UNSIGNED" ] || UNSIGNED=$(find "$OUT" -name '*-unsigned.apk' -print -quit)
+          echo "Signing $UNSIGNED"
           echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
           "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" roomkit-player.apk
           "$BUILD_TOOLS/apksigner" sign --ks release.keystore \
