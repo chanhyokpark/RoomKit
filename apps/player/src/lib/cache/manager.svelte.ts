@@ -25,6 +25,11 @@ function mediaType(fileKey: string): string {
 	return MEDIA_TYPES[ext] ?? 'application/octet-stream';
 }
 
+/** One key per line for console reports; '(none)' keeps empty lists visible. */
+function listing(keys: string[]): string {
+	return keys.length > 0 ? keys.map((key) => `  ${key}`).join('\n') : '  (none)';
+}
+
 /**
  * Local media cache, keyed by immutable fileKey (presence = fresh; no
  * hashing). Downloads run in Rust (streaming, atomic rename); files are
@@ -142,13 +147,16 @@ class CacheManager {
 			this.progress = { done: 0, total: missing.length };
 
 			const queue = [...missing];
+			const downloaded: string[] = [];
+			const failed: string[] = [];
 			const workers = Array.from(
 				{ length: Math.min(DOWNLOAD_CONCURRENCY, queue.length) },
 				async () => {
 					for (;;) {
 						const next = queue.shift();
 						if (!next) return;
-						await this.download(next[0], next[1]);
+						const ok = await this.download(next[0], next[1]);
+						(ok ? downloaded : failed).push(next[0]);
 						if (this.progress) this.progress.done += 1;
 					}
 				}
@@ -161,7 +169,22 @@ class CacheManager {
 			// keys this window still believed cached — incremental bookkeeping
 			// would keep serving 404s from the media server.
 			this.cached = new Set(await invoke<string[]>('cache_list'));
-			vlog('cache', 'sync complete,', this.cached.size, 'files cached');
+			// Full report once every download settled: what this sync fetched,
+			// what it could not, and what the cache directory holds now.
+			const onDisk = [...this.cached].sort();
+			const stillMissing = [...wanted.keys()].filter((key) => !this.cached.has(key)).sort();
+			console.info(
+				`[player:cache] sync complete: ${downloaded.length} downloaded, ${failed.length} failed, ` +
+					`${onDisk.length} files on disk (${stillMissing.length} of ${wanted.size} wanted still missing)`
+			);
+			console.info('[player:cache] downloaded this sync:\n' + listing(downloaded.sort()));
+			if (failed.length > 0) {
+				console.warn('[player:cache] failed this sync:\n' + listing(failed.sort()));
+			}
+			console.info('[player:cache] files on disk:\n' + listing(onDisk));
+			if (stillMissing.length > 0) {
+				console.warn('[player:cache] wanted but not on disk:\n' + listing(stillMissing));
+			}
 			this.state = 'ready';
 		} catch (err) {
 			console.warn('[player] cache sync failed; streaming from URLs', err);

@@ -18,7 +18,7 @@ export const EXPECTED_VERSIONS = {
   /** Player app (apps/player package.json / tauri.conf.json). */
   player: "0.11.0",
   /** @roomkit/client (packages/client). */
-  client: "0.3.0",
+  client: "0.3.1",
   /** @roomkit/helper (packages/helper). */
   helper: "0.6.0",
 } as const;

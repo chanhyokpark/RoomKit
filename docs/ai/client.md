@@ -27,7 +27,7 @@ const client = new RoomKitClient({
 client.connect();
 ```
 
-Status is `idle | connecting | connected | disconnected | error`. Fatal errors include invalid code and ended session. By default Client stops retrying; `retryOnFatalError` supports devices that boot before a session/code exists. A successfully used test code can be stored per server origin and preferred on reconnect. Disable or override storage when multiple logical devices share one browser origin.
+Status is `idle | connecting | connected | disconnected | error`. Fatal errors include invalid code and ended session. By default Client stops retrying; `retryOnFatalError` supports devices that boot before a session/code exists. When the server closes the socket (it detaches every device socket of an ended session), Client reopens a fresh socket after one second so the handshake re-runs: a production code lands in the lobby or the theme's next live session, a freed test code falls into the fatal-error path. A successfully used test code can be stored per server origin and preferred on reconnect. Disable or override storage when multiple logical devices share one browser origin.
 
 ## Automatic versus owner acknowledgments
 

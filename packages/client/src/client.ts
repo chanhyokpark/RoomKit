@@ -74,6 +74,13 @@ export interface RoomKitClientOptions {
 }
 
 const FATAL_RETRY_DELAY_MS = 5000;
+/**
+ * Delay before reopening a socket the *server* closed. Socket.io does not
+ * auto-reconnect after an `io server disconnect` (the server detaches every
+ * socket of an ended session), so the client reconnects itself: auth re-runs
+ * and lands in the lobby or the theme's next session.
+ */
+const SERVER_DISCONNECT_RETRY_DELAY_MS = 1000;
 const RESYNC_TIMEOUT_MS = 10_000;
 /** Event runs can be long (waits, videos) — the wait timeout is generous. */
 const TRIGGER_WAIT_TIMEOUT_MS = 600_000;
@@ -208,7 +215,26 @@ export class RoomKitClient {
     this.socket = socket;
 
     socket.on('connect', () => this.setStatus('connected'));
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+      if (this.socket !== socket) return;
+      if (reason === 'io server disconnect') {
+        // Server-initiated close (session ended / device detached). The
+        // socket will not retry on its own — open a fresh one so the
+        // handshake re-runs and picks up whatever the code now maps to.
+        this.log(
+          'server closed the connection, reconnecting in',
+          SERVER_DISCONNECT_RETRY_DELAY_MS,
+          'ms',
+        );
+        socket.disconnect();
+        this.socket = null;
+        this.setStatus('disconnected', reason);
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          this.connect();
+        }, SERVER_DISCONNECT_RETRY_DELAY_MS);
+        return;
+      }
       if (this.currentStatus !== 'error') this.setStatus('disconnected');
     });
     socket.on('connect_error', (err: Error) => {

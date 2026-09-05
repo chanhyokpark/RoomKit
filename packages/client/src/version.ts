@@ -4,4 +4,4 @@
  * because the player compiles this package from source via a vite alias.
  * Keep in sync with package.json.
  */
-export const CLIENT_VERSION = '0.3.0';
+export const CLIENT_VERSION = '0.3.1';
