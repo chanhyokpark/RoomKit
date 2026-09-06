@@ -274,9 +274,24 @@ export const assetDataSchemas = {
 /** Kinds whose assets carry a theme-unique `code`. */
 export const CODED_ASSET_KINDS = ['device', 'hint'] as const satisfies AssetKind[];
 
+/**
+ * Optional human-readable asset slug ("door-screen"), unique per theme across
+ * all kinds. Authoring/agent convenience only: stored asset references stay
+ * uuids, so keys never reach devices. No whitespace, `/` or `:` (safe in
+ * paths and log labels); a uuid-shaped key is rejected so that a reference
+ * string is never ambiguous between "uuid" and "key".
+ */
+export const AssetKeySchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, 'Key must be letters, digits, "_", "." or "-" and start with a letter or digit')
+  .refine((v) => !z.uuid().safeParse(v).success, 'Key must not be uuid-shaped');
+
 const baseCreateFields = {
   name: z.string().min(1),
   description: z.string().optional(),
+  key: AssetKeySchema.nullable().optional(),
   tagIds: z.array(z.uuid()).optional(),
 };
 
@@ -316,6 +331,8 @@ export type CreateAssetInput = z.infer<typeof CreateAssetInputSchema>;
 export const UpdateAssetInputSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
+  /** null clears the key. */
+  key: AssetKeySchema.nullable().optional(),
   tagIds: z.array(z.uuid()).optional(),
   /** Only meaningful for device/hint assets; rejected for other kinds. */
   code: z.string().min(1).optional(),
@@ -329,6 +346,8 @@ const assetEnvelopeFields = {
   name: z.string(),
   description: z.string(),
   code: z.string().nullable(),
+  /** Default keeps responses from servers predating the field parseable. */
+  key: z.string().nullable().default(null),
   tags: z.array(TagSchema),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),

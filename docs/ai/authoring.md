@@ -29,7 +29,9 @@ When using MCP, call `describe_asset_kind` before creating an unfamiliar kind. `
 - **message**: display name plus fields (`key`, `label`, `type`, `required`). Concrete values belong to send-message commands.
 - **hint**: unique code, ordered HTML/image steps, optional explicit answer, and arbitrary params forwarded with the code overlay and every shown step.
 - **phase**: ascending `order`.
-- **event**: phase ownership, trigger kind/name, manual/re-entry/once flags, and sequence.
+- **event**: phase ownership, trigger kind/name, manual/re-entry/once flags, and sequence. Sequence entry ids are any string unique within the sequence (Studio generates uuids; MCP authors may use readable ids).
+
+Every asset also has an optional top-level `key`: a theme-unique slug (letters, digits, `_`, `.`, `-`; not uuid-shaped) meant for authors and agents. Stored references between assets remain uuids; MCP resolves keys to uuids on input. Keys survive duplication and export/import. Studio does not edit keys yet.
 
 A device `startWebsite` is delivered as a navigate wire on session start (production and test) before `session:start` hook events, so an authored navigate in a start hook wins. It is also redelivered when the device attaches or reconnects mid-session showing no website with no navigate pending.
 

@@ -189,9 +189,31 @@ export const DialogueCueCommandSchema = z.discriminatedUnion(
 );
 export type DialogueCueCommand = z.infer<typeof DialogueCueCommandSchema>;
 
+/**
+ * Sequence/cue entry identity. Editor-only (never sent to devices — the
+ * runtime mints a fresh wire id per delivery), so any non-empty string works:
+ * Studio generates uuids, agents may use readable ids ("open-door"). Ids must
+ * be unique within their array (see {@link uniqueEntryIds}).
+ */
+const entryId = z.string().min(1);
+
+function uniqueEntryIds(entries: Array<{ id: string }>, ctx: z.RefinementCtx): void {
+  const seen = new Set<string>();
+  entries.forEach((entry, index) => {
+    if (seen.has(entry.id)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [index, 'id'],
+        message: `Duplicate entry id "${entry.id}"`,
+      });
+    }
+    seen.add(entry.id);
+  });
+}
+
 /** Cue entries carry a stable id, like sequence entries (editor identity). */
 export const DialogueCueEntrySchema = z.intersection(
-  z.object({ id: z.uuid() }),
+  z.object({ id: entryId }),
   DialogueCueCommandSchema,
 );
 export type DialogueCueEntry = z.infer<typeof DialogueCueEntrySchema>;
@@ -205,7 +227,7 @@ export type DialogueCueEntry = z.infer<typeof DialogueCueEntrySchema>;
  */
 export const DialogueLineCueSchema = z.object({
   afterLineId: z.uuid(),
-  sequence: z.array(DialogueCueEntrySchema),
+  sequence: z.array(DialogueCueEntrySchema).superRefine(uniqueEntryIds),
 });
 export type DialogueLineCue = z.infer<typeof DialogueLineCueSchema>;
 
@@ -261,10 +283,10 @@ export const COMMAND_ASSET_REFS = {
 
 /** Each entry carries a stable id so the editor can reorder without losing identity. */
 export const SequenceEntrySchema = z.intersection(
-  z.object({ id: z.uuid() }),
+  z.object({ id: entryId }),
   CommandSchema,
 );
 export type SequenceEntry = z.infer<typeof SequenceEntrySchema>;
 
-export const SequenceSchema = z.array(SequenceEntrySchema);
+export const SequenceSchema = z.array(SequenceEntrySchema).superRefine(uniqueEntryIds);
 export type Sequence = z.infer<typeof SequenceSchema>;

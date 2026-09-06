@@ -76,6 +76,7 @@ async function main() {
       asset: {
         kind: 'device',
         name: 'smoke-device',
+        key: 'smoke-device',
         code: 'SMOKE1',
         data: { displayName: 'Smoke Device', isHintDevice: false, hintCodeCss: '' },
       },
@@ -84,9 +85,11 @@ async function main() {
       asset: {
         kind: 'player',
         name: 'smoke-player',
+        key: 'main-player',
         data: {
-          speakerDeviceId: device.id,
-          screenDeviceId: device.id,
+          // Refs by key / code instead of uuid.
+          speakerDeviceId: 'smoke-device',
+          screenDeviceId: 'SMOKE1',
           subtitleCss: '',
           dialogueDuckPercent: null,
           sfxDuckPercent: null,
@@ -100,6 +103,7 @@ async function main() {
       asset: {
         kind: 'sfx',
         name: 'smoke-beep',
+        key: 'beep',
         data: { fileKey: null, durationMs: 500 },
       },
     });
@@ -107,11 +111,26 @@ async function main() {
       'create_asset device/player/phase/sfx',
       [device, player, phase, sfx].every((a) => typeof a.id === 'string'),
     );
+    check(
+      'create_asset stores key and resolves data refs by key/code',
+      sfx.key === 'beep' && player.data.speakerDeviceId === device.id && player.data.screenDeviceId === device.id,
+      player.data,
+    );
+    const byKey = await call('get_asset', { assetId: 'beep' });
+    const byName = await call('get_asset', { assetId: 'smoke-player' });
+    check('get_asset by key / by name', byKey.id === sfx.id && byName.id === player.id);
+    const dupKey = await call('create_asset', {
+      asset: { kind: 'sfx', name: 'dup', key: 'beep', data: { fileKey: null, durationMs: 1 } },
+    }).catch((err: Error) => err.message);
+    check('duplicate key rejected', typeof dupKey === 'string' && /Key "beep" already exists/.test(dupKey), dupKey);
+    const found = await call('list_assets', { search: 'smoke' });
+    check('list_assets search', Array.isArray(found) && found.length === 3 && found.some((a: any) => a.key === 'beep'), found);
 
     const event = await call('create_asset', {
       asset: {
         kind: 'event',
         name: 'smoke-event',
+        key: 'smoke-event',
         data: {
           phaseId: null,
           triggerKind: 'device',
@@ -124,25 +143,61 @@ async function main() {
       },
     });
 
-    // Entry ids omitted on purpose; one deliberately dangling ref.
+    // Entry ids: one custom, the rest omitted; refs by key; one deliberately dangling ref.
     const danglingId = randomUUID();
     const seq = await call('set_event_sequence', {
-      eventId: event.id,
+      eventId: 'smoke-event',
       sequence: [
-        { type: 'notify', message: 'smoke says hi' },
-        { type: 'playSfx', sfxId: sfx.id, playerId: player.id, waitUntilEnd: true },
-        { type: 'playSfx', sfxId: danglingId, playerId: player.id, waitUntilEnd: false },
+        { id: 'hello', type: 'notify', message: 'smoke says hi' },
+        { type: 'playSfx', sfxId: 'beep', playerId: 'main-player', waitUntilEnd: true },
+        { type: 'playSfx', sfxId: danglingId, playerId: 'main-player', waitUntilEnd: false },
       ],
     });
-    check('set_event_sequence saved + ids generated', seq.saved && seq.sequence.every((e: any) => e.id));
+    check('set_event_sequence saved', seq.saved && seq.entryCount === 3, seq);
     check(
       'set_event_sequence dangling-ref warning',
       seq.warnings.some((w: string) => w.includes(danglingId)),
       seq.warnings,
     );
+    const full = await call('get_event_sequence', { eventId: 'smoke-event' });
+    check(
+      'get_event_sequence resolves refs to uuids + legend',
+      full.sequence[0].id === 'hello' &&
+        full.sequence[1].sfxId === sfx.id &&
+        full.sequence[1].playerId === player.id &&
+        /beep/.test(full.refs[sfx.id]),
+      full,
+    );
+    const badRef = await call('validate_sequence', {
+      sequence: [{ type: 'playSfx', sfxId: 'no-such-sfx', playerId: 'main-player', waitUntilEnd: false }],
+    }).catch((err: Error) => err.message);
+    check('unknown ref rejected', typeof badRef === 'string' && /no sfx matches "no-such-sfx"/.test(badRef), badRef);
+
+    const edited = await call('edit_event_sequence', {
+      eventId: 'smoke-event',
+      ops: [
+        { op: 'update', target: 'hello', patch: { message: 'edited' } },
+        { op: 'insert', command: { type: 'notify', message: 'temporary' }, id: 'temp', at: 0 },
+        { op: 'remove', target: 'temp' },
+        { op: 'insert', command: { type: 'wait', durationMs: 10 }, id: 'pause', after: 'hello' },
+        { op: 'move', target: 'pause', at: 0 },
+      ],
+    });
+    const outline = await call('get_event_sequence', { eventId: 'smoke-event', view: 'outline' });
+    check(
+      'edit_event_sequence ops applied',
+      edited.saved && edited.warnings.length === 1 && edited.entryCount === 4 && outline.outline.length === 4 &&
+        /^\[0\] id=pause wait/.test(outline.outline[0]) && /^\[1\] id=hello notify.*"edited"/.test(outline.outline[1]),
+      { edited, outline },
+    );
+    const badOp = await call('edit_event_sequence', {
+      eventId: 'smoke-event',
+      ops: [{ op: 'remove', target: 'nope' }],
+    }).catch((err: Error) => err.message);
+    check('edit_event_sequence bad target rejected, nothing written', typeof badOp === 'string' && /no entry with id "nope"/.test(badOp), badOp);
 
     const validate = await call('validate_sequence', {
-      sequence: [{ type: 'switchPhase', phaseId: phase.id }],
+      sequence: [{ type: 'switchPhase', phaseId: 'phase-1' }],
     });
     check('validate_sequence clean', validate.valid && validate.warnings.length === 0, validate.warnings);
 

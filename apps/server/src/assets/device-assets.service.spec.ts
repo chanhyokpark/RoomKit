@@ -13,7 +13,10 @@ describe('DeviceAssetsService', () => {
   const videoId = '1f3ab97e-96a9-4d0f-b95e-2f42a63cd004';
   const dialogueId = '1f3ab97e-96a9-4d0f-b95e-2f42a63cd005';
   const lineId = '9a1a2b3c-4d5e-4f60-8172-83940a5b6c7d';
-  const entryId = () => 'e0e0e0e0-0000-4000-8000-000000000000';
+  // Entry ids must be unique within a sequence (SequenceSchema refine).
+  let entrySeq = 0;
+  const entryId = () =>
+    `e0e0e0e0-0000-4000-8000-${String(++entrySeq).padStart(12, '0')}`;
 
   const players = [
     {

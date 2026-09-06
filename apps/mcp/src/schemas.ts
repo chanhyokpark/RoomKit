@@ -38,8 +38,8 @@ export const REF_FIELD_KINDS: Record<string, AssetKind> = {
 export function commandsDoc(): unknown {
   return {
     notes: [
-      'A sequence is an ordered JSON array of command entries; each entry is {id: uuid, type: <command>, ...params}. Omit `id` in set_event_sequence/validate_sequence inputs — missing ids are generated for you.',
-      'Asset reference fields (deviceId, playerId, bgmId, ...) take an asset UUID or null. Null/dangling refs are not fatal: the runtime logs and skips that command.',
+      'A sequence is an ordered JSON array of command entries; each entry is {id: <string>, type: <command>, ...params}. `id` is any string unique within its sequence (Studio uses uuids; readable ids like "open-door" are fine) and is the target for edit_event_sequence. Omit it in set_event_sequence/validate_sequence/edit inputs to have one generated.',
+      'Asset reference fields (deviceId, playerId, bgmId, ...) hold an asset uuid or null in stored data. In MCP tool inputs you may write a uuid, the asset `key`, its code (device/hint), or its unique name — the tool resolves it to the uuid (errors on unknown/ambiguous names). Null/dangling refs are not fatal: the runtime logs and skips that command.',
       'playDialogue.lineCues wedge commands between dialogue lines: {afterLineId: <dialogue line id>, sequence: [...commands]}. playDialogue itself is not allowed inside a cue (use callEvent instead). A cue after the last line never runs.',
       'waitUntilEnd on play commands makes the sequence wait for playback to finish before the next entry. wait.durationMs pauses the sequence.',
       'adjustBgmVolume.value is a 0..100 percent base volume for one player; it persists through later BGM tracks until that device is reset, while fades and ducking still multiply it. Optional adjustBgmVolume.durationMs (default 0) ramps the playing track to the new volume over that many ms; the sequence does not wait for the ramp.',
@@ -102,7 +102,7 @@ const KIND_NOTES: Record<AssetKind, string[]> = {
   event: [
     'The scenario logic unit: data.sequence is the command array (see describe_commands).',
     'phaseId null = common event valid in every phase. once = run at most once per session. allowReentry permits re-trigger while already running.',
-    'Prefer get_event_sequence/set_event_sequence over raw asset updates — they validate refs and preserve trigger config.',
+    'Prefer get_event_sequence (view "outline") + edit_event_sequence for changes, set_event_sequence for rewrites, over raw asset updates — they resolve/validate refs and preserve trigger config.',
   ],
 };
 

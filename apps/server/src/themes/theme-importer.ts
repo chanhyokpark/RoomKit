@@ -301,6 +301,7 @@ export class ThemeImporter {
                 name: asset.name,
                 description: asset.description,
                 code: asset.code,
+                key: asset.key,
                 data: rewriteFileRefs(
                   asset.kind,
                   ctx.dataByIndex[i],
@@ -323,7 +324,7 @@ export class ThemeImporter {
     } catch (err) {
       if (isUniqueViolation(err)) {
         throw new BadRequestException(
-          'Manifest contains duplicate tag names or asset codes',
+          'Manifest contains duplicate tag names, asset codes, or asset keys',
         );
       }
       throw err;

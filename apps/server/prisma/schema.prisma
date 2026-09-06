@@ -46,6 +46,9 @@ model Asset {
   description String    @default("")
   // device (user-set) and hint (auto 4-digit) only; NULLs don't collide in the unique index
   code        String?
+  // Optional human-readable slug (any kind), unique per theme; MCP/agents
+  // reference assets by it instead of the uuid. Never crosses the wire.
+  key         String?
   // Per-kind payload, zod-validated against @roomkit/shared schemas at the API boundary
   data        Json
   createdAt   DateTime  @default(now())
@@ -53,6 +56,7 @@ model Asset {
   tags        Tag[]
 
   @@unique([themeId, kind, code])
+  @@unique([themeId, key])
   @@index([themeId, kind])
 }
 

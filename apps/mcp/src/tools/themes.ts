@@ -4,8 +4,8 @@ import {
   ThemeSchema,
   UpdateThemeInputSchema,
 } from '@roomkit/shared';
+import { resolveThemeId, ThemeRefSchema } from '../refs.js';
 import { defineTool } from '../registry.js';
-import { requireTheme } from '../session.js';
 
 export const themeTools = [
   defineTool({
@@ -27,9 +27,9 @@ export const themeTools = [
   defineTool({
     name: 'update_theme',
     description: 'Update a theme\'s name and/or timeLimitMs. Defaults to the selected theme.',
-    inputSchema: UpdateThemeInputSchema.extend({ themeId: z.uuid().optional() }),
-    handler: ({ themeId, ...input }, ctx) =>
-      ctx.api.api(`/themes/${requireTheme(ctx.state, themeId)}`, {
+    inputSchema: UpdateThemeInputSchema.extend({ themeId: ThemeRefSchema.optional() }),
+    handler: async ({ themeId, ...input }, ctx) =>
+      ctx.api.api(`/themes/${await resolveThemeId(ctx, themeId)}`, {
         method: 'PATCH',
         body: input,
         schema: ThemeSchema,
@@ -39,9 +39,10 @@ export const themeTools = [
   defineTool({
     name: 'delete_theme',
     description:
-      'PERMANENTLY delete a theme and all its assets and sessions. Requires an explicit themeId (never defaults to the selection). Confirm with the user unless you created the theme yourself in this conversation.',
-    inputSchema: z.object({ themeId: z.uuid() }),
-    handler: async ({ themeId }, ctx) => {
+      'PERMANENTLY delete a theme and all its assets and sessions. Requires an explicit themeId (uuid or unique name — never defaults to the selection). Confirm with the user unless you created the theme yourself in this conversation.',
+    inputSchema: z.object({ themeId: ThemeRefSchema }),
+    handler: async ({ themeId: themeRef }, ctx) => {
+      const themeId = await resolveThemeId(ctx, themeRef);
       await ctx.api.api(`/themes/${themeId}`, { method: 'DELETE' });
       if (ctx.state.selectedTheme?.id === themeId) ctx.state.selectedTheme = null;
       return { deleted: themeId };
@@ -53,11 +54,11 @@ export const themeTools = [
     description:
       'Deep-copy a theme: all assets/tags with cross-references remapped (files are shared, not copied). Defaults to the selected theme as the source.',
     inputSchema: z.object({
-      themeId: z.uuid().optional(),
+      themeId: ThemeRefSchema.optional(),
       name: z.string().min(1).optional().describe('Name for the copy'),
     }),
-    handler: ({ themeId, name }, ctx) =>
-      ctx.api.api(`/themes/${requireTheme(ctx.state, themeId)}/duplicate`, {
+    handler: async ({ themeId, name }, ctx) =>
+      ctx.api.api(`/themes/${await resolveThemeId(ctx, themeId)}/duplicate`, {
         method: 'POST',
         body: name ? { name } : {},
         schema: ThemeSchema,

@@ -25,7 +25,7 @@ Theme
     └── immutable operational logs
 ```
 
-Every asset has `id`, `themeId`, `kind`, `name`, `description`, tags, timestamps, and a kind-specific `data` object. Phase and event are asset kinds rather than separate top-level resources. IDs are UUIDs. Codes are unique by theme and kind: device codes cannot collide with devices and hint codes cannot collide with hints.
+Every asset has `id`, `themeId`, `kind`, `name`, `description`, tags, timestamps, and a kind-specific `data` object. Phase and event are asset kinds rather than separate top-level resources. IDs are UUIDs. An optional `key` (theme-unique slug) gives an asset a readable handle for authoring tools; references stored in data stay UUIDs. Codes are unique by theme and kind: device codes cannot collide with devices and hint codes cannot collide with hints.
 
 ## Core concepts
 

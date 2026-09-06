@@ -122,10 +122,15 @@ function mapNullableRef(ref: unknown, idMap: Map<string, string>): unknown {
   throw new UnknownRefError(ref);
 }
 
-/** Identity-only ids (dialogue lines, sequence entries): any non-uuid — or a
+/** Dialogue line ids cross the wire and must be uuids: any non-uuid — or a
  * missing id — becomes a fresh uuid so hand-written manifests can omit them. */
 const ensureUuid = (id: unknown): unknown =>
   typeof id === 'string' && isUuid(id) ? id : randomUUID();
+
+/** Sequence/cue entry ids are editor-only and may be any string ("open-door");
+ * kept verbatim, generated only when missing. */
+const ensureEntryId = (id: unknown): unknown =>
+  typeof id === 'string' && id.length > 0 ? id : randomUUID();
 
 /**
  * Rewrites manifest-id references inside raw (pre-validation) asset data to
@@ -178,7 +183,7 @@ function remapManifestEntry(
   idMap: Map<string, string>,
 ): unknown {
   if (!isRecord(entry)) return entry;
-  const out: Record<string, unknown> = { ...entry, id: ensureUuid(entry.id) };
+  const out: Record<string, unknown> = { ...entry, id: ensureEntryId(entry.id) };
   const type = entry.type;
   if (typeof type === 'string' && type in COMMAND_ASSET_REFS) {
     for (const field of COMMAND_ASSET_REFS[

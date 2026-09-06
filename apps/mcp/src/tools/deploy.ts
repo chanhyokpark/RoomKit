@@ -4,8 +4,9 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { zipSync } from 'fflate';
 import { AssetSchema, SiteUploadResponseSchema } from '@roomkit/shared';
+import { AssetRefSchema, resolveThemeId, ThemeIndex, ThemeRefSchema } from '../refs.js';
 import { defineTool } from '../registry.js';
-import { requireTheme, ToolError } from '../session.js';
+import { ToolError } from '../session.js';
 
 const BUILD_TIMEOUT_MS = 10 * 60 * 1000;
 /** Kept from build output in errors/results — enough tail to diagnose. */
@@ -74,24 +75,21 @@ export const deployTools = [
     description:
       'Build a local web project and deploy the output as a hosted website asset: runs the build command in the build directory, zips the build dest (must contain index.html at its root), uploads it, and switches the asset to hosted mode serving the new files at {apiUrl}/api/sites/{assetId}/. The previous deployment stays in storage but is no longer referenced. Defaults to the selected theme.',
     inputSchema: z.object({
-      themeId: z.uuid().optional(),
-      websiteAssetId: z.uuid().describe('Existing asset of kind "website" to point at the new build'),
+      themeId: ThemeRefSchema.optional(),
+      websiteAssetId: AssetRefSchema.describe('Existing asset of kind "website" (uuid, key, or name) to point at the new build'),
       buildDirectory: z.string().min(1).describe('Absolute path to the project to build (cwd for the build command)'),
       buildCommand: z.string().min(1).describe('Shell command that produces the build, e.g. "pnpm build"'),
       buildDest: z.string().min(1).describe('Build output directory, absolute or relative to buildDirectory, e.g. "dist"'),
     }),
-    handler: async ({ themeId, websiteAssetId, buildDirectory, buildCommand, buildDest }, ctx) => {
-      const resolvedThemeId = requireTheme(ctx.state, themeId);
+    handler: async ({ themeId, websiteAssetId: websiteRef, buildDirectory, buildCommand, buildDest }, ctx) => {
+      const resolvedThemeId = await resolveThemeId(ctx, themeId);
 
-      // Fail fast on a wrong asset id before spending time on the build.
-      const asset = await ctx.api.api(
-        `/themes/${resolvedThemeId}/assets/${websiteAssetId}`,
-        { schema: AssetSchema },
-      );
-      if (asset.kind !== 'website') {
-        throw new ToolError(
-          `Asset ${websiteAssetId} ("${asset.name}") is kind "${asset.kind}", not "website".`,
-        );
+      // Fail fast on a wrong asset reference before spending time on the build.
+      const index = await ThemeIndex.load(ctx, resolvedThemeId);
+      const asset = index.resolveAsset(websiteRef, 'website', 'websiteAssetId');
+      const websiteAssetId = asset.id;
+      if (!index.get(websiteAssetId)) {
+        throw new ToolError(`No website asset with id ${websiteAssetId} in this theme.`);
       }
 
       try {

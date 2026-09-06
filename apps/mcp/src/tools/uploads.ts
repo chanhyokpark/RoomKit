@@ -3,8 +3,9 @@ import { basename } from 'node:path';
 import { z } from 'zod';
 import mime from 'mime-types';
 import { PresignUploadResponseSchema } from '@roomkit/shared';
+import { resolveThemeId, ThemeRefSchema } from '../refs.js';
 import { defineTool } from '../registry.js';
-import { requireTheme, ToolError } from '../session.js';
+import { ToolError } from '../session.js';
 
 export const uploadTools = [
   defineTool({
@@ -12,12 +13,12 @@ export const uploadTools = [
     description:
       'Upload a local file (absolute path) to the theme\'s media storage. Returns the storage `key` to persist as fileKey/imageKey in asset data (bgm/sfx/video/image/file assets, dialogue lines, hint step images). Defaults to the selected theme.',
     inputSchema: z.object({
-      themeId: z.uuid().optional(),
+      themeId: ThemeRefSchema.optional(),
       filePath: z.string().min(1).describe('Absolute path to a local file'),
       contentType: z.string().min(1).optional().describe('Defaults to a guess from the file extension'),
     }),
     handler: async ({ themeId, filePath, contentType }, ctx) => {
-      const resolvedThemeId = requireTheme(ctx.state, themeId);
+      const resolvedThemeId = await resolveThemeId(ctx, themeId);
       let size: number;
       try {
         size = (await stat(filePath)).size;

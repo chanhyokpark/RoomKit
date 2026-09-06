@@ -65,6 +65,7 @@ export class ThemeDuplicator {
               name: asset.name,
               description: asset.description,
               code: asset.code,
+              key: asset.key,
               data: remapAssetData(asset.kind, asset.data, assetIdMap),
               tags: {
                 connect: asset.tags.map((t) => ({ id: tagIdMap.get(t.id) })),

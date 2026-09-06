@@ -10,8 +10,16 @@ import {
   SessionSchema,
   SessionSummarySchema,
 } from '@roomkit/shared';
+import { AssetRefSchema, resolveThemeId, ThemeIndex, ThemeRefSchema } from '../refs.js';
 import { defineTool } from '../registry.js';
-import { requireTheme, ToolError } from '../session.js';
+import { ToolError } from '../session.js';
+import type { ToolContext } from '../registry.js';
+
+/** Asset index of the theme a session belongs to (for key/name refs in session tools). */
+async function sessionIndex(ctx: ToolContext, sessionId: string): Promise<ThemeIndex> {
+  const session = await ctx.api.api(`/sessions/${sessionId}`, { schema: SessionSchema });
+  return ThemeIndex.load(ctx, session.themeId);
+}
 
 const ControlActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('start') }),
@@ -21,11 +29,11 @@ const ControlActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('restart_phase') }),
   z.object({ type: z.literal('reset_devices') }),
   z.object({ type: z.literal('adjust_timer'), adjustment: AdjustTimerInputSchema }),
-  z.object({ type: z.literal('switch_phase'), phaseId: z.uuid() }),
-  z.object({ type: z.literal('trigger_event'), eventId: z.uuid() }),
+  z.object({ type: z.literal('switch_phase'), phaseId: AssetRefSchema }),
+  z.object({ type: z.literal('trigger_event'), eventId: AssetRefSchema }),
   z.object({
     type: z.literal('push_hint'),
-    hintId: z.uuid(),
+    hintId: AssetRefSchema,
     step: z.number().int().nonnegative().default(0),
   }),
 ]);
@@ -36,32 +44,38 @@ export const sessionTools = [
     description:
       'Create a session (idle until control_session {type:"start"}). Default mode "test": when neither deviceCodes nor playerId is given, per-device codes are auto-generated for every device asset — connect virtual devices with them via connect_virtual_devices. Pass playerId (a connected player launcher) to open real device windows instead (optionally deviceIds to launch a subset). Test sessions replace the removed website-test runs: pass urlOverrides to substitute website asset URLs (e.g. a local dev server) for the whole session — navigation, timers, and phases are the real engine. Production mode takes neither (physical devices register with their asset codes); only one non-ended production session per theme. Defaults to the selected theme.',
     inputSchema: z.object({
-      themeId: z.uuid().optional(),
+      themeId: ThemeRefSchema.optional(),
       mode: z.enum(['test', 'production']).default('test'),
       deviceCodes: z
-        .array(z.object({ deviceId: z.uuid(), code: z.string().min(1) }))
+        .array(z.object({ deviceId: AssetRefSchema, code: z.string().min(1) }))
         .optional()
         .describe('Operator-chosen test codes per device (test mode only)'),
-      playerId: z.uuid().optional().describe('Connected player launcher id (test mode only)'),
+      playerId: z.uuid().optional().describe('Connected player launcher id (test mode only; a launcher id from Player/Studio, not an asset)'),
       deviceIds: z
-        .array(z.uuid())
+        .array(AssetRefSchema)
         .optional()
         .describe('With playerId: mint codes for this device subset only (default: all)'),
       urlOverrides: z
-        .array(z.object({ websiteId: z.uuid(), url: z.string().min(1) }))
+        .array(z.object({ websiteId: AssetRefSchema, url: z.string().min(1) }))
         .optional()
         .describe('Test mode only: substitute website asset URLs for this session'),
     }),
     handler: async ({ themeId, mode, deviceCodes, playerId, deviceIds, urlOverrides }, ctx) => {
-      const resolvedThemeId = requireTheme(ctx.state, themeId);
-      let codes = deviceCodes;
+      const resolvedThemeId = await resolveThemeId(ctx, themeId);
+      const index = await ThemeIndex.load(ctx, resolvedThemeId);
+      let codes = deviceCodes?.map(({ deviceId, code }) => ({
+        deviceId: index.resolveAssetId(deviceId, 'device', 'deviceCodes.deviceId'),
+        code,
+      }));
+      deviceIds = deviceIds?.map((ref) => index.resolveAssetId(ref, 'device', 'deviceIds'));
+      urlOverrides = urlOverrides?.map(({ websiteId, url }) => ({
+        websiteId: index.resolveAssetId(websiteId, 'website', 'urlOverrides.websiteId'),
+        url,
+      }));
       let generated: Array<{ deviceId: string; deviceName: string; code: string }> | undefined;
 
       if (mode === 'test' && !codes && !playerId) {
-        const devices = await ctx.api.api(`/themes/${resolvedThemeId}/assets`, {
-          query: { kind: 'device' },
-          schema: z.array(AssetSchema),
-        });
+        const devices = index.assets.filter((d) => d.kind === 'device');
         if (!devices.length) {
           throw new ToolError('The theme has no device assets — create at least one device first.');
         }
@@ -99,9 +113,15 @@ export const sessionTools = [
   defineTool({
     name: 'control_session',
     description:
-      'Drive a session: start / pause / resume / end / restart_phase / reset_devices, {type:"adjust_timer", adjustment:{deltaMs}|{action:"pause"|"resume"}}, {type:"switch_phase", phaseId}, {type:"trigger_event", eventId} (fires a manual-triggerable event), {type:"push_hint", hintId, step}. start fires session:start system events and arms the timer.',
+      'Drive a session: start / pause / resume / end / restart_phase / reset_devices, {type:"adjust_timer", adjustment:{deltaMs}|{action:"pause"|"resume"}}, {type:"switch_phase", phaseId}, {type:"trigger_event", eventId} (fires a manual-triggerable event), {type:"push_hint", hintId, step}. phaseId/eventId/hintId accept uuid, key, code, or unique name. start fires session:start system events and arms the timer.',
     inputSchema: z.object({ sessionId: z.uuid(), action: ControlActionSchema }),
     handler: async ({ sessionId, action }, ctx) => {
+      if (action.type === 'switch_phase' || action.type === 'trigger_event' || action.type === 'push_hint') {
+        const index = await sessionIndex(ctx, sessionId);
+        if (action.type === 'switch_phase') action.phaseId = index.resolveAssetId(action.phaseId, 'phase', 'phaseId');
+        if (action.type === 'trigger_event') action.eventId = index.resolveAssetId(action.eventId, 'event', 'eventId');
+        if (action.type === 'push_hint') action.hintId = index.resolveAssetId(action.hintId, 'hint', 'hintId');
+      }
       const post = (suffix: string, body?: unknown) =>
         ctx.api.api(`/sessions/${sessionId}${suffix}`, {
           method: 'POST',
@@ -145,9 +165,14 @@ export const sessionTools = [
   defineTool({
     name: 'run_session_command',
     description:
-      'Run one sequence command against a live session, outside any event — the operation console\'s backend. Takes the same command JSON as an event sequence entry (see describe_commands), without the entry id. Fire-and-forget: the server accepts immediately and the outcome (resolution errors, delivery, acks) streams into the session log — poll get_session_logs. Allowed while paused or before start (operator override). Notable uses: stopBgm/stopSfx/stopVideo/stopDialogue force-stop playback so a sequence awaiting waitUntilEnd continues as if it ended normally; resetDevice clears a device (the way to close its website); playBgm/navigate/notify/eval for ad-hoc operation.',
-    inputSchema: z.object({ sessionId: z.uuid(), command: CommandSchema }),
-    handler: async ({ sessionId, command }, ctx) => {
+      'Run one sequence command against a live session, outside any event — the operation console\'s backend. Takes the same command JSON as an event sequence entry (see describe_commands), without the entry id; asset refs accept uuid, key, code, or unique name. Fire-and-forget: the server accepts immediately and the outcome (resolution errors, delivery, acks) streams into the session log — poll get_session_logs. Allowed while paused or before start (operator override). Notable uses: stopBgm/stopSfx/stopVideo/stopDialogue force-stop playback so a sequence awaiting waitUntilEnd continues as if it ended normally; resetDevice clears a device (the way to close its website); playBgm/navigate/notify/eval for ad-hoc operation.',
+    inputSchema: z.object({
+      sessionId: z.uuid(),
+      command: z.record(z.string(), z.unknown()).describe('Command JSON per describe_commands (no id)'),
+    }),
+    handler: async ({ sessionId, command: raw }, ctx) => {
+      const index = await sessionIndex(ctx, sessionId);
+      const command = CommandSchema.parse(index.resolveCommand(raw, 'command'));
       await ctx.api.api(`/sessions/${sessionId}/command`, {
         method: 'POST',
         body: command,
@@ -186,14 +211,18 @@ export const sessionTools = [
     description:
       'List sessions. Scoped to the selected theme unless themeId is given or allThemes is set. activeOnly filters out ended sessions.',
     inputSchema: z.object({
-      themeId: z.uuid().optional(),
+      themeId: ThemeRefSchema.optional(),
       activeOnly: z.boolean().default(false),
       allThemes: z.boolean().default(false),
     }),
-    handler: ({ themeId, activeOnly, allThemes }, ctx) =>
+    handler: async ({ themeId, activeOnly, allThemes }, ctx) =>
       ctx.api.api('/sessions', {
         query: {
-          themeId: allThemes ? undefined : (themeId ?? ctx.state.selectedTheme?.id),
+          themeId: allThemes
+            ? undefined
+            : themeId
+              ? await resolveThemeId(ctx, themeId)
+              : ctx.state.selectedTheme?.id,
           active: activeOnly ? 'true' : undefined,
         },
         schema: z.array(SessionSchema),

@@ -12,6 +12,8 @@ The current command type inventory is:
 
 Every type except `playDialogue` may also appear inside a dialogue line cue. `describe_commands` remains authoritative if this inventory and an installed binary ever differ.
 
+Each sequence entry is `{id, type, ...params}`. The `id` is editor identity only — any non-empty string unique within its sequence (or cue sequence); it never reaches devices, which receive a fresh wire id per delivery. Asset reference fields hold uuids (or null) in stored data; MCP tool inputs may give a key, code, or unique name instead and the tool resolves it.
+
 ## Playback commands
 
 Dialogue, SFX, video, and BGM play commands reference a media asset and player asset. Their stop commands target one player or all players. `waitUntilEnd` blocks the sequence on device acknowledgment.

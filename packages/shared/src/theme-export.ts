@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AssetKindSchema } from './assets.js';
+import { AssetKeySchema, AssetKindSchema } from './assets.js';
 import { JsonValueSchema } from './json.js';
 
 /**
@@ -16,9 +16,10 @@ import { JsonValueSchema } from './json.js';
  * data references another asset (player speaker/screen device ids, event
  * phaseId, sequence command refs) or a tag (tagIds), manifest ids are
  * accepted; an id may be omitted entirely when nothing references the asset
- * or tag. Identity-only uuids inside data (dialogue line ids, sequence entry
- * ids) may be omitted or set to any string — the importer replaces them with
- * fresh uuids. A referenced file missing from the archive imports as a
+ * or tag. Dialogue line ids may be omitted or set to any string — the
+ * importer replaces non-uuid ones with fresh uuids. Sequence/cue entry ids
+ * are kept verbatim (any non-empty, array-unique string) and generated only
+ * when missing. A referenced file missing from the archive imports as a
  * placeholder (null fileKey/imageKey).
  */
 export const THEME_EXPORT_FORMAT_VERSION = 1;
@@ -47,6 +48,8 @@ export const ThemeExportManifestSchema = z.object({
       name: z.string().min(1),
       description: z.string().default(''),
       code: z.string().nullable().default(null),
+      /** Theme-unique slug; see AssetKeySchema. */
+      key: AssetKeySchema.nullable().default(null),
       tagIds: z.array(z.string().min(1)).default([]),
       /**
        * Validated per-kind against assetDataSchemas by the importer, after

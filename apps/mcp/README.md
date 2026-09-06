@@ -59,7 +59,16 @@ For development without rebuilding, point the command at tsx instead:
 `pnpm --dir apps/mcp exec tsx src/index.ts` (requires the workspace installed
 and `@roomkit/shared` built).
 
-## Tools (39)
+## Tools (41)
+
+Every tool argument that names an entity accepts a human-readable reference,
+not just a uuid: themes by uuid or unique name; assets by uuid, `key` (an
+optional theme-unique slug such as `door-screen`, settable on create/update),
+`code` (device/hint), or unique name; tags by uuid or name. This also applies
+inside sequence JSON (`sfxId: "beep"`) and asset data (`speakerDeviceId`,
+`phaseId`, ...). References are resolved to uuids before anything is sent —
+stored data and the device wire never see keys — and unknown or ambiguous
+names fail the call with the candidates listed.
 
 - **Connection**: `login`, `select_theme`, `get_context` — stateful; after
   `select_theme`, theme-scoped tools no longer need `themeId`.
@@ -73,13 +82,22 @@ and `@roomkit/shared` built).
 - **Themes**: `list_themes`, `create_theme`, `update_theme`, `delete_theme`,
   `duplicate_theme`.
 - **Tags**: `list_tags`, `manage_tag`.
-- **Assets**: `list_assets` (token-lean summaries), `get_asset`,
-  `create_asset`, `update_asset`, `delete_asset`.
+- **Assets**: `list_assets` (token-lean summaries; `search` filters by
+  name/key/code substring), `get_asset`, `create_asset`, `update_asset`,
+  `delete_asset`.
 - **Uploads**: `upload_file` (local path → presigned S3 PUT → `fileKey`),
   `get_file_url`.
-- **Sequences**: `get_event_sequence`, `set_event_sequence` (auto entry ids,
-  schema validation, dangling-ref warnings, preserves trigger config),
-  `validate_sequence`.
+- **Deploy**: `deploy_website` (build a local web project, zip the output,
+  upload it as a hosted site, and point a website asset at it).
+- **Sequences**: `get_event_sequence` (`view: "outline"` for a one-line-per-
+  entry listing with resolved asset labels; `"full"` adds a `refs` legend),
+  `edit_event_sequence` (partial edits: insert / replace / update / remove /
+  move ops targeted by entry id or index, optionally inside a dialogue line
+  cue; validated as a whole, then saved), `set_event_sequence` (wholesale
+  replace; auto entry ids, schema validation, dangling-ref warnings,
+  preserves trigger config), `validate_sequence`. Entry ids are any string
+  unique within the sequence (`"open-door"`), so custom ids make edit
+  targets stable.
 - **Sessions**: `create_session` (auto-generates test device codes),
   `control_session`, `run_session_command` (one-off sequence command — the
   operation console's backend), `list_session_runs`, `abort_session_run`,
@@ -92,9 +110,8 @@ and `@roomkit/shared` built).
 
 Connected Player launchers are observed by Studio's admin socket and do not
 have a listing tool. A player test session (`create_session` with `playerId`)
-therefore needs the id copied from Player/Studio. Theme archive transfer,
-media ZIP import, and hosted-site ZIP import are also not exposed by the
-current 39 tools.
+therefore needs the id copied from Player/Studio. Theme archive transfer and
+media ZIP import are also not exposed by the current 41 tools.
 
 ## Smoke test
 

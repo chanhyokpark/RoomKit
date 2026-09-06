@@ -27,6 +27,19 @@ function isUniqueViolation(e: unknown): boolean {
   );
 }
 
+/** Which theme-unique column a P2002 hit: the `key` index or the `code` one. */
+function uniqueViolationMessage(
+  e: unknown,
+  code: string | null | undefined,
+  key: string | null | undefined,
+): string {
+  const target = (e as Prisma.PrismaClientKnownRequestError).meta?.target;
+  const columns = Array.isArray(target) ? target.map(String) : [];
+  return columns.includes('key')
+    ? `Key "${key}" already exists in this theme`
+    : `Code "${code}" already exists in this theme`;
+}
+
 @Injectable()
 export class AssetsService {
   constructor(
@@ -69,6 +82,7 @@ export class AssetsService {
       kind: input.kind,
       name: input.name,
       description: input.description ?? '',
+      key: input.key ?? null,
       data: input.data as Prisma.InputJsonValue,
       tags: input.tagIds
         ? { connect: input.tagIds.map((id) => ({ id })) }
@@ -91,9 +105,7 @@ export class AssetsService {
       return created;
     } catch (e) {
       if (isUniqueViolation(e)) {
-        throw new ConflictException(
-          `Code "${code}" already exists in this theme`,
-        );
+        throw new ConflictException(uniqueViolationMessage(e, code, base.key));
       }
       throw e;
     }
@@ -134,6 +146,7 @@ export class AssetsService {
           name: input.name,
           description: input.description,
           code: input.code,
+          key: input.key,
           data,
           tags: input.tagIds
             ? { set: input.tagIds.map((tagId) => ({ id: tagId })) }
@@ -146,7 +159,7 @@ export class AssetsService {
     } catch (e) {
       if (isUniqueViolation(e)) {
         throw new ConflictException(
-          `Code "${input.code}" already exists in this theme`,
+          uniqueViolationMessage(e, input.code, input.key),
         );
       }
       throw e;

@@ -52,6 +52,7 @@ export class ThemeExporter {
         name: a.name,
         description: a.description,
         code: a.code,
+        key: a.key,
         tagIds: a.tags.map((t) => t.id),
         data: a.data as JsonValue,
       })),
