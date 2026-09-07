@@ -11,52 +11,67 @@
 - 커스텀 장치, Player 내 웹사이트, React/Svelte 힌트폰용 라이브러리
 - 프로젝트 생성·배포와 테마 제작·가상 장치 테스트를 자동화하는 CLI(`rk`)와 AI 에이전트용 스킬
 
-## 서버 실행
-
-- Node.js, pnpm, Docker 필요
-- `pnpm infra`로 데이터베이스, 스토리지, 서버, Studio 실행(Studio: http://localhost:5173)
-- 기본 로그인 계정: admin/roomkit
-- Player는 별도 앱이며 `pnpm dev:player`로 실행
-
 자세한 내용은 [RoomKit 문서](./docs/TOC.md)를 참고해 주세요.
 
-## 라이브러리 설치
+## 애셋, 명령어 작성/수정/삭제
 
-`@roomkit/client`, `@roomkit/helper`와 Helper 프레임워크 래퍼(`@roomkit/helper-react`, `@roomkit/helper-svelte`)는 npm 레지스트리 없이 GitHub에서 바로 설치할 수 있습니다.
-pnpm 10부터 git 의존성의 빌드 스크립트 실행을 허용해야 하므로, 사용하는 프로젝트의 `pnpm-workspace.yaml`에 먼저 추가하세요:
+1. [RoomKit 웹사이트](https://rk.dshs.app)에 로그인합니다.
+2. 사이드바 상단에서 테마를 선택합니다.
 
-```yaml
-onlyBuiltDependencies:
-  - "@roomkit/client"
-  - "@roomkit/helper"
-  - "@roomkit/helper-react"
-  - "@roomkit/helper-svelte"
-```
+자세한 내용은 [테마 제작 문서](./docs/human/authoring.md)를 참고해 주세요.
 
-```sh
-pnpm add "github:chanhyokpark/RoomKit#path:packages/client"
-pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
-pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-react"
-pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-svelte"
-```
+## 웹사이트 개발
 
-기존 힌트폰 패키지(`@roomkit/hintphone-react`, `@roomkit/hintphone-svelte`)는 deprecated이며 Helper 래퍼로 대체되었습니다.
-
-- 설치 시점에 저장소를 클론해 자동으로 빌드합니다(`prepare` 스크립트).
-- 특정 브랜치/태그에 고정하려면 `github:chanhyokpark/RoomKit#<ref>&path:packages/client` 형태를 사용하세요.
-- private 저장소인 경우 git 인증(ssh 키 등)이 필요합니다.
-
-사용법은 [커스텀 장치 문서](./docs/human/custom-devices.md), [Helper 웹사이트 문서](./docs/human/websites.md), [힌트폰 문서](./docs/human/hintphone.md)를 참고해 주세요. 바로 실행할 수 있는 프로젝트는 [템플릿](./templates/README.md)에 있습니다.
-
-### CLI (`rk`)
+### CLI (`rk`) 설치
 
 웹사이트 프로젝트 생성, 배포, 테마 제작과 테스트를 터미널에서 처리하는 CLI 입니다. 사람에게는 대화형 프롬프트를, AI 에이전트에게는 `--json` 출력과 설치 가능한 스킬을 제공합니다.
 
 ```sh
 pnpm add -g --allow-build=@roomkit/cli "github:chanhyokpark/RoomKit#path:apps/cli"
 rk login          # 서버 주소와 관리자 계정 저장
+```
+
+### 프로젝트 생성 및 배포
+
+```sh
 rk init           # 템플릿으로 웹사이트 프로젝트 생성 (roomkit.json 작성, AI 스킬 설치)
 rk deploy         # 빌드 후 ZIP 호스팅 배포
 ```
 
-자세한 내용은 [AI와 CLI 문서](./docs/human/ai-and-cli.md)를, AI 에이전트용 영문 문서는 [roomkit 스킬](./skills/roomkit/SKILL.md)을 참고해 주세요. 기존 MCP 서버(`apps/mcp`)는 deprecated 이며 CLI 로 대체되었습니다.
+한 레포지토리가 여러 웹사이트를 포함해야 한다면 `rk init`에서 그 웹사이트의 디렉토리를 지정합니다. 배포할 때는 `rk deploy <경로>` 를 사용합니다.
+자세한 사용법은 [커스텀 장치 문서](./docs/human/custom-devices.md), [Helper 웹사이트 문서](./docs/human/websites.md), [힌트폰 문서](./docs/human/hintphone.md)를 참고해 주세요. 바로 실행할 수 있는 프로젝트는 [템플릿](./templates/README.md)에 있습니다.
+
+### AI 사용
+
+`rk init`에서 사용할 AI 도구를 지정합니다.
+
+AI 도구로 해당 프로젝트를 연 뒤 RoomKit을 사용하라고 지시하면 AI가 알아서 애셋 추가, 사이트 수정 및 배포, 테스트, 명령어 수정 등의 작업을 할 수 있습니다.
+
+자세한 내용은 [AI와 CLI 문서](./docs/human/ai-and-cli.md)를, AI 에이전트용 영문 문서는 [roomkit 스킬](./skills/roomkit/SKILL.md)을 참고해 주세요.
+
+## 테스트 및 운영
+
+1. [Releases](https://github.com/chanhyokpark/RoomKit/releases)에서 운영체제에 호환되는 최신 파일을 다운로드하고 설치합니다. macOS의 경우 설치 후 개인정보 보호 설정에서 앱을 열어야 합니다.
+2. 설치한 RoomKit Player를 실행한 뒤 서버 주소를 설정합니다(https://rk.dshs.app)
+
+### 테스트
+
+1. Studio에서 운영 탭으로 들어간 뒤 테스트 세션 만들기를 선택하고, 이름이 일치하는 플레이어를 선택합니다.
+2. 세션 시작 버튼을 누릅니다.
+
+### 운영
+
+1. 각 기기에 실행해야 하는 장치의 코드를 입력하고, 필요하면 키오스크 기능을 선택한 후 실행합니다.
+2. 운영 탭에서 프로덕션 세션 만들기를 선택하고 세션 시작 버튼을 누릅니다. 시작 전 모든 기기가 연결되었는지 확인하세요.
+
+키오스크 모드는 ctrl+alt+shift+F12로 나갈 수 있습니다. 키오스크 모드를 다시 켜려면 재실행해야 합니다.
+자세한 내용은 [테스트 및 운영 문서](./docs/human/operations.md)를 참고해 주세요.
+
+## 로컬 서버 실행
+
+로컬 서버는 외부 인터넷 연결이 불안정해 내부 네트워크 내에서 서버가 실행되어야 할 때 사용할 수 있습니다.
+
+- Node.js, pnpm, Docker 필요
+- `pnpm infra`로 데이터베이스, 스토리지, 서버, Studio 실행(Studio: http://localhost:5173)
+- 기본 로그인 계정: admin/roomkit
+- Player는 별도 앱이며 `pnpm dev:player`로 실행

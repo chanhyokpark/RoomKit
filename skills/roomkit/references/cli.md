@@ -24,14 +24,14 @@ Requires Node 22+ and pnpm 10+. The CLI checks for a newer version in the backgr
 
 ### Global options
 
-| Flag | Meaning |
-| --- | --- |
-| `--json` | Machine-readable output, no prompts |
-| `-y, --yes` / `--no-input` | Skip confirmations and prompts |
-| `-t, --theme <ref>` | Theme (uuid or name) for this command, overriding `roomkit.json` |
-| `-p, --project <path>` | `roomkit.json` file or directory (default: nearest one above cwd) |
+| Flag                                    | Meaning                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `--json`                                | Machine-readable output, no prompts                                                              |
+| `-y, --yes` / `--no-input`              | Skip confirmations and prompts                                                                   |
+| `-t, --theme <ref>`                     | Theme (uuid or name) for this command, overriding `roomkit.json`                                 |
+| `-p, --project <path>`                  | `roomkit.json` file or directory (default: nearest one above cwd)                                |
 | `--url <url> --id <id> --password <pw>` | Credentials for this run only (all three); same as `ROOMKIT_URL`/`ROOMKIT_ID`/`ROOMKIT_PASSWORD` |
-| `--no-update-check` | Skip the background version check |
+| `--no-update-check`                     | Skip the background version check                                                                |
 
 ### JSON arguments
 
@@ -39,13 +39,13 @@ Options that take JSON (`--data`, `--sequence`, `--ops`, `--op`, `--command`, `-
 
 ## Login and state
 
-| Command | Notes |
-| --- | --- |
+| Command                | Notes                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rk login [--no-save]` | Prompts for server URL, admin id, password (or takes `--url/--id/--password`). Saves to `~/.roomkit/mcp-credentials.json` (mode 600, shared with the MCP server). Lists themes. |
-| `rk logout` | Deletes the saved credentials. |
-| `rk whoami` | Server and admin id. |
-| `rk status` | Login, project root, theme, websites, AI tools, installed skill versions, active sessions. |
-| `rk doctor` | Node/pnpm, credentials, server reachability, `roomkit.json`, website directories, skill versions, update. Non-zero exit when a check fails. |
+| `rk logout`            | Deletes the saved credentials.                                                                                                                                                  |
+| `rk whoami`            | Server and admin id.                                                                                                                                                            |
+| `rk status`            | Login, project root, theme, websites, AI tools, installed skill versions, active sessions.                                                                                      |
+| `rk doctor`            | Node/pnpm, credentials, server reachability, `roomkit.json`, website directories, skill versions, update. Non-zero exit when a check fails.                                     |
 
 Every other command logs in automatically with the saved credentials and re-logs-in once when the JWT expires.
 
@@ -59,7 +59,14 @@ Lives at the project root (committed; contains no secrets). Found by walking up 
   "server": "http://localhost:3000",
   "theme": { "id": "<uuid>", "name": "Stella" },
   "websites": [
-    { "name": "main", "dir": ".", "assetId": "<uuid>", "assetKey": "main", "build": "pnpm build", "dist": "dist" }
+    {
+      "name": "main",
+      "dir": ".",
+      "assetId": "<uuid>",
+      "assetKey": "main",
+      "build": "pnpm build",
+      "dist": "dist"
+    }
   ],
   "ai": { "tools": ["claude", "codex"] }
 }
@@ -93,8 +100,6 @@ rk init [--dir <path>] [--template react|svelte] \
 7. AI tools → skill install (see below).
 8. Writes/merges `roomkit.json` (`server`, `theme`, `websites`, `ai.tools`).
 
-Then: `pnpm dev` and point the Player test tab's "website URL override" at the dev server; `rk deploy` when ready.
-
 ### `rk deploy`
 
 ```sh
@@ -117,13 +122,13 @@ rk skill list
 
 Project-scoped only. Targets and what they write (all rk-owned; re-install overwrites):
 
-| Tool | Files |
-| --- | --- |
-| `claude` | `.claude/skills/roomkit/` (SKILL.md + references) — Claude Code's project skill directory |
-| `codex` | `.agents/skills/roomkit/` + managed block in `AGENTS.md` — Codex scans `.agents/skills` from cwd up to the repo root |
-| `cursor` | `.agents/skills/roomkit/` + managed block in `AGENTS.md` — Cursor loads `.agents/skills`, `.cursor/skills`, `.claude/skills` and reads `AGENTS.md` |
-| `agents` | `.agents/skills/roomkit/` + managed block in `AGENTS.md` — any AGENTS.md-aware agent |
-| `gemini` | `.agents/skills/roomkit/` + managed block in `GEMINI.md` — Gemini CLI treats `.agents/skills/` as an alias of `.gemini/skills/` |
+| Tool      | Files                                                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude`  | `.claude/skills/roomkit/` (SKILL.md + references) — Claude Code's project skill directory                                                           |
+| `codex`   | `.agents/skills/roomkit/` + managed block in `AGENTS.md` — Codex scans `.agents/skills` from cwd up to the repo root                                |
+| `cursor`  | `.agents/skills/roomkit/` + managed block in `AGENTS.md` — Cursor loads `.agents/skills`, `.cursor/skills`, `.claude/skills` and reads `AGENTS.md`  |
+| `agents`  | `.agents/skills/roomkit/` + managed block in `AGENTS.md` — any AGENTS.md-aware agent                                                                |
+| `gemini`  | `.agents/skills/roomkit/` + managed block in `GEMINI.md` — Gemini CLI treats `.agents/skills/` as an alias of `.gemini/skills/`                     |
 | `copilot` | `.agents/skills/roomkit/` + managed block in `.github/copilot-instructions.md` — Copilot scans `.github/skills`, `.claude/skills`, `.agents/skills` |
 
 Managed blocks are delimited by `<!-- roomkit-skill:start version=X -->` … `<!-- roomkit-skill:end -->`; text outside them is never touched. The `.agents/skills/roomkit` copy is shared by every non-Claude target and removed only when the last of them is removed.
@@ -173,7 +178,7 @@ rk sequence validate --sequence -
 ```
 
 - `get --outline` prints one line per entry (`[index] id=… type … refs…`) — the cheap way to find edit targets.
-- `edit` ops: `insert` (`command`, `id?`, `at|before|after?`), `replace` (`target`, `command`), `update` (`target`, `patch`; same type), `remove` (`target`), `move` (`target`, `at|before|after`). `target` is an entry id or 0-based index against the sequence *after* the previous ops. Add `in: {entryId, afterLineId}` to edit inside a `playDialogue` line cue (insert creates the cue). Nothing is written if any op or validation fails.
+- `edit` ops: `insert` (`command`, `id?`, `at|before|after?`), `replace` (`target`, `command`), `update` (`target`, `patch`; same type), `remove` (`target`), `move` (`target`, `at|before|after`). `target` is an entry id or 0-based index against the sequence _after_ the previous ops. Add `in: {entryId, afterLineId}` to edit inside a `playDialogue` line cue (insert creates the cue). Nothing is written if any op or validation fails.
 - `set` replaces the whole sequence, keeps trigger config, generates missing ids.
 - All three report `warnings` for null/dangling/mis-kinded references — the runtime silently skips such commands.
 
