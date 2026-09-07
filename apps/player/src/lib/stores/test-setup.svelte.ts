@@ -45,6 +45,8 @@ class TestSetupStore {
 	error = $state('');
 	/** Session id of the last test started from this launcher. */
 	lastSessionId = $state<string | null>(null);
+	/** Bumped per theme switch so a slow, superseded asset fetch is discarded. */
+	private loadSeq = 0;
 
 	async loadThemes(): Promise<void> {
 		this.error = '';
@@ -55,25 +57,35 @@ class TestSetupStore {
 			if (config.selectedThemeId && !this.themes.some((t) => t.id === config.selectedThemeId)) {
 				config.selectedThemeId = '';
 			}
-			if (config.selectedThemeId) await this.loadAssets(config.selectedThemeId);
+			if (config.selectedThemeId) {
+				config.testConfigFor(config.selectedThemeId);
+				await this.loadAssets(config.selectedThemeId);
+			}
 		} catch (err) {
 			this.fail(err, '테마 목록을 불러오지 못했습니다.');
 		}
 	}
 
 	async selectTheme(themeId: string): Promise<void> {
+		// Create the per-theme entry here (an action), never from the launcher's
+		// $derived — mutating state inside a derived throws in Svelte 5, which
+		// also aborted bits-ui's close handler and left the select stuck open.
+		if (themeId) config.testConfigFor(themeId);
 		config.selectedThemeId = themeId;
 		void config.save();
 		this.devices = [];
 		this.websites = [];
+		this.error = '';
 		if (themeId) await this.loadAssets(themeId);
 	}
 
 	private async loadAssets(themeId: string): Promise<void> {
+		const seq = ++this.loadSeq;
 		this.loading = true;
 		this.error = '';
 		try {
 			const rows = await api<AssetRow[]>(`/themes/${themeId}/assets`);
+			if (seq !== this.loadSeq) return;
 			const serverUrl = config.serverUrl.trim().replace(/\/$/, '');
 			this.devices = rows
 				.filter((r) => r.kind === 'device')
@@ -100,9 +112,10 @@ class TestSetupStore {
 			this.pruneSelections(themeId);
 			this.syncAutoOverrides(themeId);
 		} catch (err) {
+			if (seq !== this.loadSeq) return;
 			this.fail(err, '테마 애셋을 불러오지 못했습니다.');
 		} finally {
-			this.loading = false;
+			if (seq === this.loadSeq) this.loading = false;
 		}
 	}
 

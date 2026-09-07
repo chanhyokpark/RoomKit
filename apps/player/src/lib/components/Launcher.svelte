@@ -63,8 +63,10 @@
 				: '오프라인'
 	);
 
+	// Read-only lookup: the entry is created by testSetup.selectTheme /
+	// loadThemes. Creating it here would mutate state inside a $derived.
 	const testConfig = $derived(
-		config.selectedThemeId ? config.testConfigFor(config.selectedThemeId) : null
+		config.selectedThemeId ? (config.testConfigs[config.selectedThemeId] ?? null) : null
 	);
 
 	const selectedThemeName = $derived(
@@ -158,12 +160,14 @@
 		{/if}
 
 		{#each config.devices as device (device.id)}
-			<div class="flex items-end gap-2 rounded-md border bg-card p-3">
-				<div class="flex w-36 flex-col gap-1">
+			<!-- Narrow screens stack the fields so the code input keeps full width;
+			     from sm: up everything sits on one row. -->
+			<div class="flex flex-col gap-2 rounded-md border bg-card p-3 sm:flex-row sm:items-end">
+				<div class="flex flex-col gap-1 sm:w-36">
 					<Label for="device-label-{device.id}" class="text-xs text-muted-foreground">라벨</Label>
 					<Input id="device-label-{device.id}" bind:value={device.label} oninput={persist} />
 				</div>
-				<div class="flex flex-1 flex-col gap-1">
+				<div class="flex min-w-0 flex-col gap-1 sm:flex-1">
 					<Label for="device-code-{device.id}" class="text-xs text-muted-foreground">
 						디바이스 코드
 					</Label>
@@ -175,33 +179,39 @@
 						oninput={persist}
 					/>
 				</div>
-				<div class="flex items-center gap-1.5 self-center pt-4">
-					<Checkbox
-						id="device-kiosk-{device.id}"
-						bind:checked={device.kiosk}
-						onCheckedChange={persist}
-					/>
-					<Label for="device-kiosk-{device.id}" class="text-xs font-normal text-muted-foreground">
-						키오스크
-					</Label>
+				<div class="flex items-center gap-2 sm:contents">
+					<div class="flex items-center gap-1.5 sm:self-center sm:pt-4">
+						<Checkbox
+							id="device-kiosk-{device.id}"
+							bind:checked={device.kiosk}
+							onCheckedChange={persist}
+						/>
+						<Label
+							for="device-kiosk-{device.id}"
+							class="text-xs font-normal text-muted-foreground"
+						>
+							키오스크
+						</Label>
+					</div>
+					<Button
+						class="ml-auto sm:ml-0"
+						disabled={!device.deviceCode.trim()}
+						onclick={() => void openDeviceWindow(device)}
+					>
+						열기
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="디바이스 삭제"
+						onclick={() => {
+							config.removeDevice(device.id);
+							persist();
+						}}
+					>
+						<XIcon />
+					</Button>
 				</div>
-				<Button
-					disabled={!device.deviceCode.trim()}
-					onclick={() => void openDeviceWindow(device)}
-				>
-					열기
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label="디바이스 삭제"
-					onclick={() => {
-						config.removeDevice(device.id);
-						persist();
-					}}
-				>
-					<XIcon />
-				</Button>
 			</div>
 		{/each}
 	</section>
@@ -214,9 +224,9 @@
 			<p class="text-sm text-muted-foreground">
 				테스트 기능은 서버 관리자 계정이 필요합니다. 로그인하면 이 기기에 저장됩니다.
 			</p>
-			<div class="flex gap-2">
-				<Input class="flex-1" placeholder="아이디" bind:value={loginId} />
-				<Input class="flex-1" type="password" placeholder="비밀번호" bind:value={loginPassword} />
+			<div class="flex flex-col gap-2 sm:flex-row">
+				<Input class="sm:flex-1" placeholder="아이디" bind:value={loginId} />
+				<Input class="sm:flex-1" type="password" placeholder="비밀번호" bind:value={loginPassword} />
 				<Button type="submit" disabled={auth.status === 'pending'}>로그인</Button>
 			</div>
 			{#if auth.error}
@@ -320,9 +330,9 @@
 					비워두면 치환하지 않습니다.
 				</p>
 				{#each testConfig.overrides as override, i (i)}
-					<div class="flex items-center gap-2">
+					<div class="flex flex-wrap items-center gap-2">
 						<Select.Root type="single" bind:value={override.websiteId} onValueChange={persist}>
-							<Select.Trigger class="w-44">
+							<Select.Trigger class="w-full sm:w-44">
 								{websiteName(override.websiteId) ?? '웹사이트 선택'}
 							</Select.Trigger>
 							<Select.Content>
@@ -332,7 +342,7 @@
 							</Select.Content>
 						</Select.Root>
 						<Input
-							class="flex-1 font-mono"
+							class="min-w-0 flex-1 font-mono"
 							placeholder={override.websiteId
 								? overridePlaceholder(override.websiteId)
 								: '대체 URL (비우면 치환 안 함)'}
@@ -370,7 +380,7 @@
 	{/if}
 {/snippet}
 
-<main class="mx-auto flex h-full max-w-2xl flex-col gap-6 overflow-y-auto p-8">
+<main class="mx-auto flex h-full max-w-2xl flex-col gap-6 overflow-y-auto p-4 sm:p-8">
 	<header class="flex items-center gap-3">
 		<img src={logo} alt="RoomKit" class="size-10 rounded-lg" />
 		<div>
