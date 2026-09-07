@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import pc from 'picocolors';
 import type { CliContext } from '../context.js';
@@ -53,6 +53,38 @@ function runInstall(dir: string): Promise<void> {
   });
 }
 
+interface ThemeFlags {
+  theme?: string;
+  createTheme?: string;
+  timeLimit?: string;
+}
+
+/** Theme step shared by `rk init` and `rk init ai`: flag, project theme (confirmed on a TTY), picker, or create. */
+async function chooseTheme(ctx: CliContext, flags: ThemeFlags, config: RoomkitConfig): Promise<{ id: string; name: string }> {
+  const interactive = ctx.interactive();
+  if (flags.createTheme) {
+    return createTheme(ctx, { name: flags.createTheme, timeLimitMs: flags.timeLimit ? parseDuration(flags.timeLimit, '--time-limit') : null });
+  }
+  if (flags.theme || ctx.flags.theme) return resolveTheme(ctx, flags.theme);
+  if (config.theme && (!interactive || (await confirm(ctx, `프로젝트 테마 "${config.theme.name}" 을 그대로 사용할까요?`, true)))) {
+    return config.theme;
+  }
+  if (!interactive) throw new ToolError('테마를 지정해 주세요: --theme <ref> 또는 --create-theme <name>', 'missing_input');
+  const picked = await pickTheme(ctx, '프로젝트에 연결할 테마', true);
+  if (picked.id !== CREATE_NEW) return picked;
+  const name = await text(ctx, ['--create-theme'], { message: '새 테마 이름', validate: (v) => (v.trim() ? undefined : '이름을 입력해 주세요.') });
+  const limit = await text(ctx, ['--time-limit'], { message: '제한시간 (예: 60m, 비우면 없음)', placeholder: '60m' });
+  return createTheme(ctx, { name, timeLimitMs: limit.trim() ? parseDuration(limit, '--time-limit') : null });
+}
+
+/** AI-tool step: `--ai` list (empty = none), or a multiselect on a TTY; merged with the tools already in roomkit.json. */
+async function chooseTools(ctx: CliContext, flags: { ai?: string }, config: RoomkitConfig): Promise<AiTool[]> {
+  let tools: AiTool[] = [];
+  if (flags.ai !== undefined) tools = parseTools(flags.ai) ?? [];
+  else if (ctx.interactive()) tools = await pickTools(ctx, config.ai?.tools ?? []);
+  return [...new Set([...(config.ai?.tools ?? []), ...tools])];
+}
+
 export async function runInit(ctx: CliContext, flags: InitFlags) {
   const interactive = ctx.interactive();
   if (interactive) intro(pc.bgCyan(pc.black(' RoomKit 웹사이트 프로젝트 만들기 ')));
@@ -82,23 +114,7 @@ export async function runInit(ctx: CliContext, flags: InitFlags) {
   }
 
   // 3. Theme.
-  let theme: { id: string; name: string };
-  if (flags.createTheme) {
-    theme = await createTheme(ctx, { name: flags.createTheme, timeLimitMs: flags.timeLimit ? parseDuration(flags.timeLimit, '--time-limit') : null });
-  } else if (flags.theme || ctx.flags.theme) {
-    theme = await resolveTheme(ctx, flags.theme);
-  } else if (config.theme && (!interactive || (await confirm(ctx, `프로젝트 테마 "${config.theme.name}" 을 그대로 사용할까요?`, true)))) {
-    theme = config.theme;
-  } else if (interactive) {
-    const picked = await pickTheme(ctx, '웹사이트를 연결할 테마', true);
-    if (picked.id === CREATE_NEW) {
-      const name = await text(ctx, ['--create-theme'], { message: '새 테마 이름', validate: (v) => (v.trim() ? undefined : '이름을 입력해 주세요.') });
-      const limit = await text(ctx, ['--time-limit'], { message: '제한시간 (예: 60m, 비우면 없음)', placeholder: '60m' });
-      theme = await createTheme(ctx, { name, timeLimitMs: limit.trim() ? parseDuration(limit, '--time-limit') : null });
-    } else theme = picked;
-  } else {
-    throw new ToolError('테마를 지정해 주세요: --theme <ref> 또는 --create-theme <name>', 'missing_input');
-  }
+  const theme = await chooseTheme(ctx, flags, config);
 
   // 4. Website asset.
   let asset: { id: string; name: string; key: string | null } | null = null;
@@ -163,10 +179,7 @@ export async function runInit(ctx: CliContext, flags: InitFlags) {
   if (install) await runInstall(targetDir);
 
   // 8. AI tools + skill.
-  let tools: AiTool[] = [];
-  if (flags.ai !== undefined) tools = parseTools(flags.ai) ?? [];
-  else if (interactive) tools = await pickTools(ctx, config.ai?.tools ?? []);
-  const mergedTools = [...new Set([...(config.ai?.tools ?? []), ...tools])];
+  const mergedTools = await chooseTools(ctx, flags, config);
   const skillReports = mergedTools.length ? installSkill(projectRoot, mergedTools) : [];
 
   // 9. roomkit.json.
@@ -194,8 +207,52 @@ export async function runInit(ctx: CliContext, flags: InitFlags) {
   return { result, template };
 }
 
+interface InitAiFlags extends ThemeFlags {
+  dir?: string;
+  ai?: string;
+}
+
+/**
+ * `rk init ai`: no template, no website. Picks/creates the project theme and installs the
+ * AI skill into the enclosing project (or a new roomkit.json in `--dir`, default cwd).
+ */
+export async function runInitAi(ctx: CliContext, flags: InitAiFlags) {
+  const interactive = ctx.interactive();
+  if (interactive) intro(pc.bgCyan(pc.black(' RoomKit AI 설정 ')));
+
+  // 1. Project root: an enclosing roomkit.json wins; otherwise the directory itself becomes the root.
+  const dirInput = flags.dir ?? (await text(ctx, ['--dir'], { message: '프로젝트 디렉터리', placeholder: '.', initialValue: '.' }));
+  const targetDir = resolve(dirInput.trim() || '.');
+  const enclosingRoot = findProjectRoot(existsSync(targetDir) ? targetDir : resolve(targetDir, '..'));
+  const projectRoot = enclosingRoot ?? targetDir;
+  let config: RoomkitConfig = enclosingRoot ? loadProject(enclosingRoot).config : emptyConfig();
+  if (enclosingRoot && interactive) note(`기존 프로젝트(${enclosingRoot})의 테마와 AI 스킬을 설정합니다.`, '프로젝트');
+
+  // 2. Login.
+  try {
+    await ctx.api.ensureLogin();
+  } catch (err) {
+    if (!interactive) throw err;
+    note('먼저 RoomKit 서버에 로그인합니다.', '로그인');
+    await runLogin(ctx, { save: true });
+  }
+
+  // 3. Theme, 4. AI tools + skill.
+  const theme = await chooseTheme(ctx, flags, config);
+  const tools = await chooseTools(ctx, flags, config);
+  mkdirSync(projectRoot, { recursive: true });
+  const skillReports = tools.length ? installSkill(projectRoot, tools) : [];
+
+  // 5. roomkit.json.
+  config = { ...config, server: ctx.state.apiUrl ?? config.server, theme: { id: theme.id, name: theme.name }, ...(tools.length && { ai: { tools } }) };
+  const saved = saveProject(projectRoot, config);
+  ctx.reloadProject();
+
+  return { projectRoot, configPath: saved.path, theme, aiTools: tools, skill: skillReports };
+}
+
 export function register(program: Command, ctx: GetContext): void {
-  program
+  const init = program
     .command('init')
     .description('템플릿으로 웹사이트 프로젝트를 만들고 roomkit.json 을 생성/갱신합니다 (옵션 없이 실행하면 대화형)')
     .option('-d, --dir <path>', '생성 위치 (기본: 현재 디렉터리)')
@@ -235,6 +292,35 @@ export function register(program: Command, ctx: GetContext): void {
           for (const st of steps) out.line(`  ${st}`);
         }
         for (const r of result.skill) out.line(pc.dim(`스킬 설치: ${SKILL_TARGETS[r.tool].label} → ${r.paths.join(', ')}`));
+      });
+    });
+
+  init
+    .command('ai')
+    .description('프로젝트를 만들지 않고 사용할 테마 지정과 AI 스킬 설치만 합니다 (roomkit.json 생성/갱신)')
+    .option('-d, --dir <path>', 'roomkit.json 위치 (기본: 현재 디렉터리; 상위에 있으면 그 프로젝트)')
+    .option('--create-theme <name>', '새 테마를 만들어 연결')
+    .option('--time-limit <duration>', '--create-theme 의 제한시간 (예: 60m)')
+    .option('--ai <list>', `스킬을 설치할 AI 도구 (쉼표 구분: ${Object.keys(SKILL_TARGETS).join(',')}; 빈 문자열 = 없음)`)
+    .action(async (opts: InitAiFlags) => {
+      const c = ctx();
+      // Commander lets the parent consume its own options anywhere on the line (`rk init ai --dir x`
+      // lands in `init`'s opts), so read both.
+      const parent = init.opts<InitAiFlags>();
+      const result = await runInitAi(c, { ...parent, ...opts });
+      emit(c, result, () => {
+        const lines = [
+          `프로젝트 테마: ${pc.bold(result.theme.name)} ${pc.dim(result.theme.id)}`,
+          ...result.skill.map((r) => `스킬 설치: ${SKILL_TARGETS[r.tool].label} → ${r.paths.join(', ')}`),
+          ...(result.skill.length ? [] : [pc.dim('스킬은 설치하지 않았습니다 (나중에 rk skill install).')]),
+        ];
+        if (c.interactive()) {
+          note(lines.join('\n'), '설정');
+          outro(`완료! roomkit.json: ${result.configPath}`);
+        } else {
+          out.ok(`AI 설정 완료: ${result.configPath}`);
+          for (const l of lines) out.line(`  ${l}`);
+        }
       });
     });
 }

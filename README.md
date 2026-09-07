@@ -13,6 +13,25 @@
 
 자세한 내용은 [RoomKit 문서](./docs/TOC.md)를 참고해 주세요.
 
+## CLI (`rk`) 설치
+
+웹사이트 프로젝트 생성, 배포, 테마 제작과 테스트를 터미널에서 처리하는 CLI 입니다. 사람에게는 대화형 프롬프트를, AI 에이전트에게는 `--json` 출력과 설치 가능한 스킬을 제공합니다.
+
+```sh
+pnpm add -g --allow-build=@roomkit/cli "github:chanhyokpark/RoomKit#path:apps/cli"
+rk login          # 서버 주소와 관리자 계정 저장
+```
+
+## AI 사용
+
+CLI를 설치한 뒤, `rk init`에서 사용할 AI 도구를 지정합니다.
+
+웹사이트 프로젝트 없이 테마 편집만 할 때는 `rk init ai` 로 테마 지정과 스킬 설치만 할 수 있습니다.
+
+AI 도구로 해당 프로젝트를 연 뒤 RoomKit을 사용하라고 지시하면 AI가 알아서 애셋 추가, 사이트 수정 및 배포, 테스트, 명령어 수정 등의 작업을 할 수 있습니다.
+
+자세한 내용은 [AI와 CLI 문서](./docs/human/ai-and-cli.md)를, AI 에이전트용 영문 문서는 [roomkit 스킬](./skills/roomkit/SKILL.md)을 참고해 주세요.
+
 ## 애셋, 명령어 작성/수정/삭제
 
 1. [RoomKit 웹사이트](https://rk.dshs.app)에 로그인합니다.
@@ -22,32 +41,16 @@
 
 ## 웹사이트 개발
 
-### CLI (`rk`) 설치
-
-웹사이트 프로젝트 생성, 배포, 테마 제작과 테스트를 터미널에서 처리하는 CLI 입니다. 사람에게는 대화형 프롬프트를, AI 에이전트에게는 `--json` 출력과 설치 가능한 스킬을 제공합니다.
-
-```sh
-pnpm add -g --allow-build=@roomkit/cli "github:chanhyokpark/RoomKit#path:apps/cli"
-rk login          # 서버 주소와 관리자 계정 저장
-```
-
 ### 프로젝트 생성 및 배포
 
 ```sh
 rk init           # 템플릿으로 웹사이트 프로젝트 생성 (roomkit.json 작성, AI 스킬 설치)
+rk init ai        # 프로젝트 생성 없이 테마 지정과 AI 스킬 설치만
 rk deploy         # 빌드 후 ZIP 호스팅 배포
 ```
 
 한 레포지토리가 여러 웹사이트를 포함해야 한다면 `rk init`에서 그 웹사이트의 디렉토리를 지정합니다. 배포할 때는 `rk deploy <경로>` 를 사용합니다.
 자세한 사용법은 [커스텀 장치 문서](./docs/human/custom-devices.md), [Helper 웹사이트 문서](./docs/human/websites.md), [힌트폰 문서](./docs/human/hintphone.md)를 참고해 주세요. 바로 실행할 수 있는 프로젝트는 [템플릿](./templates/README.md)에 있습니다.
-
-### AI 사용
-
-`rk init`에서 사용할 AI 도구를 지정합니다.
-
-AI 도구로 해당 프로젝트를 연 뒤 RoomKit을 사용하라고 지시하면 AI가 알아서 애셋 추가, 사이트 수정 및 배포, 테스트, 명령어 수정 등의 작업을 할 수 있습니다.
-
-자세한 내용은 [AI와 CLI 문서](./docs/human/ai-and-cli.md)를, AI 에이전트용 영문 문서는 [roomkit 스킬](./skills/roomkit/SKILL.md)을 참고해 주세요.
 
 ## 테스트 및 운영
 

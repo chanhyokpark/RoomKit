@@ -98,7 +98,7 @@ export function register(program: Command, ctx: GetContext): void {
       let project = null;
       try {
         project = c.project;
-        add('roomkit.json', project !== null, project ? project.path : '없음 (rk init / rk theme use)');
+        add('roomkit.json', project !== null, project ? project.path : '없음 (rk init / rk init ai / rk theme use)');
       } catch (err) {
         add('roomkit.json', false, err instanceof Error ? err.message : String(err));
       }

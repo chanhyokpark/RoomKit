@@ -44,6 +44,15 @@ rk init
 rk init --dir site --template react --theme "스텔라호" --create-asset "메인 화면" --asset-key main --ai claude,codex --yes
 ```
 
+웹사이트 프로젝트를 만들지 않고 **테마 지정과 AI 스킬 설치만** 하려면 `rk init ai` 를 사용합니다. 이미 있는 저장소나 테마 제작용 작업 폴더에서 실행하면 됩니다.
+
+```sh
+rk init ai                                        # 대화형: 테마 선택/생성 → AI 도구 선택
+rk init ai --theme "스텔라호" --ai claude --yes    # 옵션으로 지정
+```
+
+상위에 `roomkit.json` 이 있으면 그 프로젝트의 테마와 스킬을 갱신하고, 없으면 현재 디렉터리(`--dir`)에 새로 만듭니다. `websites` 항목은 만들지 않으므로 나중에 `rk init` 으로 웹사이트를 추가하거나 `rk deploy --save` 로 등록할 수 있습니다.
+
 생성이 끝나면 프로젝트 루트에 `roomkit.json` 이 만들어집니다.
 
 ```json
@@ -99,7 +108,7 @@ rk deploy --all --no-build
 권장 대화 흐름:
 
 1. 서버 URL 과 관리자 계정으로 `rk login` 을 먼저 해 두세요 (AI 에게 비밀번호를 넘기지 않아도 됩니다).
-2. `rk init` 또는 `rk theme use` 로 프로젝트 테마를 정해 두세요.
+2. `rk init`, `rk init ai` 또는 `rk theme use` 로 프로젝트 테마를 정해 두세요.
 3. AI 에게 스킬을 읽고 작업하도록 요청하세요. 예: "힌트 장치와 퍼즐 콘솔 장치를 추가하고, 콘솔의 `code:correct` 트리거에 효과음 재생 후 다음 페이즈로 이동하는 이벤트를 만든 뒤 가상 장치로 테스트해 줘."
 4. 삭제나 프로덕션 세션 운영 전에는 AI 가 대상을 다시 확인하도록 요청해 주세요.
 

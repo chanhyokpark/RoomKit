@@ -62,7 +62,7 @@ export function register(program: Command, ctx: GetContext): void {
           out.line();
           out.line(table(['테마', 'ID'], result.themes.map((t) => [t.name, t.id])));
           out.line();
-          out.line(pc.dim('프로젝트 테마 지정: rk theme use <이름>  ·  새 프로젝트: rk init'));
+          out.line(pc.dim('프로젝트 테마 지정: rk init ai 또는 rk theme use <이름>  ·  새 웹사이트 프로젝트: rk init'));
         } else {
           out.line(pc.dim('아직 테마가 없습니다. rk theme create <이름> 으로 만들어 보세요.'));
         }

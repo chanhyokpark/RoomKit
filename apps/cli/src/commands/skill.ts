@@ -30,7 +30,7 @@ export async function pickTools(ctx: CliContext, initial: AiTool[]): Promise<AiT
 
 function requireProject(ctx: CliContext) {
   const project = ctx.project;
-  if (!project) throw new ToolError('roomkit.json 이 없습니다. rk init 또는 rk theme use 로 프로젝트를 만들어 주세요.', 'no_project');
+  if (!project) throw new ToolError('roomkit.json 이 없습니다. rk init ai 또는 rk theme use 로 프로젝트를 만들어 주세요.', 'no_project');
   return project;
 }
 

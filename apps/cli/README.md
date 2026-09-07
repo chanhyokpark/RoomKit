@@ -7,7 +7,8 @@ Command-line interface for RoomKit: scaffold and deploy Player websites, and dri
 ```sh
 pnpm add -g --allow-build=@roomkit/cli "github:chanhyokpark/RoomKit#path:apps/cli"
 rk login
-rk init
+rk init        # website project from a template
+rk init ai     # theme + AI skill only, no project scaffold
 ```
 
 Requires Node 22+ and pnpm 10+. `--allow-build` lets pnpm run this package's `prepare` script, which builds the single-file bundle from the cloned repository. `rk upgrade` re-runs the same command; `rk version --check` compares with `apps/cli/package.json` on master.

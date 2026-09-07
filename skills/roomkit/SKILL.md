@@ -2,7 +2,7 @@
 name: roomkit
 description: Build, deploy, author, and test RoomKit escape-room projects with the `rk` CLI — website projects (Helper), themes, assets, event sequences, sessions, and virtual devices.
 metadata:
-  roomkit-cli-version: "0.1.0"
+  roomkit-cli-version: "0.1.1"
   source: github:chanhyokpark/RoomKit#path:skills/roomkit
 ---
 
@@ -23,7 +23,7 @@ The server owns every piece of game logic — phases, timers, variables, event s
 ## Working with `rk`
 
 - `rk login` once (credentials are saved to `~/.roomkit/`). Every other command auto-logs-in. `ROOMKIT_URL`/`ROOMKIT_ID`/`ROOMKIT_PASSWORD` or `--url/--id/--password` override for CI.
-- The **current theme** comes from `roomkit.json` (`rk theme use <name>`, or created by `rk init`); `--theme <ref>` overrides per command. `rk status` shows login, project, theme, websites, and installed skills.
+- The **current theme** comes from `roomkit.json` (`rk theme use <name>`, or set by `rk init` / `rk init ai`); `--theme <ref>` overrides per command. `rk status` shows login, project, theme, websites, and installed skills.
 - **Always pass `--json`** when a program reads the output. Results go to stdout; errors go to stderr as `{"error":{"code","message","status?"}}`; exit codes: `0` ok, `1` runtime/API, `2` usage/missing input, `3` not logged in, `4` no theme, `130` cancelled. `--json` disables prompts, so supply every needed flag (the error names them).
 - Reference assets by **`key`** (theme-unique slug set on create), never by hard-coded uuid. Themes and tags accept names. Ambiguous names fail with candidates.
 - Read before update: `rk asset update --data` replaces `data` wholesale. Prefer `rk sequence edit`/`set` for event sequences (they resolve keys, generate ids, validate, and report dangling references as warnings — treat warnings as unfinished work).
@@ -35,6 +35,7 @@ The server owns every piece of game logic — phases, timers, variables, event s
 | Task | Command |
 | --- | --- |
 | New website project from template | `rk init --dir site --template react --create-asset "Main screen" --asset-key main --ai claude,codex` |
+| Theme + skill only (no project scaffold) | `rk init ai --theme "Stella" --ai claude` |
 | Build + deploy the website(s) in `roomkit.json` | `rk deploy` (`rk deploy <name>`, `--all`, `--no-build`) |
 | Themes | `rk theme list|use|create|update|delete|duplicate|export|import` |
 | Assets | `rk asset list --kind event`, `rk asset get <ref>`, `rk asset create --kind sfx --name Beep --key beep --file ./beep.mp3`, `rk asset update <ref> --data @data.json` |

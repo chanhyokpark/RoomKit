@@ -100,6 +100,22 @@ rk init [--dir <path>] [--template react|svelte] \
 7. AI tools → skill install (see below).
 8. Writes/merges `roomkit.json` (`server`, `theme`, `websites`, `ai.tools`).
 
+### `rk init ai`
+
+Theme + skill only, no template and no website entry — for an existing repository, a non-web project, or a theme-authoring workspace:
+
+```sh
+rk init ai [--dir <path>] [--theme <ref> | --create-theme <name> [--time-limit 60m]] [--ai claude,codex | --ai ""]
+```
+
+1. Project root: the enclosing `roomkit.json` above `--dir` (default cwd), otherwise `--dir` itself (created if missing).
+2. Login if needed.
+3. Theme: same as step 3 of `rk init`.
+4. AI tools → skill install into the project root (merged with the tools already in `roomkit.json`).
+5. Writes/merges `roomkit.json` (`server`, `theme`, `ai.tools`); existing `websites` are kept.
+
+Equivalent to `rk theme use` + `rk skill install` in one wizard.
+
 ### `rk deploy`
 
 ```sh
