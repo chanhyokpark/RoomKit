@@ -9,7 +9,7 @@
 - 테스트/프로덕션 세션, 실시간 로그와 운영 콘솔
 - 미디어 캐시, 다중 장치 창, 테스트 세션 디버그 창과 키오스크 잠금을 제공하는 Player 앱
 - 커스텀 장치, Player 내 웹사이트, React/Svelte 힌트폰용 라이브러리
-- 테마 제작과 가상 장치 테스트를 자동화하는 MCP 서버
+- 프로젝트 생성·배포와 테마 제작·가상 장치 테스트를 자동화하는 CLI(`rk`)와 AI 에이전트용 스킬
 
 ## 서버 실행
 
@@ -48,29 +48,15 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-svelte"
 
 사용법은 [커스텀 장치 문서](./docs/human/custom-devices.md), [Helper 웹사이트 문서](./docs/human/websites.md), [힌트폰 문서](./docs/human/hintphone.md)를 참고해 주세요. 바로 실행할 수 있는 프로젝트는 [템플릿](./templates/README.md)에 있습니다.
 
-### MCP 서버
+### CLI (`rk`)
 
-MCP 서버는 단일 파일로 번들되어 별도 설치 없이 실행할 수 있습니다:
+웹사이트 프로젝트 생성, 배포, 테마 제작과 테스트를 터미널에서 처리하는 CLI 입니다. 사람에게는 대화형 프롬프트를, AI 에이전트에게는 `--json` 출력과 설치 가능한 스킬을 제공합니다.
 
 ```sh
-pnpm --allow-build=@roomkit/mcp dlx "github:chanhyokpark/RoomKit#path:apps/mcp"
+pnpm add -g --allow-build=@roomkit/cli "github:chanhyokpark/RoomKit#path:apps/cli"
+rk login          # 서버 주소와 관리자 계정 저장
+rk init           # 템플릿으로 웹사이트 프로젝트 생성 (roomkit.json 작성, AI 스킬 설치)
+rk deploy         # 빌드 후 ZIP 호스팅 배포
 ```
 
-MCP 클라이언트 설정(`.mcp.json`) 예시:
-
-```json
-{
-  "mcpServers": {
-    "roomkit": {
-      "command": "pnpm",
-      "args": [
-        "--allow-build=@roomkit/mcp",
-        "dlx",
-        "github:chanhyokpark/RoomKit#path:apps/mcp"
-      ]
-    }
-  }
-}
-```
-
-자세한 내용은 [AI와 MCP 문서](./docs/human/ai-and-mcp.md)를 참고해 주세요. AI 에이전트용 상세 영문 문서는 [TOC_AI.md](./docs/TOC_AI.md)에서 시작합니다.
+자세한 내용은 [AI와 CLI 문서](./docs/human/ai-and-cli.md)를, AI 에이전트용 영문 문서는 [roomkit 스킬](./skills/roomkit/SKILL.md)을 참고해 주세요. 기존 MCP 서버(`apps/mcp`)는 deprecated 이며 CLI 로 대체되었습니다.

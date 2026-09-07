@@ -6,6 +6,14 @@ Player iframe 안에서 실행되는 웹사이트의 최소 템플릿입니다. 
 
 ## 설치하기
 
+RoomKit CLI 로 생성하는 방법이 가장 간단합니다 (테마·website 애셋 연결과 `roomkit.json` 작성까지 처리합니다).
+
+```sh
+rk init --template svelte
+```
+
+직접 복사한 경우:
+
 ```sh
 pnpm install
 ```
@@ -37,4 +45,4 @@ pnpm install
 pnpm build
 ```
 
-`build/` 내용물을 ZIP으로 압축해 `index.html`이 루트에 오도록 올리시거나 정적 호스팅에 배포해 주세요. ZIP은 Studio의 **ZIP 호스팅** 웹사이트로, 외부 주소는 **외부 URL** 웹사이트로 등록해 주세요.
+`rk init` 으로 만든 프로젝트라면 `rk deploy` 한 번으로 빌드·압축·업로드하고 website 애셋을 **ZIP 호스팅** 모드로 전환합니다. 직접 배포하려면 `build/` 내용물을 ZIP으로 압축해 `index.html`이 루트에 오도록 Studio의 **ZIP 호스팅** 웹사이트로 올리거나, 정적 호스팅 주소를 **외부 URL** 웹사이트로 등록해 주세요.

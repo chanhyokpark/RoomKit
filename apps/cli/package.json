@@ -1,0 +1,40 @@
+{
+  "name": "@roomkit/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RoomKit command-line interface (rk): project init, deploy, authoring and testing",
+  "bin": {
+    "rk": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/copy-skill.mjs",
+    "dev": "tsx src/index.ts",
+    "prepare": "node scripts/prepare.mjs",
+    "start": "node dist/index.js",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.7.0",
+    "@roomkit/shared": "workspace:*",
+    "@types/mime-types": "^3.0.1",
+    "@types/node": "^22.10.0",
+    "commander": "^15.0.0",
+    "fflate": "^0.8.3",
+    "mime-types": "^3.0.2",
+    "picocolors": "^1.1.1",
+    "socket.io-client": "^4.8.3",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.3",
+    "zod": "^4.0.0"
+  }
+}

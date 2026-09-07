@@ -44,7 +44,7 @@ const resources: ResourceDef[] = [
     name: 'RoomKit guide',
     description: 'Canonical AI documentation table of contents (same as docs_list/get_started).',
     mimeType: 'text/markdown',
-    text: () => readRemoteDoc('TOC_AI.md'),
+    text: () => readRemoteDoc('SKILL.md'),
   },
   {
     uri: 'roomkit://schema/commands',
@@ -60,6 +60,11 @@ const server = createServer(tools, resources, ctx);
 async function main() {
   await server.connect(new StdioServerTransport());
   // stdout is the MCP stream — diagnostics must go to stderr.
+  console.error(
+    '[deprecated] roomkit-mcp is deprecated and frozen. Use the RoomKit CLI instead: ' +
+      'pnpm add -g --allow-build=@roomkit/cli "github:chanhyokpark/RoomKit#path:apps/cli", then `rk skill install` ' +
+      'to give your AI agent the roomkit skill.',
+  );
   console.error(`roomkit-mcp ready (${tools.length} tools)`);
 }
 

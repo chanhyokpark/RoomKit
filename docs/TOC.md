@@ -19,7 +19,7 @@ RoomKit은 방탈출 게임의 제작, 테스트, 운영과 장치 연동을 한
 | Player 안에서 실행되는 퍼즐 웹사이트 만들기    | [Helper로 웹사이트 만들기](./human/websites.md)        |
 | 별도 키오스크나 하드웨어 장치 연결하기         | [커스텀 장치 만들기](./human/custom-devices.md)        |
 | React 또는 Svelte로 힌트폰 만들기              | [힌트폰 만들기](./human/hintphone.md)                  |
-| AI에게 테마 제작과 테스트 맡기기               | [AI와 MCP 사용하기](./human/ai-and-mcp.md)             |
+| CLI로 웹사이트 만들고 배포하기, AI에게 맡기기  | [AI와 CLI 사용하기](./human/ai-and-cli.md)             |
 | 오류 원인 찾기                                 | [문제 해결](./human/troubleshooting.md)                |
 
 ## 바로 실행할 수 있는 예제
@@ -29,4 +29,4 @@ RoomKit은 방탈출 게임의 제작, 테스트, 운영과 장치 연동을 한
 - [`templates/hintphone`](../templates/hintphone/README.md) — React 힌트폰 (deprecated 패키지 사용)
 - [`templates/web_custom`](../templates/web_custom/README.md) — `@roomkit/client` 기반 독립 장치
 
-AI 에이전트나 구현 세부 계약이 필요하시면 [영문 AI 문서 목차](./TOC_AI.md)를 참고해 주세요.
+AI 에이전트나 구현 세부 계약이 필요하시면 [roomkit 스킬(영문)](../skills/roomkit/SKILL.md)을 참고해 주세요.

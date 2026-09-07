@@ -1,5 +1,13 @@
 # @roomkit/mcp
 
+> **Deprecated.** The MCP server is frozen and superseded by the RoomKit CLI
+> (`apps/cli`, command `rk`) plus the installable `roomkit` Agent Skill
+> (`skills/roomkit`). Install with
+> `pnpm add -g --allow-build=@roomkit/cli "github:chanhyokpark/RoomKit#path:apps/cli"`
+> and run `rk skill install` in your project. Both tools share
+> `~/.roomkit/mcp-credentials.json`. `apps/cli/src/core` is the maintained
+> copy of the modules that started here; bug fixes land there.
+
 MCP (Model Context Protocol) server exposing RoomKit authoring and testing to
 AI agents: theme/asset management, sequence (scenario) editing as JSON,
 launching and observing test sessions, and headless virtual devices. Theme archive import/export and bulk/site ZIP import remain Studio or
@@ -7,7 +15,7 @@ REST-only operations.
 
 It is a thin client over the server's REST API (`/api/*`) plus socket.io for
 virtual devices — no direct database access. For the canonical AI guide, see
-[`docs/TOC_AI.md`](../../docs/TOC_AI.md). The Korean user documentation starts
+[`skills/roomkit/SKILL.md`](../../skills/roomkit/SKILL.md) (served by `docs_list`). The Korean user documentation starts
 at [`docs/TOC.md`](../../docs/TOC.md).
 
 ## Build

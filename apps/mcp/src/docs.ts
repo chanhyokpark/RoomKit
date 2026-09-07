@@ -1,18 +1,19 @@
 import { ToolError } from './session.js';
 
+/** AI docs moved to the roomkit skill (skills/roomkit); TOC_AI.md became SKILL.md. */
 export const RAW_DOCS_BASE =
-  'https://raw.githubusercontent.com/chanhyokpark/RoomKit/refs/heads/master/docs/';
+  'https://raw.githubusercontent.com/chanhyokpark/RoomKit/refs/heads/master/skills/roomkit/';
 
 const DOC_REQUEST_TIMEOUT_MS = 10_000;
 
-/** Normalize a path copied from TOC_AI.md without allowing it to escape docs/. */
+/** Normalize a path copied from SKILL.md without allowing it to escape the skill directory. */
 export function normalizeDocname(value: string): string {
   let docname = value.trim();
   while (docname.startsWith('./')) docname = docname.slice(2);
 
   if (!docname) throw new ToolError('docname must not be empty. Call docs_list for valid paths.');
   if (docname.startsWith('/') || docname.includes('\\')) {
-    throw new ToolError('docname must be a relative POSIX path from docs/ (for example ai/helper.md).');
+    throw new ToolError('docname must be a relative POSIX path from the skill directory (for example references/helper.md).');
   }
   if (docname.includes('?') || docname.includes('#')) {
     throw new ToolError('docname must not contain a query string or fragment.');

@@ -10,7 +10,7 @@ export const discoveryTools = [
     description:
       'Backward-compatible alias for docs_list. Reads the canonical AI documentation table of contents from RoomKit master.',
     inputSchema: z.object({}),
-    handler: async () => readRemoteDoc('TOC_AI.md'),
+    handler: async () => readRemoteDoc('SKILL.md'),
   }),
 
   defineTool({
