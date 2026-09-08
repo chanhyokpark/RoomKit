@@ -2,7 +2,7 @@
 name: roomkit
 description: Build, deploy, author, and test RoomKit escape-room projects with the `rk` CLI — website projects (Helper), themes, assets, event sequences, sessions, and virtual devices.
 metadata:
-  roomkit-cli-version: "0.2.0"
+  roomkit-cli-version: "0.3.0"
   source: github:chanhyokpark/RoomKit#path:skills/roomkit
 ---
 
@@ -17,7 +17,8 @@ Read only the reference documents the current task needs, but read the linked co
 The server owns every piece of game logic — phases, timers, variables, event sequences, and command delivery. Devices are thin execution endpoints, never logic controllers:
 
 - **Devices report, the server decides.** A device interaction (button press, puzzle input, RFID scan) fires an **event trigger** and stops there. The server matches the trigger to an event and runs its sequence.
-- **Devices act only on received commands.** Effects (media, navigation, subtitles) and state changes happen because the server sent a command or **message** — not because the device decided on its own.
+- **Devices act only on received commands.** Effects (media, navigation, subtitles) and state changes happen because the server sent a command, a **state**, or a **message** — not because the device decided on its own.
+- **Prefer states over messages for what a screen shows.** A `state` asset is a durable per-device display state: the server remembers the last `setState` per device and replays it whenever the device (re)connects or its page reloads, so the same state always yields the same display. A `message` is transient — use it for one-off effects and transitions. Register per-phase states/websites/BGM on the phase asset so a phase switch (and a late-joining device) lands on the right display without extra events.
 - **Never invert this.** Device code that orchestrates other devices belongs in a server-side event sequence; the device should fire a trigger instead. Command sequences can wait until a message was fully processed, so there is no need for a "message processed" event.
 
 ## Working with `rk`

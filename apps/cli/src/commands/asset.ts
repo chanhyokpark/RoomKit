@@ -23,6 +23,7 @@ const KIND_LABELS: Record<AssetKind, string> = {
   dialogue: '대사 (dialogue)',
   hint: '힌트 (hint)',
   message: '메시지 (message)',
+  state: '상태 (state)',
   image: '이미지 (image)',
   file: '파일 (file)',
 };
@@ -48,6 +49,7 @@ function defaultData(kind: AssetKind, name: string): Record<string, unknown> | n
     case 'file':
       return { fileKey: null };
     case 'message':
+    case 'state':
       return { displayName: name, fields: [] };
     case 'dialogue':
       return { keepSubtitleAfterEnd: false, lines: [] };
@@ -137,7 +139,8 @@ async function wizardData(ctx: CliContext, themeId: string, kind: AssetKind, nam
       const step = await text(ctx, ['--data'], { message: '첫 번째 힌트 단계 내용 (HTML 허용)' });
       return { steps: [{ textHtml: step, imageKey: null }], answer: null, params: {} };
     }
-    case 'message': {
+    case 'message':
+    case 'state': {
       const displayName = await text(ctx, ['--data'], { message: '표시 이름', initialValue: name });
       return { displayName, fields: [] };
     }

@@ -52,11 +52,18 @@ function DeviceScreen({ config, onConfigure }: { config: DeviceConfig; onConfigu
           title="RoomKit website"
           onLoad={() => device.navigationLoaded(device.website!.command.id)}
         />
+      ) : device.displayState ? (
+        // 상태는 서버가 기억하고 재접속 때 다시 보내므로, 화면은 여기서 파생시키세요.
+        <section className="idle-screen">
+          <p className="eyebrow">STATE · {device.displayState.stateName}</p>
+          <h1>{device.displayState.stateName}</h1>
+          <pre>{JSON.stringify(device.displayState.payload, null, 2)}</pre>
+        </section>
       ) : (
         <section className="idle-screen">
           <p className="eyebrow">ROOMKIT CUSTOM SCREEN</p>
           <h1>장치가 준비되었습니다.</h1>
-          <p>Studio에서 웹사이트 이동 또는 미디어 커맨드를 보내 주세요.</p>
+          <p>Studio에서 상태 설정, 웹사이트 이동 또는 미디어 커맨드를 보내 주세요.</p>
         </section>
       )}
 

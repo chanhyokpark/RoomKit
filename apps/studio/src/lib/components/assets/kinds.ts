@@ -3,6 +3,7 @@ import CpuIcon from '@lucide/svelte/icons/cpu';
 import FileIcon from '@lucide/svelte/icons/file';
 import FilmIcon from '@lucide/svelte/icons/film';
 import ImageIcon from '@lucide/svelte/icons/image';
+import LayersIcon from '@lucide/svelte/icons/layers';
 import GlobeIcon from '@lucide/svelte/icons/globe';
 import LightbulbIcon from '@lucide/svelte/icons/lightbulb';
 import MailIcon from '@lucide/svelte/icons/mail';
@@ -23,7 +24,7 @@ export interface AssetKindGroup {
 export const ASSET_KIND_GROUPS: AssetKindGroup[] = [
 	{ label: '장치', kinds: ['device', 'player'] },
 	{ label: '미디어', kinds: ['bgm', 'sfx', 'dialogue', 'video', 'image', 'file'] },
-	{ label: '콘텐츠', kinds: ['website', 'message', 'hint'] },
+	{ label: '콘텐츠', kinds: ['website', 'message', 'state', 'hint'] },
 	{ label: '진행', kinds: ['phase', 'event'] }
 ];
 
@@ -55,6 +56,7 @@ export const KIND_META: Record<AssetKind, KindMeta> = {
 	player: { label: '플레이어', icon: SpeakerIcon, layout: 'grid' },
 	website: { label: '웹사이트', icon: GlobeIcon, layout: 'table' },
 	message: { label: '메시지', icon: MailIcon, layout: 'table' },
+	state: { label: '상태', icon: LayersIcon, layout: 'table' },
 	phase: { label: '페이즈', icon: MilestoneIcon, layout: 'table' },
 	event: { label: '이벤트', icon: ZapIcon, layout: 'table' }
 };

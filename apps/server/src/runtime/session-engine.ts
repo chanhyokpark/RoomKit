@@ -4,6 +4,7 @@ import type { Prisma, Session } from '@prisma/client';
 import {
   assetDataSchemas,
   type Command,
+  type DeviceState,
   type DeviceWebsite,
   type DialogueCueEntry,
   type EventData,
@@ -23,6 +24,7 @@ import {
   type TimerState,
   type Verdict,
   type WireCommand,
+  type WireHintCode,
 } from '@roomkit/shared';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { LogsService } from '../logs/logs.service';
@@ -151,6 +153,14 @@ export class SessionEngine {
   private readonly playingMedia = new Map<string, PlayingMedia>();
   /** deviceId → website last navigated to (cleared by a reset wire). */
   private readonly deviceWebsites = new Map<string, DeviceWebsite>();
+  /**
+   * deviceId → durable display state. Unlike media, tracked even for offline
+   * deliveries: the state is a fact about what the device should show, and
+   * is replayed when the device connects. Cleared by clearState or reset.
+   */
+  private readonly deviceStates = new Map<string, DeviceState>();
+  /** deviceId → hint code overlay currently shown (same offline semantics). */
+  private readonly deviceHintCodes = new Map<string, WireHintCode>();
   private readonly progressRelays = new Map<
     string,
     { toDeviceId: string; toCommandId: string; lineCount: number }
@@ -209,9 +219,13 @@ export class SessionEngine {
     this.queuePersist({ state: 'running', startedAt: new Date() });
     void this.log('info', 'session', 'Session started');
     this.broadcastState();
-    // Start websites go out before the session:start hooks so an authored
-    // navigate in a hook wins over a device's starting webpage.
+    // Phase registrations and start websites go out before the session:start
+    // hooks so an authored navigate in a hook wins over both; a phase website
+    // slot beats the device's starting webpage (which then is skipped).
     void (async () => {
+      if (this.phaseId !== null) {
+        await this.applyPhaseAssets(this.phaseId).catch(() => {});
+      }
       await this.sendStartWebsites().catch(() => {});
       this.fireSystemEvents('session:start').catch(() => {});
       // Starting the session enters the initial phase — its enter hooks fire
@@ -226,7 +240,8 @@ export class SessionEngine {
    * Navigates devices to their asset-declared starting webpage (device
    * `startWebsite`). Fire-and-forget deliveries — never awaits acks, so a
    * stuck device can't block session start. `onlyDeviceId` limits the send to
-   * one device (the late-attach/reconnect path).
+   * one device (the late-attach/reconnect path). Devices already showing a
+   * website (e.g. from a phase registration) are skipped.
    */
   private async sendStartWebsites(onlyDeviceId?: string): Promise<void> {
     const rows = await this.deps.prisma.asset.findMany({
@@ -237,35 +252,178 @@ export class SessionEngine {
       },
     });
     for (const row of rows) {
+      if (this.deviceWebsites.has(row.id)) continue;
       const parsed = assetDataSchemas.device.safeParse(row.data);
       const startWebsite = parsed.success ? parsed.data.startWebsite : null;
       if (!startWebsite) continue;
-      const cmd: Command = {
-        type: 'navigate',
-        deviceId: row.id,
-        websiteId: startWebsite.websiteId,
-        query: startWebsite.query,
-      };
-      try {
-        const resolution = await this.deps.resolver.resolve(this.themeId, cmd, {
-          vars: this.vars,
-          urlOverrides: this.urlOverrides,
-        });
-        for (const delivery of resolution.deliveries) {
-          this.sendWire(delivery.deviceId, delivery.wire, 'startWebsite');
-        }
-      } catch (err) {
-        if (err instanceof ResolutionError) {
-          void this.log(
-            'warn',
-            'command',
-            `Start website for device "${row.name}" skipped: ${err.message}`,
-            { deviceId: row.id },
-          );
-          continue;
-        }
-        throw err;
+      await this.sendResolved(
+        {
+          type: 'navigate',
+          deviceId: row.id,
+          websiteId: startWebsite.websiteId,
+          query: startWebsite.query,
+        },
+        `Start website for device "${row.name}"`,
+      );
+    }
+  }
+
+  /**
+   * Resolves a device-directed command and delivers its wires fire-and-forget
+   * (acks are never awaited, so a stuck device cannot block lifecycle steps).
+   * A resolution failure is logged and skipped. `filter` may veto or patch a
+   * delivery (return null to skip it).
+   */
+  private async sendResolved(
+    cmd: Command,
+    label: string,
+    filter?: (deviceId: string, wire: WireCommand) => WireCommand | null,
+  ): Promise<void> {
+    let resolution: Resolution;
+    try {
+      resolution = await this.deps.resolver.resolve(this.themeId, cmd, {
+        vars: this.vars,
+        urlOverrides: this.urlOverrides,
+      });
+    } catch (err) {
+      if (err instanceof ResolutionError) {
+        void this.log('warn', 'command', `${label} skipped: ${err.message}`);
+        return;
       }
+      throw err;
+    }
+    for (const delivery of resolution.deliveries) {
+      const wire = filter
+        ? filter(delivery.deviceId, delivery.wire)
+        : delivery.wire;
+      if (wire === null) continue;
+      this.sendWire(delivery.deviceId, wire, label);
+    }
+  }
+
+  /**
+   * Applies a phase's registration slots — per-device state and website,
+   * per-player looping BGM — idempotently: a device already holding the same
+   * state, showing the slot's website URL, or looping the slot's BGM is left
+   * alone, so re-entering a phase (or entering a sibling phase with the same
+   * registrations) never flickers. Slot mode `none` clears/unloads/stops only
+   * when something is active. Devices/players absent from a slot list keep
+   * whatever they have.
+   *
+   * `fillOnly` is the reconnect fallback for `onlyDeviceId`: a slot is applied
+   * only where nothing is tracked, so an operator's manual navigate/BGM/state
+   * is never overridden by the phase default on a socket blip. Never awaits
+   * acks — a slow device must not block a phase switch.
+   */
+  private async applyPhaseAssets(
+    phaseId: string,
+    opts: { onlyDeviceId?: string; fillOnly?: boolean } = {},
+  ): Promise<void> {
+    const row = await this.deps.prisma.asset.findFirst({
+      where: { id: phaseId, themeId: this.themeId, kind: 'phase' },
+      select: { data: true },
+    });
+    if (!row) return;
+    const parsed = assetDataSchemas.phase.safeParse(row.data);
+    if (!parsed.success) return;
+    const phase = parsed.data;
+    const { onlyDeviceId, fillOnly = false } = opts;
+    const forDevice = (deviceId: string) =>
+      onlyDeviceId === undefined || deviceId === onlyDeviceId;
+
+    for (const slot of phase.deviceStates) {
+      if (!forDevice(slot.deviceId)) continue;
+      const current = this.deviceStates.get(slot.deviceId);
+      if (fillOnly && current) continue;
+      if (slot.mode === 'none') {
+        if (!current) continue;
+        await this.sendResolved(
+          { type: 'clearState', deviceId: slot.deviceId, allDevices: false },
+          'phase state',
+        );
+        continue;
+      }
+      await this.sendResolved(
+        {
+          type: 'setState',
+          deviceId: slot.deviceId,
+          stateId: slot.stateId,
+          values: slot.values,
+        },
+        'phase state',
+        (_deviceId, wire) =>
+          wire.type === 'state' &&
+          wire.state !== null &&
+          current !== undefined &&
+          current.stateId === wire.state.stateId &&
+          JSON.stringify(current.values) === JSON.stringify(wire.state.payload)
+            ? null // identical state already active
+            : wire,
+      );
+    }
+
+    for (const slot of phase.deviceWebsites) {
+      if (!forDevice(slot.deviceId)) continue;
+      const current = this.deviceWebsites.get(slot.deviceId);
+      if (fillOnly && current) continue;
+      if (slot.mode === 'none') {
+        if (!current) continue;
+        this.sendWire(
+          slot.deviceId,
+          {
+            id: randomUUID(),
+            type: 'navigate',
+            websiteId: null,
+            url: null,
+            force: false,
+          },
+          'phase website',
+        );
+        continue;
+      }
+      await this.sendResolved(
+        {
+          type: 'navigate',
+          deviceId: slot.deviceId,
+          websiteId: slot.websiteId,
+          query: slot.query,
+        },
+        'phase website',
+        (_deviceId, wire) =>
+          wire.type === 'navigate' && current?.url === wire.url
+            ? null // already showing this URL
+            : wire,
+      );
+    }
+
+    for (const slot of phase.playerBgms) {
+      const current = [...this.playingMedia.values()].find(
+        (m) => m.channel === 'bgm' && m.playerId === slot.playerId,
+      );
+      if (fillOnly && current) continue;
+      // The player's speaker device is only known after resolution, so the
+      // per-device restriction is applied to the deliveries.
+      if (slot.mode === 'none') {
+        if (!current) continue;
+        await this.sendResolved(
+          { type: 'stopBgm', playerId: slot.playerId, allPlayers: false },
+          'phase bgm',
+          (deviceId, wire) => (forDevice(deviceId) ? wire : null),
+        );
+        continue;
+      }
+      if (current && current.assetId === slot.bgmId && current.loop) continue;
+      await this.sendResolved(
+        {
+          type: 'playBgm',
+          bgmId: slot.bgmId,
+          playerId: slot.playerId,
+          loop: true,
+          waitUntilEnd: false,
+        },
+        'phase bgm',
+        (deviceId, wire) => (forDevice(deviceId) ? wire : null),
+      );
     }
   }
 
@@ -353,11 +511,17 @@ export class SessionEngine {
       this.activeRuns.clear();
       this.broadcastRuns();
     }
-    if (this.playingMedia.size > 0 || this.deviceWebsites.size > 0) {
+    if (
+      this.playingMedia.size > 0 ||
+      this.deviceWebsites.size > 0 ||
+      this.deviceStates.size > 0
+    ) {
       this.playingMedia.clear();
       this.deviceWebsites.clear();
+      this.deviceStates.clear();
       this.broadcastMedia();
     }
+    this.deviceHintCodes.clear();
     this.openGate();
     this.queuePersist({ state: 'ended', endedAt: new Date() });
     await this.log('info', 'session', 'Session ended');
@@ -546,6 +710,7 @@ export class SessionEngine {
       `Phase "${phase?.name ?? phaseId}" restarted (admin)`,
       { phaseId },
     );
+    await this.applyPhaseAssets(phaseId);
     this.fireSystemEvents('phase:enter', phaseId).catch(() => {});
   }
 
@@ -1125,6 +1290,9 @@ export class SessionEngine {
     wire: WireCommand,
     label: string,
   ): boolean {
+    // Declarative display facts are remembered regardless of delivery: an
+    // offline device receives them when it connects (see replayDevice).
+    const remembered = this.trackDeclarative(deviceId, wire);
     const online = this.deps.transport().sendCommand(this.id, deviceId, wire);
     if (online) {
       let perDevice = this.unacked.get(deviceId);
@@ -1140,6 +1308,13 @@ export class SessionEngine {
         commandId: wire.id,
         wireType: wire.type,
       });
+    } else if (remembered) {
+      void this.log(
+        'info',
+        'command',
+        `${label} remembered for offline device (applied on connect)`,
+        { deviceId, commandId: wire.id, wireType: wire.type },
+      );
     } else {
       void this.log('warn', 'command', `${label} failed: device offline`, {
         deviceId,
@@ -1148,6 +1323,47 @@ export class SessionEngine {
       });
     }
     return online;
+  }
+
+  /**
+   * Tracks state/hint-code wires (and their clearing by reset) whether or not
+   * the device is online. True when the wire is one of those "remembered"
+   * kinds. States are mirrored to /admin alongside media.
+   */
+  private trackDeclarative(deviceId: string, wire: WireCommand): boolean {
+    switch (wire.type) {
+      case 'state': {
+        if (wire.state === null) {
+          if (!this.deviceStates.delete(deviceId)) return true;
+        } else {
+          const startedAt =
+            this.deviceStates.get(deviceId)?.stateId === wire.state.stateId &&
+            JSON.stringify(this.deviceStates.get(deviceId)?.values) ===
+              JSON.stringify(wire.state.payload)
+              ? this.deviceStates.get(deviceId)!.startedAt
+              : Date.now();
+          this.deviceStates.set(deviceId, {
+            deviceId,
+            stateId: wire.state.stateId,
+            stateName: wire.state.stateName,
+            values: wire.state.payload,
+            startedAt,
+          });
+        }
+        this.broadcastMedia();
+        return true;
+      }
+      case 'hintCode':
+        if (wire.code === null) this.deviceHintCodes.delete(deviceId);
+        else this.deviceHintCodes.set(deviceId, wire);
+        return true;
+      case 'reset':
+        this.deviceHintCodes.delete(deviceId);
+        if (this.deviceStates.delete(deviceId)) this.broadcastMedia();
+        return false;
+      default:
+        return false;
+    }
   }
 
   private waitForAck(
@@ -1264,7 +1480,10 @@ export class SessionEngine {
       },
     );
     this.broadcastState();
-    // …enter hooks must not block the switching sequence.
+    // Phase registrations are applied (fire-and-forget deliveries) before the
+    // enter hooks, so an authored navigate/playBgm in a hook still wins…
+    await this.applyPhaseAssets(phaseId);
+    // …and enter hooks must not block the switching sequence.
     this.fireSystemEvents('phase:enter', phaseId).catch(() => {});
   }
 
@@ -1516,12 +1735,51 @@ export class SessionEngine {
     });
   }
 
-  /** Redeliver unacked commands (same ids — clients dedupe). */
+  /**
+   * Reconnect / late attach. Redelivers unacked commands (same ids — clients
+   * dedupe), then replays everything that should currently be active on the
+   * device so a restarted player ends up on the same display as before:
+   * the website, the durable state, the hint code, looping BGM, and in-flight
+   * video resumed at its elapsed offset. Replays of already-acked wires carry
+   * fresh ids and devices apply them idempotently (same URL → no reload, same
+   * looping BGM → keeps playing).
+   */
   onDeviceConnected(deviceId: string): void {
+    void this.replayDevice(deviceId).catch(() => {});
+  }
+
+  private async replayDevice(deviceId: string): Promise<void> {
     const perDevice = this.unacked.get(deviceId);
+    // Unacked state/hint-code wires are superseded by the tracked current
+    // value (replayed below with a fresh id, last write wins) — redelivering
+    // a stale one after a newer offline write would show the wrong display.
+    let droppedState = false;
+    let droppedHintCode = false;
     if (perDevice) {
-      for (const wire of perDevice.values()) {
-        this.deps.transport().sendCommand(this.id, deviceId, wire);
+      for (const [id, wire] of perDevice) {
+        if (wire.type === 'state') {
+          perDevice.delete(id);
+          droppedState = true;
+        } else if (wire.type === 'hintCode') {
+          perDevice.delete(id);
+          droppedHintCode = true;
+        }
+      }
+    }
+    const pending = [...(perDevice?.values() ?? [])];
+    if (perDevice) {
+      for (const [id, wire] of perDevice) {
+        let out = wire;
+        // In-flight playback (video, one-shot BGM): same id — a device still
+        // playing it dedupes, a restarted one resumes at the elapsed offset.
+        if (wire.type === 'play' && wire.channel !== 'sfx' && wire.channel !== 'dialogue') {
+          const media = this.playingMedia.get(id);
+          if (media) {
+            out = { ...wire, offsetMs: Math.max(0, Date.now() - media.startedAt) };
+            perDevice.set(id, out);
+          }
+        }
+        this.deps.transport().sendCommand(this.id, deviceId, out);
       }
     }
     // A go-ahead sent while the speaker was offline is lost — repeat the last
@@ -1535,14 +1793,92 @@ export class SessionEngine {
         });
       }
     }
-    // Late attach/reconnect: send the device's starting webpage unless a
-    // website is already showing or a navigate is being redelivered above.
-    if (
-      (this.state === 'running' || this.state === 'paused') &&
-      !this.deviceWebsites.has(deviceId) &&
-      ![...(perDevice?.values() ?? [])].some((w) => w.type === 'navigate')
-    ) {
-      void this.sendStartWebsites(deviceId).catch(() => {});
+    if (this.state !== 'running' && this.state !== 'paused') return;
+
+    // Snapshot before the phase fallback so its own deliveries aren't replayed twice.
+    const website = this.deviceWebsites.get(deviceId);
+    const deviceState = this.deviceStates.get(deviceId);
+    const hintCode = this.deviceHintCodes.get(deviceId);
+    const loopingBgm = [...this.playingMedia.values()].filter(
+      (m) => m.deviceId === deviceId && m.channel === 'bgm' && m.loop,
+    );
+    const pendingNavigate = pending.some((w) => w.type === 'navigate');
+    const pendingBgmPlayers = new Set(
+      pending.flatMap((w) =>
+        w.type === 'play' && w.channel === 'bgm' ? [w.playerId] : [],
+      ),
+    );
+
+    // Phase registrations the device missed while offline (deliveries to an
+    // offline device are dropped) — only where nothing is tracked.
+    if (this.phaseId !== null) {
+      await this.applyPhaseAssets(this.phaseId, {
+        onlyDeviceId: deviceId,
+        fillOnly: true,
+      });
+    }
+
+    if (website && !pendingNavigate) {
+      this.sendWire(
+        deviceId,
+        {
+          id: randomUUID(),
+          type: 'navigate',
+          websiteId: website.websiteId,
+          url: website.url,
+          force: false,
+        },
+        'website replay',
+      );
+    } else if (!this.deviceWebsites.has(deviceId)) {
+      await this.sendStartWebsites(deviceId);
+    }
+    if (deviceState) {
+      this.sendWire(
+        deviceId,
+        {
+          id: randomUUID(),
+          type: 'state',
+          state: {
+            stateId: deviceState.stateId,
+            stateName: deviceState.stateName,
+            payload: deviceState.values,
+          },
+        },
+        'state replay',
+      );
+    } else if (droppedState) {
+      // The device may have applied a since-cleared state: say so explicitly.
+      this.sendWire(deviceId, { id: randomUUID(), type: 'state', state: null }, 'state replay');
+    }
+    if (hintCode) {
+      this.sendWire(deviceId, { ...hintCode, id: randomUUID() }, 'hintCode replay');
+    } else if (droppedHintCode) {
+      this.sendWire(
+        deviceId,
+        { id: randomUUID(), type: 'hintCode', code: null, css: '', params: {} },
+        'hintCode replay',
+      );
+    }
+    // Looping BGM acked long ago: re-resolve for a fresh media URL and id;
+    // offsetMs marks it as a replay so a device still looping it keeps going.
+    for (const media of loopingBgm) {
+      if (pendingBgmPlayers.has(media.playerId)) continue;
+      const offsetMs = Math.max(0, Date.now() - media.startedAt);
+      await this.sendResolved(
+        {
+          type: 'playBgm',
+          bgmId: media.assetId,
+          playerId: media.playerId,
+          loop: true,
+          waitUntilEnd: false,
+        },
+        'bgm replay',
+        (targetId, wire) =>
+          targetId === deviceId && wire.type === 'play' && wire.channel === 'bgm'
+            ? { ...wire, offsetMs }
+            : null,
+      );
     }
   }
 
@@ -1632,6 +1968,7 @@ export class SessionEngine {
       sessionId: this.id,
       playing: [...this.playingMedia.values()],
       websites: [...this.deviceWebsites.values()],
+      states: [...this.deviceStates.values()],
     };
   }
 
@@ -1663,7 +2000,13 @@ export class SessionEngine {
           assetId: wire.assetId,
           assetName: wire.assetName,
           loop: wire.channel === 'bgm' && wire.loop,
-          startedAt: Date.now(),
+          // A replay keeps the original start so later offsets stay correct.
+          startedAt:
+            Date.now() -
+            ((wire.channel === 'bgm' || wire.channel === 'video') &&
+            wire.offsetMs !== undefined
+              ? wire.offsetMs
+              : 0),
         });
         break;
       }
@@ -1683,6 +2026,10 @@ export class SessionEngine {
         break;
       }
       case 'navigate':
+        if (wire.websiteId === null || wire.url === null) {
+          if (!this.deviceWebsites.delete(deviceId)) return;
+          break;
+        }
         this.deviceWebsites.set(deviceId, {
           deviceId,
           websiteId: wire.websiteId,

@@ -37,6 +37,7 @@ pnpm install
 ## 커스터마이즈하기
 
 - `src/routes/+layout.svelte`의 메시지 등록과 `src/routes/+page.svelte`의 페이지 콘텐츠를 채워 넣으세요. 스타일은 Tailwind CSS 클래스를 사용하면 됩니다.
+- **화면은 상태로, 효과는 메시지로.** `rk.state`(`{ name, payload }`, 없으면 `name === 'default'`)에서 화면을 파생시키면 페이지가 늦게 열리거나 다시 로드되어도, Player가 재시작되어도 서버가 기억한 상태를 다시 보내 같은 화면이 됩니다. 메시지는 한 번만 오므로 애니메이션·효과음 같은 일시적인 효과에만 사용하세요. 사용하는 상태 이름은 `states` 옵션에 선언하면 운영 화면에서 바로 설정해 볼 수 있습니다.
 - 힌트 UI(코드 입력·단계 탐색), 자막·비디오·힌트 코드를 사이트가 직접 렌더링하는 방법(render claims), `trigger`/`getRemainingTime` 등 전체 API는 [Helper 문서](../../docs/human/websites.md)를 참고해 주세요. 이 템플릿은 자막과 비디오를 렌더링하지 않으며, 기본값 그대로 Player가 오버레이를 그립니다.
 
 ## 배포하기

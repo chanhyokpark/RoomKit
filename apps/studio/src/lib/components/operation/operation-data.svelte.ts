@@ -360,7 +360,7 @@ export class OperationData {
 	}
 
 	mediaFor(sessionId: string): SessionMedia {
-		return this.media.get(sessionId) ?? { sessionId, playing: [], websites: [] };
+		return this.media.get(sessionId) ?? { sessionId, playing: [], websites: [], states: [] };
 	}
 
 	notificationsFor(sessionId: string): SessionNotification[] {

@@ -11,6 +11,14 @@
 	rk.onMessage((payload, envelope) => {
 		addLog(`${envelope.messageName}: ${JSON.stringify(payload)}`);
 	});
+
+	// ── 상태 처리 ──────────────────────────────────────────────────────
+	// 화면은 rk.state에서 파생시키세요(아래 템플릿 참고). 상태가 "바뀔 때"의
+	// 부수 효과(사운드, 애니메이션 시작)는 onState로 등록합니다. 같은 상태의
+	// 재전송은 걸러지고, 'default'는 활성 상태가 없을 때입니다.
+	rk.onState((payload, state) => {
+		addLog(`state → ${state.name} ${JSON.stringify(payload)}`);
+	});
 </script>
 
 <main>
@@ -30,6 +38,9 @@
 	  사용하세요.
 	-->
 	<p>bridge: {rk.bridge}</p>
+	<p>
+		state: {rk.state.name}{rk.state.name !== 'default' ? ` ${JSON.stringify(rk.state.payload)}` : ''}
+	</p>
 	<p>sessionMode: {rk.sessionMode}</p>
 	<p>remainingMs: {rk.remainingMs ?? '(타이머 없음)'} (자동 갱신)</p>
 	<p>hint: {JSON.stringify(rk.hint.data)}</p>

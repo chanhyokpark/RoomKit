@@ -13,7 +13,7 @@ type Listener = (event: { data: unknown }) => void;
 
 /** Fake iframe environment: capture outbound posts, allow injecting inbound. */
 function env(
-  options: Pick<RoomKitHelperOptions, 'renders' | 'messages' | 'testCallbacks'> = {},
+  options: Pick<RoomKitHelperOptions, 'renders' | 'messages' | 'testCallbacks' | 'states'> = {},
 ) {
   const posted: unknown[] = [];
   const listeners = new Set<Listener>();
@@ -56,6 +56,7 @@ describe('RoomKitHelper', () => {
         version: HELPER_VERSION,
         messages: [],
         testCallbacks: [],
+        states: [],
       },
     ]);
     expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({ type: 'hello' });
@@ -70,6 +71,7 @@ describe('RoomKitHelper', () => {
       version: HELPER_VERSION,
       messages: [],
       testCallbacks: [],
+      states: [],
     });
   });
 
@@ -583,6 +585,69 @@ describe('RoomKitHelper', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('hello reports registered state names', () => {
+    const { posted } = env({ states: ['idle', 'alarm'] });
+    expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({
+      type: 'hello',
+      states: ['idle', 'alarm'],
+    });
+  });
+
+  describe('durable state', () => {
+    const STATE_ID = '22222222-2222-4222-8222-222222222222';
+    const alarm = { stateId: STATE_ID, stateName: 'alarm', payload: { level: 2 } };
+
+    it('starts as default and tracks player state posts, including clears', () => {
+      const { helper, inject } = env();
+      const onState = vi.fn();
+      helper.on('state', onState);
+      expect(helper.state).toEqual({ name: 'default', stateId: null, payload: {} });
+      inject({ source: 'roomkit-player', type: 'state', state: alarm });
+      expect(helper.state).toEqual({ name: 'alarm', stateId: STATE_ID, payload: { level: 2 } });
+      inject({ source: 'roomkit-player', type: 'state', state: null });
+      expect(helper.state.name).toBe('default');
+      expect(onState.mock.calls).toEqual([
+        [{ name: 'alarm', stateId: STATE_ID, payload: { level: 2 } }],
+        [{ name: 'default', stateId: null, payload: {} }],
+      ]);
+    });
+
+    it('dedupes identical repeats (reconnect replay / hello re-post)', () => {
+      const { helper, inject } = env();
+      const onState = vi.fn();
+      helper.on('state', onState);
+      inject({ source: 'roomkit-player', type: 'state', state: null }); // already default
+      inject({ source: 'roomkit-player', type: 'state', state: alarm });
+      inject({ source: 'roomkit-player', type: 'state', state: { ...alarm } });
+      inject({ source: 'roomkit-player', type: 'state', state: { ...alarm, payload: { level: 3 } } });
+      expect(onState).toHaveBeenCalledTimes(2);
+    });
+
+    it('onState fires for the named state, immediately when already active, and for default', () => {
+      const { helper, inject } = env();
+      inject({ source: 'roomkit-player', type: 'state', state: alarm });
+      const onAlarm = vi.fn();
+      const onDefault = vi.fn();
+      const off = helper.onState('alarm', onAlarm);
+      helper.onState('default', onDefault);
+      expect(onAlarm).toHaveBeenCalledTimes(1); // already active
+      expect(onAlarm).toHaveBeenCalledWith({ level: 2 }, expect.objectContaining({ name: 'alarm' }));
+      expect(onDefault).not.toHaveBeenCalled();
+      inject({ source: 'roomkit-player', type: 'state', state: null });
+      expect(onDefault).toHaveBeenCalledTimes(1);
+      off();
+      inject({ source: 'roomkit-player', type: 'state', state: alarm });
+      expect(onAlarm).toHaveBeenCalledTimes(1); // unsubscribed
+    });
+
+    it('ignores malformed state posts', () => {
+      const { helper, inject } = env();
+      inject({ source: 'roomkit-player', type: 'state', state: { stateName: 'x' } });
+      inject({ source: 'roomkit-player', type: 'state', state: 'bogus' });
+      expect(helper.state.name).toBe('default');
+    });
   });
 
   it('tracks the player-reported session mode, ignoring bogus values', () => {

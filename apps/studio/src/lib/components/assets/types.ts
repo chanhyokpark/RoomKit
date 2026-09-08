@@ -2,6 +2,7 @@ import type {
 	Asset,
 	AssetKind,
 	HintStep,
+	JsonValue,
 	MessageField,
 	SequenceEntry,
 	TriggerKind,
@@ -9,6 +10,20 @@ import type {
 } from '@roomkit/shared';
 
 export type EditorState = { mode: 'create'; kind: AssetKind } | { mode: 'edit'; asset: Asset };
+
+/**
+ * Phase registration slots while editing. Same shape as the schema's slots
+ * except that an unselected asset is '' (the editor rejects it on save).
+ */
+export type DraftStateSlot =
+	| { deviceId: string; mode: 'none' }
+	| { deviceId: string; mode: 'set'; stateId: string; values: Record<string, JsonValue> };
+export type DraftWebsiteSlot =
+	| { deviceId: string; mode: 'none' }
+	| { deviceId: string; mode: 'set'; websiteId: string; query: { key: string; value: string }[] };
+export type DraftBgmSlot =
+	| { playerId: string; mode: 'none' }
+	| { playerId: string; mode: 'set'; bgmId: string };
 
 /** Dialogue line while editing — no fileKey = placeholder line. */
 export interface DraftDialogueLine {
@@ -65,8 +80,15 @@ export type Draft =
 	  }
 	| { kind: 'website'; mode: 'external' | 'hosted'; url: string; sitePrefix: string | null }
 	| { kind: 'message'; displayName: string; fields: MessageField[] }
-	/** orderText may become number | null via the number-input binding. */
-	| { kind: 'phase'; orderText: string | number | null }
+	| { kind: 'state'; displayName: string; fields: MessageField[] }
+	| {
+			kind: 'phase';
+			/** orderText may become number | null via the number-input binding. */
+			orderText: string | number | null;
+			deviceStates: DraftStateSlot[];
+			deviceWebsites: DraftWebsiteSlot[];
+			playerBgms: DraftBgmSlot[];
+	  }
 	| {
 			kind: 'event';
 			/** Phase asset id; empty string = common event. */

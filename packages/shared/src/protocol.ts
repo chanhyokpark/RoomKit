@@ -158,6 +158,8 @@ export const HelperInfoSchema = z.object({
   messages: z.array(z.string()).optional(),
   /** Test-callback names declared via the helper's `testCallbacks` option. */
   testCallbacks: z.array(z.string()).optional(),
+  /** State names declared via the helper's `states` option. */
+  states: z.array(z.string()).optional(),
 });
 export type HelperInfo = z.infer<typeof HelperInfoSchema>;
 
@@ -355,11 +357,25 @@ export const DeviceWebsiteSchema = z.object({
 });
 export type DeviceWebsite = z.infer<typeof DeviceWebsiteSchema>;
 
+/** The durable state currently set on a device (cleared by clearState or reset). */
+export const DeviceStateSchema = z.object({
+  deviceId: z.uuid(),
+  stateId: z.uuid(),
+  stateName: z.string(),
+  /** Resolved (interpolated) field values as delivered to the device. */
+  values: z.record(z.string(), JsonValueSchema),
+  /** Epoch ms when the state was set. */
+  startedAt: z.number().int().nonnegative(),
+});
+export type DeviceState = z.infer<typeof DeviceStateSchema>;
+
 /** /admin `session:media` payload — full snapshot, replaces the previous one. */
 export const SessionMediaSchema = z.object({
   sessionId: z.uuid(),
   playing: z.array(PlayingMediaSchema),
   websites: z.array(DeviceWebsiteSchema),
+  /** Default keeps payloads from servers predating device states parseable. */
+  states: z.array(DeviceStateSchema).default([]),
 });
 export type SessionMedia = z.infer<typeof SessionMediaSchema>;
 
@@ -398,6 +414,8 @@ export const DeviceStatusSchema = z.object({
   helperMessages: z.array(z.string()).nullable().optional(),
   /** Test-callback names the loaded website registered (helper `testCallbacks`). */
   helperTestCallbacks: z.array(z.string()).nullable().optional(),
+  /** State names the loaded website registered (helper `states` option). */
+  helperStates: z.array(z.string()).nullable().optional(),
 });
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;
 

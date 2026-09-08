@@ -19,6 +19,9 @@ interface ActiveBgm {
 	cancelVolumeRamp: (() => void) | null;
 	/** From the play wire (the BGM asset's setting); applied on stop/replace. */
 	fadeOutMs: number;
+	/** Identity for reconnect replays: same looping asset → keep playing. */
+	assetId: string;
+	loop: boolean;
 	commandId: string;
 	done: DoneFn;
 }
@@ -95,16 +98,34 @@ export class BgmChannel {
 	}>();
 
 	play(cmd: WirePlayBgm, done: DoneFn): void {
-		this.stop(cmd.playerId); // replace: ack the old one out (crossfade)
-		stage.addPlaceholder({
-			id: cmd.id,
-			channel: 'bgm',
+		const chip = {
+			channel: 'bgm' as const,
 			name: cmd.assetName,
 			// Guarded by command id so a stale chip can't stop a replacement track.
 			stop: () => {
 				if (this.active.get(cmd.playerId)?.commandId === cmd.id) this.stop(cmd.playerId);
 			}
-		});
+		};
+		// Reconnect replay (offsetMs set) of a track this player already loops:
+		// adopt the new delivery id and keep playing rather than restarting.
+		const current = this.active.get(cmd.playerId);
+		if (
+			cmd.offsetMs !== undefined &&
+			cmd.loop &&
+			current !== undefined &&
+			current.loop &&
+			current.assetId === cmd.assetId
+		) {
+			current.done(); // idempotent; covers a track that never reached 'playing'
+			stage.removePlaceholder(current.commandId);
+			current.commandId = cmd.id;
+			current.done = done;
+			stage.addPlaceholder({ id: cmd.id, ...chip });
+			done();
+			return;
+		}
+		this.stop(cmd.playerId); // replace: ack the old one out (crossfade)
+		stage.addPlaceholder({ id: cmd.id, ...chip });
 
 		if (cmd.url === null || cmd.fileKey === null) {
 			const entry: ActiveBgm = {
@@ -117,6 +138,8 @@ export class BgmChannel {
 				cancelDuck: null,
 				cancelVolumeRamp: null,
 				fadeOutMs: cmd.fadeOutMs,
+				assetId: cmd.assetId,
+				loop: cmd.loop,
 				commandId: cmd.id,
 				done
 			};
@@ -124,7 +147,7 @@ export class BgmChannel {
 			if (cmd.loop) {
 				done();
 			} else {
-				entry.cancelSimulation = simulate(cmd.durationMs ?? 0, () => {
+				entry.cancelSimulation = simulate(Math.max(0, (cmd.durationMs ?? 0) - (cmd.offsetMs ?? 0)), () => {
 					this.active.delete(cmd.playerId);
 					stage.removePlaceholder(cmd.id);
 					done();
@@ -135,6 +158,18 @@ export class BgmChannel {
 
 		const audio = createAudio(cmd.fileKey, cmd.url);
 		audio.loop = cmd.loop;
+		if (cmd.offsetMs !== undefined && cmd.offsetMs > 0) {
+			const offsetMs = cmd.offsetMs;
+			audio.addEventListener(
+				'loadedmetadata',
+				() => {
+					if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+					const seconds = offsetMs / 1000;
+					audio.currentTime = cmd.loop ? seconds % audio.duration : Math.min(seconds, audio.duration);
+				},
+				{ once: true }
+			);
+		}
 		const entry: ActiveBgm = {
 			audio,
 			baseVolume: cmd.fadeInMs > 0 ? 0 : 1,
@@ -145,6 +180,8 @@ export class BgmChannel {
 			cancelDuck: null,
 			cancelVolumeRamp: null,
 			fadeOutMs: cmd.fadeOutMs,
+			assetId: cmd.assetId,
+			loop: cmd.loop,
 			commandId: cmd.id,
 			done
 		};

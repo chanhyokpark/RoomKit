@@ -96,6 +96,9 @@ const KIND_NOTES: Record<AssetKind, string[]> = {
   message: [
     'Defines a payload shape (fields[]) the sendMessage command fills in per use; the website receives it via the client library.',
   ],
+  state: [
+    'Durable per-device display state (same shape as message); set with setState, cleared with clearState; replayed to devices on reconnect. Frozen MCP server: see the rk CLI skill for details.',
+  ],
   phase: [
     'Game progression stage; data.order sorts phases ascending. Events belong to a phase (or are common with phaseId null).',
   ],

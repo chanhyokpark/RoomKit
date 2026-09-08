@@ -18,6 +18,13 @@ export interface HintCode {
 	params: Record<string, JsonValue>;
 }
 
+/** The device's durable display state (wire `state`); null = default. */
+export interface DeviceDisplayState {
+	stateId: string;
+	stateName: string;
+	payload: Record<string, JsonValue>;
+}
+
 /** A video playback delegated to the claiming website instead of the stage. */
 export interface DelegatedVideo {
 	/** Wire command id — the site's video:ended/video:error must echo it. */
@@ -35,6 +42,8 @@ export interface DelegatedVideo {
 	durationMs: number | null;
 	frame: VideoFrame | null;
 	params: Record<string, JsonValue>;
+	/** Reconnect replay: start this many ms in. */
+	offsetMs?: number;
 }
 
 /** Playback-side handlers for delegated-video reports from the website. */
@@ -78,7 +87,14 @@ class StageStore {
 	videoPlaceholder = $state<string | null>(null);
 	/** Video surface placement (percent of stage); null = fullscreen. */
 	videoFrame = $state<VideoFrame | null>(null);
+	/** Seek applied when the stage <video> loads (reconnect replay); 0 = start. */
+	videoOffsetMs = $state(0);
 	subtitle = $state<Subtitle | null>(null);
+	/**
+	 * Durable display state, forwarded to the website (on change and on every
+	 * helper hello). Replayed by the server on reconnect; the helper dedupes.
+	 */
+	state = $state<DeviceDisplayState | null>(null);
 	/** One code per device window; a newer show replaces the previous. */
 	hintCode = $state<HintCode | null>(null);
 	/**
@@ -129,8 +145,15 @@ class StageStore {
 	 * superseded (new navigate / reset) is released immediately so the older
 	 * sequence never stalls on a site that will no longer load.
 	 */
-	navigate(url: string, done: () => void, force = false): void {
+	navigate(url: string | null, done: () => void, force = false): void {
 		this.releaseNavigateAck();
+		if (url === null) {
+			// Unload: blank stage, media and overlays untouched.
+			vlog('stage', 'unload website');
+			this.iframeUrl = null;
+			done();
+			return;
+		}
 		if (this.iframeUrl === url) {
 			if (!force) {
 				// Same URL: the #key'd iframe won't re-create, so no load will fire.
@@ -165,8 +188,10 @@ class StageStore {
 		this.videoSrc = null;
 		this.videoPlaceholder = null;
 		this.videoFrame = null;
+		this.videoOffsetMs = 0;
 		this.subtitle = null;
 		this.hintCode = null;
+		this.state = null;
 		this.helperRenders = NO_CLAIMS;
 		this.delegatedVideo = null;
 		this.iframeUrl = null;

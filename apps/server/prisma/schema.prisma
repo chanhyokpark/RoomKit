@@ -33,6 +33,7 @@ enum AssetKind {
   player
   website
   message
+  state
   phase
   event
 }

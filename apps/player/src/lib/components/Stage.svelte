@@ -93,6 +93,13 @@
 					src={stage.videoSrc}
 					autoplay
 					oncontextmenu={(e) => e.preventDefault()}
+					onloadedmetadata={(e) => {
+						// Reconnect replay: resume where the original playback would be.
+						const v = e.currentTarget;
+						if (stage.videoOffsetMs > 0 && Number.isFinite(v.duration)) {
+							v.currentTime = Math.min(stage.videoOffsetMs / 1000, v.duration);
+						}
+					}}
 					onended={() => engine?.video.handleEnded()}
 					onerror={() => engine?.video.handleError()}
 				></video>

@@ -27,6 +27,7 @@
 	import JsonParamsField from './forms/json-params-field.svelte';
 	import PhaseForm from './forms/phase-form.svelte';
 	import PlayerForm from './forms/player-form.svelte';
+	import StateForm from './forms/state-form.svelte';
 	import VideoFrameFields from './forms/video-frame-fields.svelte';
 	import WebsiteForm from './forms/website-form.svelte';
 	import TagPicker from './tag-picker.svelte';
@@ -158,8 +159,26 @@
 						displayName: asset.data.displayName,
 						fields: asset.data.fields.map((field) => ({ ...field }))
 					};
+				case 'state':
+					return {
+						kind: 'state',
+						displayName: asset.data.displayName,
+						fields: asset.data.fields.map((field) => ({ ...field }))
+					};
 				case 'phase':
-					return { kind: 'phase', orderText: String(asset.data.order) };
+					return {
+						kind: 'phase',
+						orderText: String(asset.data.order),
+						deviceStates: asset.data.deviceStates.map((slot) =>
+							slot.mode === 'set' ? { ...slot, values: { ...slot.values } } : { ...slot }
+						),
+						deviceWebsites: asset.data.deviceWebsites.map((slot) =>
+							slot.mode === 'set'
+								? { ...slot, query: slot.query.map((q) => ({ ...q })) }
+								: { ...slot }
+						),
+						playerBgms: asset.data.playerBgms.map((slot) => ({ ...slot }))
+					};
 				case 'event':
 					return {
 						kind: 'event',
@@ -236,8 +255,16 @@
 				return { kind: 'website', mode: 'external', url: '', sitePrefix: null };
 			case 'message':
 				return { kind: 'message', displayName: '', fields: [] };
+			case 'state':
+				return { kind: 'state', displayName: '', fields: [] };
 			case 'phase':
-				return { kind: 'phase', orderText: '' };
+				return {
+					kind: 'phase',
+					orderText: '',
+					deviceStates: [],
+					deviceWebsites: [],
+					playerBgms: []
+				};
 			case 'event':
 				return {
 					kind: 'event',
@@ -324,7 +351,8 @@
 				} catch {
 					return '올바른 URL을 입력해 주세요.';
 				}
-			case 'message': {
+			case 'message':
+			case 'state': {
 				if (draft.fields.some((field) => !field.key.trim()))
 					return '모든 필드에 키를 입력해 주세요.';
 				const keys = draft.fields.map((field) => field.key.trim());
@@ -335,7 +363,14 @@
 				// bind:value on a number input coerces the state to number | null.
 				const orderText = String(draft.orderText ?? '').trim();
 				const order = Number(orderText);
-				return orderText !== '' && Number.isInteger(order) ? null : '순서는 정수여야 합니다.';
+				if (orderText === '' || !Number.isInteger(order)) return '순서는 정수여야 합니다.';
+				if (draft.deviceStates.some((slot) => slot.mode === 'set' && !slot.stateId))
+					return '장치 상태에서 "지정"한 항목의 상태 애셋을 선택해 주세요.';
+				if (draft.deviceWebsites.some((slot) => slot.mode === 'set' && !slot.websiteId))
+					return '장치 웹사이트에서 "지정"한 항목의 웹사이트를 선택해 주세요.';
+				if (draft.playerBgms.some((slot) => slot.mode === 'set' && !slot.bgmId))
+					return '플레이어 BGM에서 "지정"한 항목의 BGM을 선택해 주세요.';
+				return null;
 			}
 			case 'event':
 				if (draft.triggerKind === 'device' && !draft.triggerName.trim())
@@ -413,12 +448,31 @@
 					? { mode: 'hosted', sitePrefix: draft.sitePrefix ?? '' }
 					: { mode: 'external', url: draft.url };
 			case 'message':
+			case 'state':
 				return {
 					displayName: draft.displayName,
 					fields: draft.fields.map((field) => ({ ...field, key: field.key.trim() }))
 				};
 			case 'phase':
-				return { order: Number(draft.orderText) };
+				return {
+					order: Number(draft.orderText),
+					deviceStates: $state.snapshot(draft.deviceStates) as unknown as JsonValue,
+					deviceWebsites: (
+						$state.snapshot(draft.deviceWebsites) as unknown as Array<
+							Record<string, JsonValue>
+						>
+					).map((slot) =>
+						Array.isArray(slot.query)
+							? {
+									...slot,
+									query: (slot.query as Array<{ key: string; value: string }>).filter(
+										(q) => q.key !== ''
+									)
+								}
+							: slot
+					) as unknown as JsonValue,
+					playerBgms: $state.snapshot(draft.playerBgms) as unknown as JsonValue
+				} as JsonValue;
 			case 'event':
 				return {
 					phaseId: draft.phaseId || null,
@@ -591,8 +645,16 @@
 			/>
 		{:else if draft.kind === 'message'}
 			<MessageForm bind:displayName={draft.displayName} bind:fields={draft.fields} />
+		{:else if draft.kind === 'state'}
+			<StateForm bind:displayName={draft.displayName} bind:fields={draft.fields} />
 		{:else if draft.kind === 'phase'}
-			<PhaseForm bind:orderText={draft.orderText} />
+			<PhaseForm
+				{themeId}
+				bind:orderText={draft.orderText}
+				bind:deviceStates={draft.deviceStates}
+				bind:deviceWebsites={draft.deviceWebsites}
+				bind:playerBgms={draft.playerBgms}
+			/>
 		{:else if draft.kind === 'event'}
 			<EventForm
 				{themeId}

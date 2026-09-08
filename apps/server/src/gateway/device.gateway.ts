@@ -334,6 +334,7 @@ export class DeviceGateway
       helperVersion: parsed.data.version,
       helperMessages: parsed.data.messages ?? null,
       helperTestCallbacks: parsed.data.testCallbacks ?? null,
+      helperStates: parsed.data.states ?? null,
     });
     this.admin.broadcastDeviceStatus({
       sessionId: attach.sessionId,

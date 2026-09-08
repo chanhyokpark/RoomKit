@@ -8,6 +8,7 @@ import {
 	type HintShow,
 	type JsonValue,
 	type PlayerHintCode,
+	type PlayerState,
 	type PlayerSubtitle,
 	type PlayerToHelper,
 	type PlayerVideoPlay,
@@ -46,10 +47,11 @@ export class HelperBridge {
 	 * reconnect re-attaches the device and drops server-side version state.
 	 */
 	private helperVersion: string | null | undefined;
-	/** Message/test-callback names the site registered in its last hello. */
-	private helperExtras: { messages: string[]; testCallbacks: string[] } = {
+	/** Message/test-callback/state names the site registered in its last hello. */
+	private helperExtras: { messages: string[]; testCallbacks: string[]; states: string[] } = {
 		messages: [],
-		testCallbacks: []
+		testCallbacks: [],
+		states: []
 	};
 	/** In-flight test-callback wires awaiting the helper's done report. */
 	private readonly pendingTestCallbacks = new Map<string, DoneFn>();
@@ -198,6 +200,11 @@ export class HelperBridge {
 		this.send({ source: PLAYER_SOURCE, type: 'hintCode', hintCode });
 	}
 
+	/** The device's durable state; null = default. Not claim-gated. */
+	postState(state: PlayerState['state']): void {
+		this.send({ source: PLAYER_SOURCE, type: 'state', state });
+	}
+
 	postVideoPlay(video: Omit<PlayerVideoPlay, 'source' | 'type'>): void {
 		this.send({ source: PLAYER_SOURCE, type: 'video:play', ...video });
 	}
@@ -229,7 +236,8 @@ export class HelperBridge {
 				this.helperVersion = msg.version ?? null;
 				this.helperExtras = {
 					messages: msg.messages,
-					testCallbacks: msg.testCallbacks
+					testCallbacks: msg.testCallbacks,
+					states: msg.states
 				};
 				this.client.reportHelperInfo(this.helperVersion, this.helperExtras);
 				// Replied to every hello so a reloaded page learns it again; test
@@ -239,6 +247,9 @@ export class HelperBridge {
 					type: 'mode',
 					mode: connection.session?.mode ?? 'production'
 				});
+				// Likewise the current durable state — a reloaded page must render
+				// the same display (the helper dedupes against WebsiteFrame's post).
+				this.post({ source: PLAYER_SOURCE, type: 'state', state: stage.state });
 				for (const queued of this.buffered.splice(0)) this.post(queued);
 				return;
 			}

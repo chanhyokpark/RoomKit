@@ -3,6 +3,7 @@ import {
   type Asset,
   type AssetKind,
   type Command,
+  type JsonValue,
 } from '@roomkit/shared';
 
 export class ConsoleError extends Error {}
@@ -13,11 +14,12 @@ export interface ConsoleResult {
 }
 
 const HELP = [
-  'help · list <devices|players|events|phases|hints|bgm|sfx|video|dialogues|websites|messages>',
+  'help · list <devices|players|events|phases|hints|bgm|sfx|video|dialogues|websites|messages|states>',
   'playBgm|playSfx|playVideo|playDialogue <asset> [player] [wait]',
   'stopBgm|stopSfx|stopVideo|stopDialogue [player|all]',
   'adjustBgmVolume <player> <0..100> [durationMs]',
   'navigate <device> <website> [key=value ...] · resetDevice <device> · resetAllDevices',
+  'setState <device> <state> [key=value ...] · clearState [device|all]',
   'callEvent <event> [wait] · switchPhase <phase>',
   'showHintCode <hint> <device> · hideHintCode [device|all]',
   'adjustTimer +30s|-1m|pause|resume · notify <message> · eval <code>',
@@ -36,6 +38,7 @@ const LIST_KIND: Record<string, AssetKind> = {
   dialogues: 'dialogue',
   websites: 'website',
   messages: 'message',
+  states: 'state',
 };
 
 export function parseConsole(input: string, assets: Asset[]): ConsoleResult {
@@ -145,6 +148,41 @@ export function parseConsole(input: string, assets: Asset[]): ConsoleResult {
           return { key: pair.slice(0, index), value: pair.slice(index + 1) };
         }),
       });
+    case 'setstate': {
+      const deviceId = find(assets, 'device', args[0]).id;
+      const state = find(assets, 'state', args[1]);
+      const fields = state.kind === 'state' ? state.data.fields : [];
+      const values: Record<string, JsonValue> = {};
+      for (const pair of args.slice(2)) {
+        const index = pair.indexOf('=');
+        if (index < 1)
+          throw new ConsoleError(`key=value 형식이 아닙니다: ${pair}`);
+        const key = pair.slice(0, index);
+        const raw = pair.slice(index + 1);
+        const type = fields.find((field) => field.key === key)?.type;
+        try {
+          values[key] =
+            type === 'number'
+              ? Number(raw)
+              : type === 'boolean'
+                ? raw === 'true'
+                : type === 'json'
+                  ? (JSON.parse(raw) as JsonValue)
+                  : raw;
+        } catch {
+          throw new ConsoleError(`필드 "${key}"의 JSON이 올바르지 않습니다.`);
+        }
+      }
+      return command({ type: 'setState', deviceId, stateId: state.id, values });
+    }
+    case 'clearstate':
+      return args.length === 0 || args[0].toLowerCase() === 'all'
+        ? command({ type: 'clearState', deviceId: null, allDevices: true })
+        : command({
+            type: 'clearState',
+            deviceId: find(assets, 'device', args[0]).id,
+            allDevices: false,
+          });
     case 'resetdevice':
       return command({
         type: 'resetDevice',

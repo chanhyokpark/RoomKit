@@ -18,6 +18,7 @@ import type {
   NotificationFeedbackType,
   PlayerHintCode,
   PlayerMessage,
+  PlayerState,
   PlayerSubtitle,
   PlayerVideoPlay,
   PlayerVideoStop,
@@ -67,6 +68,29 @@ export type MessageHandler = (
 /** Parameterless callback invokable from the player's debug window (test only). */
 export type TestCallback = () => void | Promise<void>;
 
+/**
+ * The device's current durable state. `name` is the state asset's name, or
+ * `'default'` when no state is active (`stateId` null, empty payload). The
+ * server remembers the state per device and the player re-posts it on every
+ * page load and reconnect, so rendering from it gives the same display no
+ * matter when the page connected.
+ */
+export interface StateValue {
+  name: string;
+  stateId: string | null;
+  payload: Record<string, JsonValue>;
+}
+
+/** The state before any setState (and after clearState). */
+export const DEFAULT_STATE: StateValue = Object.freeze({
+  name: 'default',
+  stateId: null,
+  payload: {},
+}) as StateValue;
+
+/** Listener for `onState(name, …)`: the state's payload plus the full value. */
+export type StateHandler = (payload: Record<string, JsonValue>, state: StateValue) => void;
+
 export interface RoomKitHelperOptions {
   /** Test seam; defaults to `window.parent`. */
   parentWindow?: Pick<Window, 'postMessage'>;
@@ -100,6 +124,12 @@ export interface RoomKitHelperOptions {
    * `messages` and invokable from the debug window (test sessions only).
    */
   testCallbacks?: Record<string, TestCallback>;
+  /**
+   * State asset names this page renders, reported to the player like
+   * `messages` so the operation UI can list (and set) them. Declarative only;
+   * the current state always arrives via `state` / `onState`.
+   */
+  states?: string[];
 }
 
 export interface TriggerAndWaitOptions {
@@ -171,6 +201,13 @@ export interface RoomKitHelperEvents extends Record<string, unknown[]> {
   bridge: [HelperBridgeState];
   /** Player-reported session mode changed. */
   mode: [SessionMode];
+  /**
+   * The device's durable state changed (see {@link StateValue}); `'default'`
+   * when cleared. Identical repeats (reconnect replays, page reloads) are
+   * deduped and do not fire. Prefer this over `message` for anything the
+   * screen should keep showing.
+   */
+  state: [StateValue];
 }
 
 /**
@@ -193,6 +230,10 @@ export class RoomKitHelper {
   private bridge: HelperBridgeState = 'connecting';
   /** Declared message names from the `messages` option. */
   private readonly messages: string[];
+  /** Declared state names from the `states` option. */
+  private readonly states: string[];
+  /** Current durable state; `'default'` until the player posts one. */
+  private currentState: StateValue = DEFAULT_STATE;
   /** Named test callbacks from the `testCallbacks` option. */
   private readonly testCallbacks: Record<string, TestCallback>;
   /** blob: URL minted for the current delegated video; revoked on the next play/stop/destroy. */
@@ -236,6 +277,7 @@ export class RoomKitHelper {
     this.parent = options.parentWindow ?? window.parent;
     this.self = options.selfWindow ?? window;
     this.messages = options.messages ?? [];
+    this.states = options.states ?? [];
     this.testCallbacks = options.testCallbacks ?? {};
     this.self.addEventListener('message', this.onMessage as EventListener);
     if (options.lockdown !== false) this.lockdown();
@@ -252,6 +294,7 @@ export class RoomKitHelper {
       version: HELPER_VERSION,
       messages: this.messages,
       testCallbacks: Object.keys(this.testCallbacks),
+      states: this.states,
     };
     this.post(hello);
     // The player's bridge may not be listening yet (created after this frame
@@ -283,6 +326,26 @@ export class RoomKitHelper {
   /** Bridge state; 'timeout' means the page runs outside the player. */
   get bridgeState(): HelperBridgeState {
     return this.bridge;
+  }
+
+  /** The device's current durable state (`'default'` when none is active). */
+  get state(): StateValue {
+    return this.currentState;
+  }
+
+  /**
+   * Run `handler` whenever the state named `name` becomes active — including
+   * right away if it already is — and `'default'` when the state is cleared.
+   * Returns an unsubscribe function. Handlers re-run on every *change* only;
+   * reconnect replays of the same state do not re-fire.
+   */
+  onState(name: string, handler: StateHandler): () => void {
+    const listener = (state: StateValue) => {
+      if (state.name === name) handler(state.payload, state);
+    };
+    this.emitter.on('state', listener);
+    if (this.currentState.name === name) handler(this.currentState.payload, this.currentState);
+    return () => void this.emitter.off('state', listener);
   }
 
   private setBridge(state: HelperBridgeState): void {
@@ -640,6 +703,37 @@ export class RoomKitHelper {
           this.mode = msg.mode;
           this.emitter.emit('mode', this.mode);
         }
+        return;
+      }
+      case 'state': {
+        // Null = default; otherwise {stateId, stateName, payload}.
+        let next: StateValue;
+        if (msg.state === null) {
+          next = DEFAULT_STATE;
+        } else {
+          if (typeof msg.state !== 'object' || msg.state === undefined) return;
+          const s = msg.state as PlayerState['state'] & object;
+          if (typeof s.stateName !== 'string' || typeof s.stateId !== 'string') return;
+          next = {
+            name: s.stateName,
+            stateId: s.stateId,
+            payload:
+              typeof s.payload === 'object' && s.payload !== null
+                ? (s.payload as Record<string, JsonValue>)
+                : {},
+          };
+        }
+        // The player re-posts the state on every hello and the server replays
+        // it on reconnect — only a real change reaches listeners.
+        if (
+          next.stateId === this.currentState.stateId &&
+          next.name === this.currentState.name &&
+          JSON.stringify(next.payload) === JSON.stringify(this.currentState.payload)
+        ) {
+          return;
+        }
+        this.currentState = next;
+        this.emitter.emit('state', next);
         return;
       }
       default:

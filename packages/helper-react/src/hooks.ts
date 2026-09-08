@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import type { MessageHandler, RoomKitHelperEvents } from '@roomkit/helper';
+import type { MessageHandler, RoomKitHelperEvents, StateHandler } from '@roomkit/helper';
 import { useRoomKitContext } from './context.js';
 
 /**
  * Subscribe to a helper event ('message', 'hint', 'hintError', 'subtitle',
- * 'hintCode', 'videoPlay', 'videoStop', 'bridge', 'mode') for this
+ * 'hintCode', 'videoPlay', 'videoStop', 'bridge', 'mode', 'state') for this
  * component's lifetime. The handler is kept in a ref, so an inline closure is
  * fine. For awaited messages, a promise returned by a 'message' handler is
  * awaited before the command is acked.
@@ -48,4 +48,34 @@ export function useRoomKitMessage(a: string | MessageHandler, b?: MessageHandler
     if (name !== undefined && envelope.messageName !== name) return;
     return handlerRef.current?.(payload, envelope);
   });
+}
+
+/**
+ * React to the device's durable state for this component's lifetime. Pass a
+ * state asset name to run the handler when that state becomes active
+ * (immediately if it already is) — `'default'` runs when no state is active —
+ * or just a handler for every change. Reconnect replays of an unchanged state
+ * do not re-fire. For rendering, `useRoomKit().state` is usually enough; this
+ * hook is for side effects (start an animation, play a sound).
+ */
+export function useRoomKitState(handler: StateHandler): void;
+export function useRoomKitState(name: string, handler: StateHandler): void;
+export function useRoomKitState(a: string | StateHandler, b?: StateHandler): void {
+  const name = typeof a === 'string' ? a : undefined;
+  const handler = typeof a === 'string' ? b : a;
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  const ctx = useRoomKitContext();
+  const helper = ctx?.core?.helper ?? null;
+
+  useRoomKitEvent('state', (state) => {
+    if (name !== undefined && state.name !== name) return;
+    handlerRef.current?.(state.payload, state);
+  });
+  // The relay only sees changes; fire once for a state already active at mount.
+  useEffect(() => {
+    if (!helper || name === undefined) return;
+    const current = helper.state;
+    if (current.name === name) handlerRef.current?.(current.payload, current);
+  }, [helper, name]);
 }

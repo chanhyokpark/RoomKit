@@ -8,8 +8,8 @@
 2. Create device assets with unique codes.
 3. Create player assets after their speaker and screen devices exist.
 4. Upload files, or create placeholder media while content is missing.
-5. Create websites, messages, hints, and other supporting assets.
-6. Create ordered phases.
+5. Create websites, states, messages, hints, and other supporting assets.
+6. Create ordered phases and register what each phase should show (device states/websites, player BGM).
 7. Create phase or common events, then set sequences.
 8. Validate dangling references and run a test session.
 
@@ -26,14 +26,21 @@ Run `rk describe asset <kind>` before creating an unfamiliar kind. `rk asset upd
 - **image**: public website resource. A fileless image serves a generated layout placeholder using `placeholderRatio`.
 - **file**: arbitrary public website resource; it returns 404 until `fileKey` is set.
 - **website**: external URL or hosted-site storage metadata.
-- **message**: display name plus fields (`key`, `label`, `type`, `required`). Concrete values belong to send-message commands.
+- **message**: display name plus fields (`key`, `label`, `type`, `required`). Concrete values belong to send-message commands. Messages are transient: not remembered and not replayed on reconnect — use them for effects and transitions.
+- **state**: same shape as message (display name plus fields). A durable per-device display state: `setState` sets one (replacing the device's previous state), `clearState` clears it, and the runtime remembers the current state per device for the session and replays it whenever the device (re)connects or its page reloads. One state is active per device at a time. Use states for anything a screen should keep showing; the website reads it as `rk.state` / `onState(name, …)` and sees `'default'` when none is active.
 - **hint**: unique code, ordered HTML/image steps, optional explicit answer, and arbitrary params forwarded with the code overlay and every shown step.
-- **phase**: ascending `order`.
+- **phase**: ascending `order`, plus optional registrations applied when the phase begins: `deviceStates[]` (`{deviceId, mode: 'none'}` or `{deviceId, mode: 'set', stateId, values}`), `deviceWebsites[]` (`{deviceId, mode: 'none'}` or `{deviceId, mode: 'set', websiteId, query}`), and `playerBgms[]` (`{playerId, mode: 'none'}` or `{playerId, mode: 'set', bgmId}`, always looping). A device/player absent from a list is **kept** (left untouched); `none` clears the state / unloads the website / stops the BGM; `set` applies the asset. Read-merge-update: an update with only `{order}` wipes the registrations.
 - **event**: phase ownership, trigger kind/name, manual/re-entry/once flags, and sequence. Sequence entry ids are any string unique within the sequence (Studio generates uuids; CLI authors may use readable ids).
 
 Every asset also has an optional top-level `key`: a theme-unique slug (letters, digits, `_`, `.`, `-`; not uuid-shaped) meant for authors and agents. Stored references between assets remain uuids; `rk` resolves keys to uuids on input. Keys survive duplication and export/import. Studio does not edit keys yet.
 
-A device `startWebsite` is delivered as a navigate wire on session start (production and test) before `session:start` hook events, so an authored navigate in a start hook wins. It is also redelivered when the device attaches or reconnects mid-session showing no website with no navigate pending.
+A device `startWebsite` is delivered as a navigate wire on session start (production and test) before `session:start` hook events, so an authored navigate in a start hook wins. It is skipped for a device whose phase registration already put a website on it, and it is also sent when a device attaches mid-session with no website tracked at all.
+
+### Phase registrations
+
+Phase registrations are applied on every phase enter — session start (initial phase), `switchPhase`, and a phase restart — before the `phase:enter` hooks, so an authored command in a hook still wins. Application is **idempotent**: a device already showing the registered website URL, already holding the identical state, or already looping the registered BGM on that player is left alone, so re-entering a phase or moving between phases with the same registrations never flickers. A device that was offline when the phase began receives its slots when it connects (only where nothing else is active by then).
+
+Prefer registrations over `phase:enter` events for "what this phase looks like": they survive reconnects and late joins without extra logic, whereas a navigate/playBgm in a hook runs once and re-runs the media unconditionally.
 
 ## Files and media URLs
 

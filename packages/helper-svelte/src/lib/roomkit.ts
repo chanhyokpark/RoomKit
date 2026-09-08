@@ -17,6 +17,8 @@ import type {
   RoomKitHelperEvents,
   RoomKitHintApi,
   SessionMode,
+  StateHandler,
+  StateValue,
   SubtitleState,
   TriggerAndWaitOptions,
   VideoState,
@@ -137,6 +139,10 @@ export class RoomKit implements RoomKitApi {
   get video(): VideoState {
     return this.ctx.snapshot.video;
   }
+  /** The device's durable state (`'default'` when none is active). */
+  get state(): StateValue {
+    return this.ctx.snapshot.state;
+  }
   /** Raw helper escape hatch; null until setup has mounted. */
   get helper(): RoomKitHelper | null {
     return this.ctx.core?.helper ?? null;
@@ -171,7 +177,8 @@ export class RoomKit implements RoomKitApi {
 
   /**
    * Subscribe to a raw helper event ('message', 'hint', 'hintError',
-   * 'subtitle', 'hintCode', 'videoPlay', 'videoStop', 'bridge', 'mode').
+   * 'subtitle', 'hintCode', 'videoPlay', 'videoStop', 'bridge', 'mode',
+   * 'state').
    * Returns an unsubscribe function; also removed by {@link destroy}.
    */
   on<K extends keyof RoomKitHelperEvents>(
@@ -202,6 +209,27 @@ export class RoomKit implements RoomKitApi {
       if (name !== undefined && envelope.messageName !== name) return;
       return handler(payload, envelope);
     });
+  }
+
+  /**
+   * React to the device's durable state. Pass a state asset name to run the
+   * handler when that state becomes active (immediately if it already is) —
+   * `'default'` runs when no state is active — or just a handler for every
+   * change. Reconnect replays of an unchanged state do not re-fire. For
+   * rendering, read `rk.state` in the template; use this for side effects.
+   */
+  onState(handler: StateHandler): () => void;
+  onState(name: string, handler: StateHandler): () => void;
+  onState(a: string | StateHandler, b?: StateHandler): () => void {
+    const name = typeof a === 'string' ? a : undefined;
+    const handler = (typeof a === 'string' ? b : a) as StateHandler;
+    const off = this.on('state', (state: StateValue) => {
+      if (name !== undefined && state.name !== name) return;
+      handler(state.payload, state);
+    });
+    const current = this.ctx.snapshot.state;
+    if (name !== undefined && current.name === name) handler(current.payload, current);
+    return off;
   }
 
   /** A hint step/answer arrived (reply to submit/step request, or a push). */

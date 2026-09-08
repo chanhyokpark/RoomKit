@@ -31,7 +31,11 @@ Status is `idle | connecting | connected | disconnected | error`. Fatal errors i
 
 ## Automatic versus owner acknowledgments
 
-Client validates inbound schemas, deduplicates command IDs, and automatically acknowledges reset, stop, BGM-volume, non-awaited messages, and hint-code commands. The consumer owns completion for `play` and `navigate`. A `done()` callback is idempotent and accepts `done()` or `done('failed')`.
+Client validates inbound schemas, deduplicates command IDs, and automatically acknowledges reset, stop, BGM-volume, non-awaited messages, state, and hint-code commands. The consumer owns completion for `play` and `navigate`. A `done()` callback is idempotent and accepts `done()` or `done('failed')`.
+
+## Reconnect replay and idempotency
+
+On every (re)connect the server replays what the device should currently show: the website (`navigate` with the same URL), the durable `state`, the hint code, looping BGM (a fresh `play` with `offsetMs`) and in-flight video (the original `play` id with `offsetMs`). Replays of acked commands carry new ids, so dedupe by id is not enough — apply them idempotently: skip a `navigate` whose URL is already shown, keep a looping BGM that already plays the same `assetId` on that player when the wire carries `offsetMs` (ack it), seek to `offsetMs` when starting media fresh, and treat a repeated identical `state` as a no-op. Render the screen from the last `state` (null = default) rather than from messages: messages are never replayed.
 
 Message listeners may return promises. For `awaitHandled` commands, Client waits for all listeners before acknowledging. Without the flag, it acknowledges before invoking them.
 
@@ -39,20 +43,24 @@ Message listeners may return promises. For `awaitHandled` commands, Client waits
 
 Every play command has id, channel, player/asset identity, and either URL/file metadata or placeholder duration.
 
-- **BGM:** implement loop and fades. A loop acknowledges at start. Store fade-out for later stop/replacement. Handle `bgmVolume` by applying `cmd.value` (0–1) as the player's persistent base volume until reset, ramping linearly over `cmd.durationMs` when it is above 0; fade and duck factors multiply it.
+- **BGM:** implement loop and fades. A loop acknowledges at start. Store fade-out for later stop/replacement. Handle `bgmVolume` by applying `cmd.value` (0–1) as the player's persistent base volume until reset, ramping linearly over `cmd.durationMs` when it is above 0; fade and duck factors multiply it. A play with `offsetMs` is a reconnect replay: keep an identical looping track (same `assetId`, same player) instead of restarting it, otherwise start at `offsetMs` (modulo the duration for loops).
 - **SFX:** play independently and apply optional `bgmDuck` while active.
 - **Dialogue speaker:** play ordered lines; emit `sendProgress(id, index)` as each starts. For `holdBefore`, emit waiting progress first and wait for the server's non-waiting progress before starting that line. Finish after the last line.
 - **Dialogue screen:** acknowledge play immediately, retain the dialogue command, and render line subtitle HTML on matching progress. Clear at end unless `keepSubtitleAfterEnd`, and always clear on stop.
 - **Dialogue both:** combine speaker and screen behavior locally. Server progress is still required for cue holds.
-- **Video:** place using percentage frame or full-screen, apply params, and acknowledge on end/error.
+- **Video:** place using percentage frame or full-screen, apply params, and acknowledge on end/error. Seek to `offsetMs` when present (reconnect replay of an in-flight video, same command id).
 
 Stop has a channel and optional player target. Stop active elements, cancel timers/fades/holds, clear relevant state, and ensure any owned pending completion is settled exactly once.
 
 ## Navigation and reset
 
-`navigate(url, cmd, done)` must acknowledge after the actual target loads. Embedding the target in an iframe preserves the Client socket. Navigating the entire page destroys the socket, so invoke `done()` immediately before assigning `location.href` if that model is intentional.
+`navigate(url, cmd, done)` must acknowledge after the actual target loads. Embedding the target in an iframe preserves the Client socket. Navigating the entire page destroys the socket, so invoke `done()` immediately before assigning `location.href` if that model is intentional. A null `url` means unload the website (blank display, media untouched); an unchanged `url` (reconnect replay) should ack immediately without reloading.
 
-Reset should stop all media, clear subtitles/overlays, reset the embedded website or puzzle state, and return to a known initial UI.
+Reset should stop all media, clear subtitles/overlays, clear the durable state (back to default), reset the embedded website or puzzle state, and return to a known initial UI.
+
+## Durable state
+
+`state` delivers the device's durable display state — `cmd.state` is `{ stateId, stateName, payload }` or null for the default. The server remembers it per device and replays it on every (re)connect, so derive the screen from the latest value and treat repeats as no-ops. Messages remain the transient channel.
 
 ## Device-originated operations
 
@@ -98,8 +106,9 @@ interface RoomKitClientEvents {
                                                  // (looping BGM: done() on start; placeholder: after durationMs)
   stop: [WireStop];
   bgmVolume: [WireBgmVolume];                    // persistent base-volume factor for one player's BGM
-  navigate: [string, WireNavigate, DoneFn];      // (url, cmd, done) — done() after the target actually loaded
+  navigate: [string | null, WireNavigate, DoneFn]; // (url, cmd, done) — done() after the target actually loaded; null url = unload
   message: [Record<string, JsonValue>, WireMessage]; // listener may return a promise (awaitHandled ack)
+  state: [WireState];                            // durable display state; cmd.state null = default; replayed on reconnect
   reset: [WireReset];
   progress: [PlaybackProgress];                  // subtitle sync (screen role) / cue go-ahead (speaker role)
   sessionState: [SessionState];
@@ -130,7 +139,7 @@ class RoomKitClient {
   /** Speaker-role dialogue sync; `waiting: true` reports a holdBefore pause. */
   sendProgress(commandId: string, lineIndex: number, waiting?: boolean): void;
   /** Player-internal: relay the embedded website's helper version/names. */
-  reportHelperInfo(version: string | null, extras?: { messages?: string[]; testCallbacks?: string[] }): void;
+  reportHelperInfo(version: string | null, extras?: { messages?: string[]; testCallbacks?: string[]; states?: string[] }): void;
   on<K extends keyof RoomKitClientEvents>(event: K, listener: (...args: RoomKitClientEvents[K]) => void): this;
   off<K extends keyof RoomKitClientEvents>(event: K, listener: (...args: RoomKitClientEvents[K]) => void): this;
 }
@@ -190,7 +199,7 @@ interface PlaybackProgress {
 ```ts
 type WireCommand =
   | WirePlayCommand | WireStop | WireBgmVolume | WireNavigate
-  | WireReset | WireMessage | WireHintCode | WireTestCallback;
+  | WireReset | WireMessage | WireState | WireHintCode | WireTestCallback;
 
 type WirePlayCommand = WirePlayBgm | WirePlaySfx | WirePlayDialogue | WirePlayVideo;
 
@@ -199,6 +208,7 @@ interface WirePlayBgm {
   playerId: string; assetId: string; assetName: string;
   fileKey: string | null; url: string | null; durationMs: number | null;
   loop: boolean;      // looping tracks ack on playback start
+  offsetMs?: number;  // reconnect replay: elapsed ms; keep an identical looping track, else start here
   fadeInMs: number;   // volume ramp from 0 on start; 0 = none
   fadeOutMs: number;  // stored by the client, applied on later stop/replacement
 }
@@ -235,6 +245,7 @@ interface WirePlayVideo {
   fileKey: string | null; url: string | null; durationMs: number | null;
   frame: VideoFrame | null;           // percent placement; null = fullscreen
   params: Record<string, JsonValue>;
+  offsetMs?: number;                  // reconnect replay (same id): seek here before playing
 }
 
 interface WireStop {
@@ -247,8 +258,13 @@ interface WireBgmVolume { id: string; type: 'bgmVolume'; playerId: string; value
 
 interface WireNavigate {
   id: string; type: 'navigate';
-  websiteId: string; url: string;
+  websiteId: string | null; url: string | null; // null = unload the website (blank display)
   force: boolean;                     // recreate the iframe even for an unchanged URL
+}
+
+interface WireState {
+  id: string; type: 'state';
+  state: { stateId: string; stateName: string; payload: Record<string, JsonValue> } | null; // null = default
 }
 
 interface WireReset { id: string; type: 'reset' }

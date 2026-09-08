@@ -26,6 +26,7 @@ import {
   type WireNavigate,
   type WirePlayCommand,
   type WireReset,
+  type WireState,
   type WireStop,
   type WireTestCallback,
 } from '@roomkit/shared';
@@ -107,6 +108,10 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    * Placeholder (fileless) commands carry `url: null` and a `durationMs`:
    * show a placeholder, simulate for that long, then call `done()` as usual
    * (looping placeholder BGM still acks on start).
+   *
+   * Reconnect replays of BGM/video carry `offsetMs` (elapsed since the
+   * original start): seek there before playing, and keep an identical
+   * looping BGM already playing on that player instead of restarting it.
    */
   play: [WirePlayCommand, DoneFn];
   stop: [WireStop];
@@ -117,8 +122,10 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    * finished loading) — the server sequence waits on this ack before running
    * the next command. A consumer that navigates the whole window away must
    * call `done()` before changing location (the socket unloads with the page).
+   * A null url unloads the website (blank display); the server replays the
+   * current website on reconnect, so an unchanged url should be a no-op.
    */
-  navigate: [string, WireNavigate, DoneFn];
+  navigate: [string | null, WireNavigate, DoneFn];
   /**
    * A sendMessage command's payload. Listeners may return a promise: when the
    * command was sent with waitUntilEnd (`cmd.awaitHandled`), the ack — and the
@@ -142,6 +149,12 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
   hintError: [HintError];
   /** Hint entry-code overlay: show (code set) or hide (code null). */
   hintCode: [WireHintCode];
+  /**
+   * The device's durable display state: `cmd.state` set = show it, null =
+   * back to the default. Unlike messages the server remembers it and replays
+   * it on every (re)connect, so treat a repeated identical state as a no-op.
+   */
+  state: [WireState];
   /**
    * Debug window asked to run a website-registered test callback (test
    * sessions only). Call `done('done' | 'failed')` with the outcome — the
@@ -616,6 +629,10 @@ export class RoomKitClient {
       case 'hintCode':
         this.ack(cmd.id, 'done');
         this.emitter.emit('hintCode', cmd as WireHintCode);
+        break;
+      case 'state':
+        this.ack(cmd.id, 'done');
+        this.emitter.emit('state', cmd as WireState);
         break;
       case 'testCallback': {
         // No listener (no helper loaded / not a player) must still answer —

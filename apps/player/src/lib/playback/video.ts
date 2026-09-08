@@ -57,13 +57,15 @@ export class VideoChannel {
 					blob: null,
 					durationMs: cmd.durationMs,
 					frame: cmd.frame,
-					params: cmd.params
+					params: cmd.params,
+					offsetMs: cmd.offsetMs
 				};
 			} else {
 				void this.playDelegated(cmd);
 			}
 		} else {
 			stage.videoFrame = cmd.frame;
+			stage.videoOffsetMs = cmd.offsetMs ?? 0;
 			if (placeholder) {
 				stage.videoPlaceholder = cmd.assetName;
 			} else {
@@ -73,7 +75,11 @@ export class VideoChannel {
 			}
 		}
 		if (placeholder) {
-			this.active.cancelSimulation = simulate(cmd.durationMs ?? 0, () => this.finish());
+			// A replay simulates only the remainder of the original duration.
+			this.active.cancelSimulation = simulate(
+				Math.max(0, (cmd.durationMs ?? 0) - (cmd.offsetMs ?? 0)),
+				() => this.finish()
+			);
 		}
 		// Overlay chip for plays the centered card doesn't already announce.
 		if (delegated || !placeholder) {
@@ -109,7 +115,8 @@ export class VideoChannel {
 			blob,
 			durationMs: null,
 			frame: cmd.frame,
-			params: cmd.params
+			params: cmd.params,
+			offsetMs: cmd.offsetMs
 		};
 	}
 
@@ -178,6 +185,7 @@ export class VideoChannel {
 		stage.videoSrc = null;
 		stage.videoPlaceholder = null;
 		stage.videoFrame = null;
+		stage.videoOffsetMs = 0;
 		stage.delegatedVideo = null;
 		const active = this.active;
 		if (!active) return;

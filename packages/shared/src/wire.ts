@@ -10,12 +10,19 @@ import { JsonValueSchema } from './json.js';
  * split into per-device deliveries, and `waitUntilEnd` stays server-side (the
  * runtime decides whether the sequence awaits the ack; devices always ack).
  *
- * Ack contract: apply-type commands (stop/navigate/reset/message/hintCode) are
- * acked immediately on apply; play commands are acked when playback finishes.
- * Looping BGM acks on playback start. Exception: a `message` wire with
- * `awaitHandled` is acked only once the consumer's message handlers settle.
+ * Ack contract: apply-type commands (stop/navigate/reset/message/state/
+ * hintCode) are acked immediately on apply; play commands are acked when
+ * playback finishes. Looping BGM acks on playback start. Exception: a
+ * `message` wire with `awaitHandled` is acked only once the consumer's message
+ * handlers settle.
  *
  * `id` is the delivery id — redeliveries reuse it, clients dedupe on it.
+ *
+ * Reconnect replay: when a device (re)connects the server re-sends what should
+ * currently be active — the website (navigate), looping BGM and in-flight
+ * video (play with `offsetMs`), the device state, and the hint code. Replays
+ * of already-acked wires get fresh ids, so devices must apply them
+ * idempotently (same URL → no reload; same looping BGM → keep playing).
  */
 
 export const PlayChannelSchema = z.enum(['bgm', 'sfx', 'dialogue', 'video']);
@@ -46,6 +53,12 @@ export const WirePlayBgmSchema = z.object({
   assetId: z.uuid(),
   ...wireMediaFields,
   loop: z.boolean(),
+  /**
+   * Reconnect replay: milliseconds elapsed since the original playback started.
+   * A device already looping the same asset on this player keeps it playing
+   * (acking the new wire); a fresh device starts at this offset.
+   */
+  offsetMs: z.number().int().nonnegative().optional(),
   /** Volume ramp from 0 on playback start. 0 = no fade. From the BGM asset. */
   fadeInMs: z.number().int().nonnegative().default(0),
   /**
@@ -129,6 +142,11 @@ export const WirePlayVideoSchema = z.object({
   frame: VideoFrameSchema.nullable().default(null),
   /** Video asset's free-form params, forwarded for website-side rendering. */
   params: z.record(z.string(), JsonValueSchema).default({}),
+  /**
+   * Reconnect replay: milliseconds elapsed since the original playback started;
+   * the device seeks there before playing (same delivery id as the original).
+   */
+  offsetMs: z.number().int().nonnegative().optional(),
 });
 export type WirePlayVideo = z.infer<typeof WirePlayVideoSchema>;
 
@@ -166,11 +184,16 @@ export const WireBgmVolumeSchema = z.object({
 });
 export type WireBgmVolume = z.infer<typeof WireBgmVolumeSchema>;
 
+/**
+ * Loads a website on the device. Null websiteId/url = unload the current
+ * website (blank stage); media playback and overlays are untouched, unlike
+ * `reset`. Devices short-circuit a navigate to the URL already shown.
+ */
 export const WireNavigateSchema = z.object({
   ...wireBase,
   type: z.literal('navigate'),
-  websiteId: z.uuid(),
-  url: z.url(),
+  websiteId: z.uuid().nullable(),
+  url: z.url().nullable(),
   /** Recreate the iframe even when the URL is unchanged (forced reload). */
   force: z.boolean().default(false),
 });
@@ -213,6 +236,25 @@ export const WireMessageSchema = z.object({
 export type WireMessage = z.infer<typeof WireMessageSchema>;
 
 /**
+ * Sets (state set) or clears (state null) the device's durable display state.
+ * One state per device; a newer one replaces the previous. The server replays
+ * the current state on every (re)connect, so consumers must treat a repeated
+ * identical state as a no-op.
+ */
+export const WireStateSchema = z.object({
+  ...wireBase,
+  type: z.literal('state'),
+  state: z
+    .object({
+      stateId: z.uuid(),
+      stateName: z.string(),
+      payload: z.record(z.string(), JsonValueSchema),
+    })
+    .nullable(),
+});
+export type WireState = z.infer<typeof WireStateSchema>;
+
+/**
  * Invoke a parameterless callback the website registered via the helper's
  * `testCallbacks` option. Test sessions only (debug window). Acked 'done' when
  * the callback settled, 'failed' on unknown name/throw/timeout.
@@ -231,6 +273,7 @@ export const WireCommandSchema = z.union([
   WireNavigateSchema,
   WireResetSchema,
   WireMessageSchema,
+  WireStateSchema,
   WireHintCodeSchema,
   WireTestCallbackSchema,
 ]);

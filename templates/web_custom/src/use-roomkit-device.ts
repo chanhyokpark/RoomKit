@@ -3,6 +3,7 @@ import type { ConnectionStatus, SessionState } from '@roomkit/client';
 import {
   RoomKitDevice,
   type DeviceConfig,
+  type DisplayState,
   type SubtitleState,
   type VideoState,
   type WebsiteState,
@@ -17,6 +18,7 @@ export function useRoomKitDevice(config: DeviceConfig) {
   const [video, setVideo] = useState<VideoState | null>(null);
   const [website, setWebsite] = useState<WebsiteState | null>(null);
   const [hintCode, setHintCode] = useState<{ code: string; css: string } | null>(null);
+  const [displayState, setDisplayState] = useState<DisplayState | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
 
   const log = useCallback((message: string) => {
@@ -31,6 +33,7 @@ export function useRoomKitDevice(config: DeviceConfig) {
       onVideo: setVideo,
       onWebsite: setWebsite,
       onHintCode: setHintCode,
+      onState: setDisplayState,
       onLog: log,
     });
     deviceRef.current = device;
@@ -58,6 +61,8 @@ export function useRoomKitDevice(config: DeviceConfig) {
     video,
     website,
     hintCode,
+    /** Durable display state (null = default) — derive the screen from this. */
+    displayState,
     logs,
     trigger,
     navigationLoaded,

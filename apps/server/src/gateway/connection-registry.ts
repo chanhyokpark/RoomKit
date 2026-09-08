@@ -29,6 +29,8 @@ export interface DeviceVersions {
   helperMessages?: string[] | null;
   /** Test-callback names the loaded website registered. */
   helperTestCallbacks?: string[] | null;
+  /** State names the loaded website registered (helper `states` option). */
+  helperStates?: string[] | null;
 }
 
 export type DeviceSocket = Socket<

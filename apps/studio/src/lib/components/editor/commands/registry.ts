@@ -2,12 +2,14 @@ import type { Icon as IconType } from '@lucide/svelte';
 import BellRingIcon from '@lucide/svelte/icons/bell-ring';
 import CircleStopIcon from '@lucide/svelte/icons/circle-stop';
 import CodeIcon from '@lucide/svelte/icons/code';
+import EraserIcon from '@lucide/svelte/icons/eraser';
 import EyeOffIcon from '@lucide/svelte/icons/eye-off';
 import FilmIcon from '@lucide/svelte/icons/film';
 import FlagIcon from '@lucide/svelte/icons/flag';
 import GlobeIcon from '@lucide/svelte/icons/globe';
 import HourglassIcon from '@lucide/svelte/icons/hourglass';
 import KeyRoundIcon from '@lucide/svelte/icons/key-round';
+import LayersIcon from '@lucide/svelte/icons/layers';
 import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
 import MilestoneIcon from '@lucide/svelte/icons/milestone';
 import MusicIcon from '@lucide/svelte/icons/music';
@@ -111,6 +113,16 @@ export const COMMAND_META: Record<CommandType, CommandMeta> = {
 			waitUntilEnd: false
 		})
 	},
+	setState: {
+		label: '상태 설정',
+		icon: LayersIcon,
+		create: () => ({ type: 'setState', deviceId: null, stateId: null, values: {} })
+	},
+	clearState: {
+		label: '상태 해제',
+		icon: EraserIcon,
+		create: () => ({ type: 'clearState', deviceId: null, allDevices: false })
+	},
 	sendWebsiteRequest: {
 		label: '웹사이트에 요청 전송',
 		icon: GlobeIcon,
@@ -198,6 +210,8 @@ export const COMMAND_GROUPS: CommandGroup[] = [
 			'resetAllDevices',
 			'navigate',
 			'sendMessage',
+			'setState',
+			'clearState',
 			'sendWebsiteRequest',
 			'showHintCode',
 			'hideHintCode'
@@ -262,6 +276,13 @@ export function commandRefs(cmd: Command): CommandRef[] {
 				{ kind: 'device', id: cmd.deviceId },
 				{ kind: 'message', id: cmd.messageId }
 			];
+		case 'setState':
+			return [
+				{ kind: 'device', id: cmd.deviceId },
+				{ kind: 'state', id: cmd.stateId }
+			];
+		case 'clearState':
+			return cmd.allDevices ? [] : [{ kind: 'device', id: cmd.deviceId }];
 		case 'sendWebsiteRequest':
 			return [{ kind: 'website', id: cmd.websiteId }];
 		case 'switchPhase':

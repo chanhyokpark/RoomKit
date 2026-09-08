@@ -51,6 +51,11 @@ export class PlaybackEngine {
 			stage.hintCode =
 				cmd.code === null ? null : { code: cmd.code, css: cmd.css, params: cmd.params };
 		});
+		// Durable state: stored on the stage so the website gets it on every
+		// hello (page reload) and WebsiteFrame forwards changes.
+		client.on('state', (cmd) => {
+			stage.state = cmd.state;
+		});
 		// Session end stops everything — otherwise looping BGM/video would play
 		// into the next team's setup (and the server detaches the socket anyway).
 		client.on('sessionState', (state) => {

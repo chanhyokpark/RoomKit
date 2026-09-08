@@ -3,7 +3,7 @@ export {
   useRoomKit,
   type RoomKitProviderProps,
 } from './context.js';
-export { useRoomKitEvent, useRoomKitMessage } from './hooks.js';
+export { useRoomKitEvent, useRoomKitMessage, useRoomKitState } from './hooks.js';
 export { HintInput, type HintInputProps } from './hint-input.js';
 export { HintRenderer, type HintRendererProps } from './hint-renderer.js';
 export {
@@ -19,6 +19,7 @@ export {
   type VideoState,
 } from './core.js';
 export {
+  DEFAULT_STATE,
   RoomKitHelper,
   type GetRemainingTimeOptions,
   type HapticsApi,
@@ -35,6 +36,8 @@ export {
   type RoomKitHelperEvents,
   type RoomKitHelperOptions,
   type SessionMode,
+  type StateHandler,
+  type StateValue,
   type TestCallback,
   type TriggerAndWaitOptions,
 } from '@roomkit/helper';

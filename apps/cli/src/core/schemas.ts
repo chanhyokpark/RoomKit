@@ -30,6 +30,7 @@ export const REF_FIELD_KINDS: Record<string, AssetKind> = {
   bgmId: 'bgm',
   websiteId: 'website',
   messageId: 'message',
+  stateId: 'state',
   phaseId: 'phase',
   eventId: 'event',
   hintId: 'hint',
@@ -44,7 +45,8 @@ export function commandsDoc(): unknown {
       'waitUntilEnd on play commands makes the sequence wait for playback to finish before the next entry. wait.durationMs pauses the sequence.',
       'adjustBgmVolume.value is a 0..100 percent base volume for one player; it persists through later BGM tracks until that device is reset, while fades and ducking still multiply it. Optional adjustBgmVolume.durationMs (default 0) ramps the playing track to the new volume over that many ms; the sequence does not wait for the ramp.',
       'switchPhase changes the session phase; callEvent runs another event (waitUntilFinish to await it); eval runs JS in a server sandbox (returning false aborts the sequence); endTheme ends the game with a success/fail verdict.',
-      'sendMessage.values, navigate query values, and sendWebsiteRequest path/body/headers support {{vars.x}} and {{payload.x}} template interpolation at run time.',
+      'sendMessage.values, setState.values, navigate query values, and sendWebsiteRequest path/body/headers support {{vars.x}} and {{payload.x}} template interpolation at run time.',
+      'setState sets a device\'s durable display state (one per device; replaces the previous) — the server remembers it and replays it whenever the device (re)connects, so use it for anything a screen should keep showing. clearState returns the device to the "default" state. sendMessage is for transient effects/transitions: it is not remembered or replayed.',
       'sendWebsiteRequest sends HTTP from the RoomKit server to a URL resolved from a website asset; waitUntilEnd waits through the complete response body.',
       `Events (kind "event" assets) hold the sequence in data.sequence and are fired by their trigger: triggerKind "device" + triggerName = a device-reported event name, "manual" = fired by an operator (\`rk session trigger\`), "system" + one of ${SystemTriggerSchema.options.join('/')}.`,
     ],
@@ -95,9 +97,17 @@ const KIND_NOTES: Record<AssetKind, string[]> = {
   ],
   message: [
     'Defines a payload shape (fields[]) the sendMessage command fills in per use; the website receives it via the client library.',
+    'Messages are transient (not remembered, not replayed on reconnect) — use them for effects and transitions. For what a screen should keep showing, define a state asset and use setState.',
+  ],
+  state: [
+    'Durable per-device display state. Same data shape as message (displayName + fields[]); values are supplied by setState commands, phase registrations, or the operation UI.',
+    'One state is active per device at a time: setState replaces it, clearState clears it (the website sees the "default" state). The server remembers the current state per session and replays it whenever the device (re)connects or its page reloads, so the same state always yields the same display — prefer states over messages for stability.',
+    'Websites read it via the helper: rk.state / useRoomKit().state (name = this asset\'s name, or "default"), or onState(name, handler); declare rendered names in the helper `states` option so the operation UI lists them.',
   ],
   phase: [
     'Game progression stage; data.order sorts phases ascending. Events belong to a phase (or are common with phaseId null).',
+    'Registrations applied on phase enter (session start, switchPhase, phase restart): data.deviceStates[] {deviceId, mode:"none"} | {deviceId, mode:"set", stateId, values}, data.deviceWebsites[] {deviceId, mode:"none"} | {deviceId, mode:"set", websiteId, query[]}, data.playerBgms[] {playerId, mode:"none"} | {playerId, mode:"set", bgmId} (always looping). A device/player absent from a list keeps whatever it has; "none" clears/unloads/stops; "set" applies the asset. Applied idempotently — a device already showing the same website URL or looping the same BGM is not reloaded/restarted. Devices offline at phase enter receive their slots when they connect.',
+    'Asset updates replace `data` wholesale: read the phase, merge your change into deviceStates/deviceWebsites/playerBgms, and write the whole object back (an update with only {order} wipes the registrations).',
   ],
   event: [
     'The scenario logic unit: data.sequence is the command array (see `rk describe commands`).',

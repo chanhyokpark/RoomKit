@@ -1,4 +1,5 @@
 export {
+  DEFAULT_STATE,
   RoomKitHelper,
   type GetRemainingTimeOptions,
   type HapticsApi,
@@ -6,6 +7,8 @@ export {
   type MessageHandler,
   type RoomKitHelperEvents,
   type RoomKitHelperOptions,
+  type StateHandler,
+  type StateValue,
   type TestCallback,
   type TriggerAndWaitOptions,
 } from './helper.js';
@@ -21,6 +24,7 @@ export type {
   HintShow,
   PlayerHintCode,
   PlayerMessage,
+  PlayerState,
   PlayerSubtitle,
   PlayerVideoPlay,
   PlayerVideoStop,

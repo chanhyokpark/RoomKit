@@ -28,15 +28,17 @@ Server-to-client events include `welcome`, session state, command, dialogue prog
 
 Command delivery is at-least-once. Client acknowledgment payload includes command ID and done/failed status. Client libraries remember seen and completed IDs to prevent duplicate side effects and repeat the prior acknowledgment.
 
+Wire commands: `play` (bgm/sfx/dialogue/video; bgm and video may carry `offsetMs` on reconnect replays), `stop`, `bgmVolume`, `navigate` (null `websiteId`/`url` = unload the website), `reset`, `message`, `state` (`state` set = durable display state, null = default), `hintCode`, `testCallback`. On (re)connect the server replays the device's current website, state, hint code, looping BGM and in-flight video (see [reconnect replay](./system-model.md#reconnect-replay)); replays of acked wires use fresh ids and must be applied idempotently.
+
 ## Admin and player namespaces
 
-The authenticated admin namespace streams session state, device presence, playback/website state, logs, live runs, connected launchers, and operator notifications. Its consumers are Studio and the Player debug window. Device status includes the Helper-registered message and test-callback names (`helperMessages`, `helperTestCallbacks`) relayed from the loaded page. Session controls themselves use the REST routes above.
+The authenticated admin namespace streams session state, device presence, playback/website/state tracking (`session:media` carries `playing`, `websites` and `states`), logs, live runs, connected launchers, and operator notifications. Its consumers are Studio and the Player debug window. Device status includes the Helper-registered message, state and test-callback names (`helperMessages`, `helperStates`, `helperTestCallbacks`) relayed from the loaded page. Session controls themselves use the REST routes above.
 
 The player launcher namespace advertises a stable player ID/name and receives requests to open stage windows for test sessions. Do not confuse launcher player IDs with player asset IDs.
 
 ## Helper envelopes
 
-Helper-to-Player messages identify source `roomkit-helper` and include hello/claims, trigger, hint, timer, video completion/error, awaited-message completion, and `test:callback:done`. Hello also carries the page's registered message-handler and test-callback names, which Player relays server-side via the extended `helper:info`. Player-to-Helper messages identify `roomkit-player` and include mode, message, hint, timer/trigger results, subtitle, hint-code, video play/stop, and `test:callback` requests driven by the `testCallback` wire command.
+Helper-to-Player messages identify source `roomkit-helper` and include hello/claims, trigger, hint, timer, video completion/error, awaited-message completion, and `test:callback:done`. Hello also carries the page's registered message-handler, state and test-callback names, which Player relays server-side via the extended `helper:info`. Player-to-Helper messages identify `roomkit-player` and include mode, state (re-posted on every hello; null = default), message, hint, timer/trigger results, subtitle, hint-code, video play/stop (with `offsetMs` on replays), and `test:callback` requests driven by the `testCallback` wire command.
 
 Player validates shared Zod schemas and the source frame. Helper performs lightweight structural validation to keep its browser bundle small.
 

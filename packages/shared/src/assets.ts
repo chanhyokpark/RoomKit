@@ -16,6 +16,7 @@ export const AssetKindSchema = z.enum([
   'player',
   'website',
   'message',
+  'state',
   'phase',
   'event',
 ]);
@@ -229,9 +230,71 @@ export const MessageDataSchema = z.object({
 });
 export type MessageData = z.infer<typeof MessageDataSchema>;
 
+/**
+ * Durable per-device display state. Same shape as a message (a field schema
+ * whose values are filled in per use), but the runtime remembers the last
+ * state set on each device for the session and replays it whenever the device
+ * (re)connects, so the same state always yields the same display. One state is
+ * active per device at a time; `setState` replaces it, `clearState` returns
+ * the device to its `'default'` state. Use states for what a screen should
+ * show; use messages for transient effects and transitions.
+ */
+export const StateDataSchema = z.object({
+  /** Human-friendly label shown in UIs; `name` stays the logical identifier. */
+  displayName: z.string(),
+  /** Payload schema definition — values are provided where the state is set. */
+  fields: z.array(MessageFieldSchema),
+});
+export type StateData = z.infer<typeof StateDataSchema>;
+
+/**
+ * Phase registration slots. A phase can declare what each device/player should
+ * display or play once the phase begins; absence of a device/player from an
+ * array means "keep" (leave whatever is active untouched). `none` clears the
+ * state / unloads the website / stops the BGM; `set` applies the given asset.
+ * Applied idempotently on phase enter: a device already showing the same
+ * website URL or looping the same BGM is not reloaded or restarted.
+ */
+export const PhaseDeviceStateSlotSchema = z.discriminatedUnion('mode', [
+  z.object({ deviceId: z.uuid(), mode: z.literal('none') }),
+  z.object({
+    deviceId: z.uuid(),
+    mode: z.literal('set'),
+    stateId: z.uuid(),
+    /** Values for the state asset's fields; strings support {{vars.x}} interpolation. */
+    values: z.record(z.string(), JsonValueSchema).default({}),
+  }),
+]);
+export type PhaseDeviceStateSlot = z.infer<typeof PhaseDeviceStateSlotSchema>;
+
+export const PhaseDeviceWebsiteSlotSchema = z.discriminatedUnion('mode', [
+  z.object({ deviceId: z.uuid(), mode: z.literal('none') }),
+  z.object({
+    deviceId: z.uuid(),
+    mode: z.literal('set'),
+    websiteId: z.uuid(),
+    /** Query params appended to the website URL, like the navigate command. */
+    query: z.array(z.object({ key: z.string(), value: z.string() })).default([]),
+  }),
+]);
+export type PhaseDeviceWebsiteSlot = z.infer<typeof PhaseDeviceWebsiteSlotSchema>;
+
+export const PhasePlayerBgmSlotSchema = z.discriminatedUnion('mode', [
+  z.object({ playerId: z.uuid(), mode: z.literal('none') }),
+  /** The BGM always loops — phase background music has no natural end. */
+  z.object({ playerId: z.uuid(), mode: z.literal('set'), bgmId: z.uuid() }),
+]);
+export type PhasePlayerBgmSlot = z.infer<typeof PhasePlayerBgmSlotSchema>;
+
 export const PhaseDataSchema = z.object({
   /** Progression order (ascending). */
   order: z.number().int(),
+  /** Per-device state applied on phase enter; defaults keep legacy rows parseable. */
+  deviceStates: z.array(PhaseDeviceStateSlotSchema).default([]),
+  /** Per-device website applied on phase enter. */
+  deviceWebsites: z.array(PhaseDeviceWebsiteSlotSchema).default([]),
+  /** Per-player looping BGM applied on phase enter. */
+  playerBgms: z.array(PhasePlayerBgmSlotSchema).default([]),
 });
 export type PhaseData = z.infer<typeof PhaseDataSchema>;
 
@@ -267,6 +330,7 @@ export const assetDataSchemas = {
   player: PlayerDataSchema,
   website: WebsiteDataSchema,
   message: MessageDataSchema,
+  state: StateDataSchema,
   phase: PhaseDataSchema,
   event: EventDataSchema,
 } as const;
@@ -319,6 +383,7 @@ export const CreateAssetInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player'), ...baseCreateFields, data: PlayerDataSchema }),
   z.object({ kind: z.literal('website'), ...baseCreateFields, data: WebsiteDataSchema }),
   z.object({ kind: z.literal('message'), ...baseCreateFields, data: MessageDataSchema }),
+  z.object({ kind: z.literal('state'), ...baseCreateFields, data: StateDataSchema }),
   z.object({ kind: z.literal('phase'), ...baseCreateFields, data: PhaseDataSchema }),
   z.object({ kind: z.literal('event'), ...baseCreateFields, data: EventDataSchema }),
 ]);
@@ -365,6 +430,7 @@ export const AssetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('player'), ...assetEnvelopeFields, data: PlayerDataSchema }),
   z.object({ kind: z.literal('website'), ...assetEnvelopeFields, data: WebsiteDataSchema }),
   z.object({ kind: z.literal('message'), ...assetEnvelopeFields, data: MessageDataSchema }),
+  z.object({ kind: z.literal('state'), ...assetEnvelopeFields, data: StateDataSchema }),
   z.object({ kind: z.literal('phase'), ...assetEnvelopeFields, data: PhaseDataSchema }),
   z.object({ kind: z.literal('event'), ...assetEnvelopeFields, data: EventDataSchema }),
 ]);

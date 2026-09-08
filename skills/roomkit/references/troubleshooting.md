@@ -32,6 +32,14 @@ Stop playback to resolve normally or abort the run to cancel the remainder. Virt
 
 `url: null` is a placeholder, not a failed upload. Re-check player asset speaker/screen routing. Screen dialogue should render on progress rather than play. Loop BGM acknowledges at start. Clear subtitle on dialogue stop unless explicitly retained. Apply the lowest active BGM duck factor and restore it when all ducking media finishes.
 
+## Screen is blank or wrong after a Player restart or reconnect
+
+The server replays the device's current website, durable state, hint code, looping BGM and in-flight video on every (re)connect (see [reconnect replay](./system-model.md#reconnect-replay)). If a screen comes back wrong, the display was driven by a message: messages are never replayed. Move the screen's content into a state asset (`setState` / phase registration) and render from `rk.state`; keep messages for transient effects. A custom `@roomkit/client` device must apply replays idempotently (same URL → no reload, same looping BGM → keep playing, repeated identical `state` → no-op).
+
+## State does not apply or the page shows `default`
+
+`state.name` is the state asset's *name* (not its display name); `'default'` means no state is active — after session start, `clearState`, or a device reset. Check the operation dashboard's device panel (current state badge) and the session log: a `setState` with a missing required field is skipped with a log line, exactly like `sendMessage`. Declared names in the helper `states` option only feed the dashboard list; they never filter delivery.
+
 ## Helper receives nothing
 
 It is likely running outside Player, was constructed before/without the current document, or the page never re-declared claims after navigation. Launch a player test session with a website URL override pointing at the dev server. Do not attempt to connect Helper to the server. Inspect Player and iframe consoles in a test session.

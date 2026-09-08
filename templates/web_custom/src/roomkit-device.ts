@@ -8,6 +8,7 @@ import {
   type WireNavigate,
   type WirePlayCommand,
   type WirePlayDialogue,
+  type WireState,
   type WireStop,
 } from '@roomkit/client';
 
@@ -33,9 +34,12 @@ export interface VideoState {
 }
 
 export interface WebsiteState {
-  command: WireNavigate;
+  command: WireNavigate & { url: string };
   key: number;
 }
+
+/** The device's durable display state (wire `state`); null = default. */
+export type DisplayState = NonNullable<WireState['state']>;
 
 export interface DeviceCallbacks {
   onStatus: (status: ConnectionStatus, detail?: string) => void;
@@ -44,6 +48,12 @@ export interface DeviceCallbacks {
   onVideo: (video: VideoState | null) => void;
   onWebsite: (website: WebsiteState | null) => void;
   onHintCode: (value: { code: string; css: string } | null) => void;
+  /**
+   * Durable state set by the server (setState / phase registration). It is
+   * remembered per device and replayed on every reconnect, so render the
+   * screen from it; messages are transient and never replayed.
+   */
+  onState: (state: DisplayState | null) => void;
   onLog: (message: string) => void;
 }
 
@@ -86,6 +96,8 @@ export class RoomKitDevice {
   private readonly bgmVolumes = new Map<string, number>();
   private activeVideo: ActiveVideo | null = null;
   private pendingNavigation: { commandId: string; done: DoneFn } | null = null;
+  /** URL currently shown, for idempotent navigate replays. */
+  private currentUrl: string | null = null;
 
   constructor(
     config: DeviceConfig,
@@ -118,6 +130,14 @@ export class RoomKitDevice {
     this.client.on('hintCode', (command) => {
       callbacks.onHintCode(
         command.code ? { code: command.code, css: command.css } : null,
+      );
+    });
+    this.client.on('state', (command) => {
+      callbacks.onState(command.state);
+      callbacks.onLog(
+        command.state
+          ? `상태 ${command.state.stateName}: ${JSON.stringify(command.state.payload)}`
+          : '상태 해제 (default)',
       );
     });
     this.client.on('reset', () => this.reset());
@@ -436,8 +456,26 @@ export class RoomKitDevice {
 
   private navigate(command: WireNavigate, done: DoneFn) {
     this.pendingNavigation?.done('failed');
+    this.pendingNavigation = null;
+    if (command.url === null) {
+      // Unload: blank stage, media untouched.
+      this.currentUrl = null;
+      this.callbacks.onWebsite(null);
+      this.callbacks.onLog('웹사이트 내림');
+      done();
+      return;
+    }
+    // Reconnect replay of the URL already shown: nothing reloads.
+    if (this.currentUrl === command.url && !command.force) {
+      done();
+      return;
+    }
+    this.currentUrl = command.url;
     this.pendingNavigation = { commandId: command.id, done };
-    this.callbacks.onWebsite({ command, key: command.force ? Date.now() : 0 });
+    this.callbacks.onWebsite({
+      command: { ...command, url: command.url },
+      key: command.force ? Date.now() : 0,
+    });
     this.callbacks.onLog(`웹사이트 이동: ${command.url}`);
   }
 
@@ -445,8 +483,10 @@ export class RoomKitDevice {
     this.stopEverything();
     this.pendingNavigation?.done('failed');
     this.pendingNavigation = null;
+    this.currentUrl = null;
     this.callbacks.onWebsite(null);
     this.callbacks.onHintCode(null);
+    this.callbacks.onState(null);
     this.callbacks.onLog('장치를 초기화했습니다.');
   }
 

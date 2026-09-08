@@ -31,7 +31,15 @@ export function summarizeAsset(asset: Asset) {
       return { ...base, phaseId, triggerKind, triggerName, manualTriggerable, once, sequenceLength: asset.data.sequence.length };
     }
     case 'phase':
-      return { ...base, order: asset.data.order };
+      return {
+        ...base,
+        order: asset.data.order,
+        registrations: {
+          deviceStates: asset.data.deviceStates.length,
+          deviceWebsites: asset.data.deviceWebsites.length,
+          playerBgms: asset.data.playerBgms.length,
+        },
+      };
     case 'device':
       return { ...base, displayName: asset.data.displayName, isHintDevice: asset.data.isHintDevice };
     case 'player':
@@ -43,6 +51,7 @@ export function summarizeAsset(asset: Asset) {
     case 'hint':
       return { ...base, stepCount: asset.data.steps.length };
     case 'message':
+    case 'state':
       return { ...base, fields: asset.data.fields.map((f) => f.key) };
     case 'bgm':
     case 'sfx':

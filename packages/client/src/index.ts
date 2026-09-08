@@ -18,10 +18,13 @@ export type {
   Welcome,
   WireBgmVolume,
   WireCommand,
+  WireHintCode,
   WireMessage,
   WireNavigate,
   WirePlayCommand,
   WirePlayDialogue,
   WireReset,
+  WireState,
   WireStop,
+  WireTestCallback,
 } from '@roomkit/shared';

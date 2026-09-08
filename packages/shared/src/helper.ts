@@ -48,6 +48,8 @@ export const HelperHelloSchema = z.object({
   messages: z.array(z.string()).default([]),
   /** Parameterless test-callback names registered via the `testCallbacks` option. */
   testCallbacks: z.array(z.string()).default([]),
+  /** State names registered via the `states` option (declarative handlers). */
+  states: z.array(z.string()).default([]),
 });
 export type HelperHello = z.infer<typeof HelperHelloSchema>;
 
@@ -271,6 +273,24 @@ export const PlayerHintCodeSchema = z.object({
 export type PlayerHintCode = z.infer<typeof PlayerHintCodeSchema>;
 
 /**
+ * The device's current durable state; null = no state active (`'default'`).
+ * Posted on change and in reply to every helper `hello`, so a reloaded page
+ * learns it again. Helpers dedupe identical repeats.
+ */
+export const PlayerStateSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('state'),
+  state: z
+    .object({
+      stateId: z.uuid(),
+      stateName: z.string(),
+      payload: z.record(z.string(), JsonValueSchema),
+    })
+    .nullable(),
+});
+export type PlayerState = z.infer<typeof PlayerStateSchema>;
+
+/**
  * Structural stand-in for the DOM/Node Blob type — this package compiles
  * without DOM or Node libs; consumers' real Blob instances satisfy it.
  */
@@ -312,6 +332,8 @@ export const PlayerVideoPlaySchema = z.object({
   frame: VideoFrameSchema.nullable(),
   /** Video asset's free-form params. */
   params: z.record(z.string(), JsonValueSchema),
+  /** Reconnect replay: start playback this many ms in (see WirePlayVideo). */
+  offsetMs: z.number().int().nonnegative().optional(),
 });
 export type PlayerVideoPlay = z.infer<typeof PlayerVideoPlaySchema>;
 
@@ -366,6 +388,7 @@ export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerTriggerResultSchema,
   PlayerSubtitleSchema,
   PlayerHintCodeSchema,
+  PlayerStateSchema,
   PlayerVideoPlaySchema,
   PlayerVideoStopSchema,
   PlayerModeSchema,

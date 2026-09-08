@@ -1,4 +1,4 @@
-import { RoomKitProvider, useRoomKit, useRoomKitMessage } from '@roomkit/helper-react';
+import { RoomKitProvider, useRoomKit, useRoomKitMessage, useRoomKitState } from '@roomkit/helper-react';
 import { addLog, clearLogs, useLogs } from './logs';
 
 export function App() {
@@ -15,6 +15,11 @@ export function App() {
         // 이 목록과 무관합니다). 실제 처리는 페이지에서 useRoomKitMessage로
         // 등록하세요.
         messages: ['announce'],
+        // ── 상태 선언 ───────────────────────────────────────────────────
+        // 이 사이트가 렌더링하는 상태 애셋 이름 목록입니다. 상태는 서버가
+        // 장치별로 기억해 재접속·새로고침 때 다시 보내므로, "지금 어떤 화면인지"는
+        // 메시지가 아니라 상태로 표현하세요(메시지는 일시적인 효과용).
+        states: ['screen'],
         // 디버그 창에서 인자 없이 실행할 수 있는 테스트 콜백입니다(테스트 세션 전용).
         testCallbacks: {
           'clear-logs': clearLogs,
@@ -37,6 +42,14 @@ function Page() {
     addLog(`${envelope.messageName}: ${JSON.stringify(payload)}`);
   });
 
+  // ── 상태 처리 ──────────────────────────────────────────────────────────
+  // 화면은 rk.state에서 파생시키세요(아래 JSX 참고). 상태가 "바뀔 때"의 부수
+  // 효과(사운드, 애니메이션 시작)는 useRoomKitState로 등록합니다. 같은 상태의
+  // 재전송은 걸러지고, 'default'는 활성 상태가 없을 때입니다.
+  useRoomKitState((payload, state) => {
+    addLog(`state → ${state.name} ${JSON.stringify(payload)}`);
+  });
+
   return (
     <main>
       {rk.outsidePlayer && (
@@ -53,6 +66,10 @@ function Page() {
           힌트폰이 필요하면 <HintInput />과 <HintRenderer hint={rk.hint} />를
           사용하세요. */}
       <p>bridge: {rk.bridge}</p>
+      <p>
+        state: {rk.state.name}
+        {rk.state.name !== 'default' && ` ${JSON.stringify(rk.state.payload)}`}
+      </p>
       <p>sessionMode: {rk.sessionMode}</p>
       <p>remainingMs: {rk.remainingMs ?? '(타이머 없음)'} (자동 갱신)</p>
       <p>hint: {JSON.stringify(rk.hint.data)}</p>

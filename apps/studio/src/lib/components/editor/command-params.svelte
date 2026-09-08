@@ -270,12 +270,45 @@
 			끝날 때까지 대기
 		</label>
 		<div class="w-full">
-			<MessageValuesFields messageId={entry.messageId} values={entry.values} {onchanged} />
+			<MessageValuesFields assetId={entry.messageId} values={entry.values} {onchanged} />
 			<p class="mt-1 text-xs text-muted-foreground">
 				값에는 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환을 쓸 수 있습니다. 값 전체가 하나의 치환이면
-				변수의 타입(숫자·불리언 등)이 그대로 전달됩니다.
+				변수의 타입(숫자·불리언 등)이 그대로 전달됩니다. 메시지는 일시적인 효과·전환용입니다. 화면이
+				계속 유지해야 하는 표시는 "상태 설정"을 사용하세요.
 			</p>
 		</div>
+	{:else if entry.type === 'setState'}
+		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
+		<AssetSelect kind="state" label="상태" bind:id={entry.stateId} {onchanged} />
+		<div class="w-full">
+			<MessageValuesFields kind="state" assetId={entry.stateId} values={entry.values} {onchanged} />
+			<p class="mt-1 text-xs text-muted-foreground">
+				장치의 현재 상태를 바꿉니다(이전 상태를 대체). 서버가 세션 동안 기억하고 장치가 다시 접속하면
+				그대로 다시 보내므로, 같은 상태는 언제나 같은 화면이 됩니다. 값에는 {'{{vars.이름}}'} ·
+				{'{{payload.이름}}'} 치환을 쓸 수 있습니다.
+			</p>
+		</div>
+	{:else if entry.type === 'clearState'}
+		<AssetSelect
+			kind="device"
+			label="장치"
+			bind:id={entry.deviceId}
+			disabled={entry.allDevices}
+			{onchanged}
+		/>
+		<label class="flex h-8 items-center gap-2 text-xs">
+			<Switch
+				checked={entry.allDevices}
+				onCheckedChange={(checked) => {
+					if (entry.type === 'clearState') entry.allDevices = checked;
+					onchanged();
+				}}
+			/>
+			모든 장치
+		</label>
+		<p class="w-full text-xs text-muted-foreground">
+			상태를 지웁니다. 웹사이트는 'default' 상태를 받습니다.
+		</p>
 	{:else if entry.type === 'sendWebsiteRequest'}
 		<AssetSelect kind="website" label="웹사이트" bind:id={entry.websiteId} {onchanged} />
 		<div class="flex min-w-28 flex-col gap-1">

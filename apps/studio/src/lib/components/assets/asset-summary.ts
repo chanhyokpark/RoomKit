@@ -3,7 +3,7 @@ import { triggerNameLabel } from '$lib/system-triggers';
 
 /** Name shown in UIs: the display name when set (device/message), the name otherwise. */
 export function assetDisplayName(asset: Asset): string {
-	if (asset.kind === 'device' || asset.kind === 'message')
+	if (asset.kind === 'device' || asset.kind === 'message' || asset.kind === 'state')
 		return asset.data.displayName.trim() || asset.name;
 	return asset.name;
 }
@@ -52,8 +52,22 @@ export function summarizeAsset(asset: Asset): string {
 			]
 				.filter(Boolean)
 				.join(' · ');
-		case 'phase':
-			return `순서 ${asset.data.order}`;
+		case 'state':
+			return [
+				asset.data.displayName.trim() && `이름 ${asset.name}`,
+				`필드 ${asset.data.fields.length}개`
+			]
+				.filter(Boolean)
+				.join(' · ');
+		case 'phase': {
+			const registrations =
+				asset.data.deviceStates.length +
+				asset.data.deviceWebsites.length +
+				asset.data.playerBgms.length;
+			return [`순서 ${asset.data.order}`, registrations > 0 && `등록 ${registrations}개`]
+				.filter(Boolean)
+				.join(' · ');
+		}
 		case 'event': {
 			const trigger = { device: '장치', manual: '수동', system: '시스템' }[asset.data.triggerKind];
 			const scope = asset.data.phaseId ? '' : '공통';

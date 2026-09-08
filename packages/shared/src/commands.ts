@@ -126,6 +126,25 @@ const nonDialogueOptions = [
      */
     waitUntilEnd: z.boolean().default(false),
   }),
+  /**
+   * Sets the device's durable display state (replacing the previous one). The
+   * runtime remembers it for the session and replays it on (re)connect; acked
+   * immediately on apply, so there is no waitUntilEnd.
+   */
+  z.object({
+    type: z.literal('setState'),
+    deviceId: assetRef,
+    stateId: assetRef,
+    /** Values for the state asset's fields; interpolated like sendMessage values. */
+    values: z.record(z.string(), JsonValueSchema),
+  }),
+  /** Clears the device's state — the website sees the `'default'` state. */
+  z.object({
+    type: z.literal('clearState'),
+    deviceId: assetRef,
+    /** Clear on every device; deviceId is ignored when set. */
+    allDevices: z.boolean().default(false),
+  }),
   z.object({
     type: z.literal('sendWebsiteRequest'),
     websiteId: assetRef,
@@ -269,6 +288,8 @@ export const COMMAND_ASSET_REFS = {
   wait: [],
   navigate: ['deviceId', 'websiteId'],
   sendMessage: ['deviceId', 'messageId'],
+  setState: ['deviceId', 'stateId'],
+  clearState: ['deviceId'],
   sendWebsiteRequest: ['websiteId'],
   switchPhase: ['phaseId'],
   callEvent: ['eventId'],

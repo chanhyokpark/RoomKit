@@ -22,11 +22,11 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-react"
 pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-svelte"
 ```
 
-Initialize the wrapper once at the TOP layout — the component that never unmounts (React: the root component rendered in `main.tsx`; SvelteKit: the root `+layout.svelte`). Options are read once on mount, and a remount or document navigation re-runs the hello handshake and drops render claims, so nothing below the top layout should own the helper. `options` are the `RoomKitHelper` constructor options (`renders`, `messages`, `testCallbacks`, `lockdown`) plus `timerPollMs`.
+Initialize the wrapper once at the TOP layout — the component that never unmounts (React: the root component rendered in `main.tsx`; SvelteKit: the root `+layout.svelte`). Options are read once on mount, and a remount or document navigation re-runs the hello handshake and drops render claims, so nothing below the top layout should own the helper. `options` are the `RoomKitHelper` constructor options (`renders`, `messages`, `states`, `testCallbacks`, `lockdown`) plus `timerPollMs`.
 
 Both wrappers expose one `rk` surface (`RoomKitApi`):
 
-- Reactive values: `rk.bridge` (`connecting`/`connected`/`timeout`), `rk.outsidePlayer` (render a warning when true), `rk.sessionMode`, `rk.remainingMs` (auto-updating timer — polls the player's local snapshot every second; `timerPollMs` tunes/disables it), and the claimed `rk.subtitle`/`rk.hintCode`/`rk.video` slot values.
+- Reactive values: `rk.bridge` (`connecting`/`connected`/`timeout`), `rk.outsidePlayer` (render a warning when true), `rk.sessionMode`, `rk.remainingMs` (auto-updating timer — polls the player's local snapshot every second; `timerPollMs` tunes/disables it), `rk.state` (the device's durable state — `{ name, stateId, payload }`, `name === 'default'` when none is active), and the claimed `rk.subtitle`/`rk.hintCode`/`rk.video` slot values.
 - Hint facade `rk.hint`: `data` (current step/answer), `error`, `pending`, `hasPrev`/`hasNext`/`nextIsAnswer`, `counts` (usage stats), and actions `submit(code)`/`prev()`/`next()`/`showAnswer()`/`dismiss()`/`resetCounts()`.
 - Actions: `rk.trigger(event, payload?)`, `rk.refreshTimer()`, `rk.videoEnded/videoError(commandId)`, `rk.triggerAndWait(...)` (not recommended, see above), and `rk.helper` as the raw escape hatch.
 - Haptics `rk.haptics`: `vibrate(ms)`, `impactFeedback(style)`, `notificationFeedback(type)`, `selectionFeedback()` — the player device's haptics (see [Haptics](#haptics)).
@@ -37,9 +37,11 @@ Svelte — `getRoomKit()` returns a per-component view; values are rune-backed (
 <script lang="ts">
   import { getRoomKit, HintInput, HintRenderer } from '@roomkit/helper-svelte';
   const rk = getRoomKit();
-  rk.onMessage('set-screen', (payload) => applyScreen(payload)); // or rk.onMessage(cb) for all
-  rk.onHintUpdate((hint) => playChime(hint));                    // also on/onHintError
+  rk.onMessage('flash', (payload) => flashScreen(payload));   // transient effect
+  rk.onState('alarm', (payload) => startSiren(payload.level)); // side effect on a state change
+  rk.onHintUpdate((hint) => playChime(hint));                 // also on/onHintError
 </script>
+{#if rk.state.name === 'alarm'}<Alarm level={rk.state.payload.level} />{:else}<Idle />{/if}
 남은 시간 {Math.ceil((rk.remainingMs ?? 0) / 1000)}초 · 힌트 {rk.hint.counts.hintsUsed}개
 <HintInput hint={rk.hint} />
 <HintRenderer hint={rk.hint} />
@@ -49,10 +51,13 @@ React — `useRoomKit()` returns the same surface; callbacks are effect-scoped h
 
 ```tsx
 const rk = useRoomKit();
-useRoomKitMessage('set-screen', (payload) => applyScreen(payload)); // or useRoomKitMessage(cb)
+useRoomKitMessage('flash', (payload) => flashScreen(payload)); // or useRoomKitMessage(cb)
+useRoomKitState('alarm', (payload) => startSiren(payload.level)); // or useRoomKitState(cb)
 useRoomKitEvent('hint', (hint) => playChime(hint)); // any helper event
-return <HintRenderer hint={rk.hint} />;
+return rk.state.name === 'alarm' ? <Alarm level={rk.state.payload.level} /> : <Idle />;
 ```
+
+**Render from `rk.state`, react to messages.** The state is remembered by the server and re-posted on every page load and reconnect, so a component that derives its screen from `rk.state` shows the right thing no matter when it mounted. Messages are delivered once and never replayed — keep them for animations, sounds and transitions.
 
 `HintInput`/`HintRenderer` accept the `hint` facade as a prop and fall back to the ambient context when omitted. Message handlers may return promises — awaited (waitUntilEnd) message commands ack only after they settle.
 
@@ -64,19 +69,21 @@ The wrappers supersede the deprecated `@roomkit/hintphone-react`/`@roomkit/hintp
 const helper = new RoomKitHelper({
   lockdown: true,
   renders: { subtitle: true, hintCode: false, video: true },
-  // Declared names, listed in the player's debug window; delivery is not
-  // filtered by this list.
-  messages: ["set-screen"],
+  // Declared names, listed in the player's debug window / operation UI;
+  // delivery is not filtered by these lists.
+  states: ["idle", "alarm"],
+  messages: ["flash"],
   testCallbacks: {
     "flash-panel": () => flashPanel(),
   },
 });
+helper.on("state", (state) => renderScreen(state)); // { name, stateId, payload }; name 'default' = none
 helper.on("message", (payload, envelope) => {
-  if (envelope.messageName === "set-screen") return updateScreen(payload);
+  if (envelope.messageName === "flash") return flashPanel(payload);
 });
 ```
 
-Construction installs a message listener, optional kiosk lockdown, and emits `hello` with render claims, helper version, and the registered `messages`/`testCallbacks` names. Hello repeats every 800 ms up to 25 times until a Player message proves the bridge is alive. Player buffers state until hello, so a late page receives the current subtitle/hint/video-related state.
+Construction installs a message listener, optional kiosk lockdown, and emits `hello` with render claims, helper version, and the registered `messages`/`states`/`testCallbacks` names. Hello repeats every 800 ms up to 25 times until a Player message proves the bridge is alive. Player buffers state until hello and re-posts the session mode and the device's current durable state on every hello, so a late or reloaded page receives the current subtitle/hint/video-related state and renders the same display as before.
 
 Navigation destroys claims. Every new document must construct Helper again. `destroy()` removes listeners/styles, rejects pending trigger waits, resolves pending timer requests with null, and permanently retires the instance.
 
@@ -87,11 +94,21 @@ Navigation destroys claims. Every new document must construct Helper again. `des
 - `submitHint(code)` and `requestHintStep(hintId, step)` implement hint navigation. The resulting `hint` event payload includes the hint asset's free-form `params` for custom rendering.
 - `getRemainingTime({ resync?, timeoutMs? })` requests Player's timer snapshot. It rejects when no Player answers.
 - `sessionMode` is `production` until Player reports `test` or `production`.
+- `state` is the device's current durable state (`{ name, stateId, payload }`; `name === 'default'` and `stateId === null` when none is active). It is set by the server's `setState`/`clearState` commands and phase registrations, remembered per device for the session, and re-posted on every hello and reconnect. Identical repeats are deduped — the `state` event fires only on a real change.
+- `onState(name, handler)` runs `handler(payload, state)` whenever the state named `name` becomes active — immediately if it already is — and `'default'` when the state is cleared; returns an unsubscribe function.
 - `bridgeState` is `connecting` until any Player message arrives (`connected`), or `timeout` once every hello retry went unanswered (~20s) — the page was opened outside Player.
-- `on`/`off` subscribe to `message`, hint events, claimed render slots, and `bridge`/`mode` state changes.
+- `on`/`off` subscribe to `message`, `state`, hint events, claimed render slots, and `bridge`/`mode` state changes.
 - `haptics` runs vibration/haptic feedback on the Player device (see below).
 
-Handle messages with `on('message')`, dispatching on `envelope.messageName` — multi-page sites can register per page instead of pre-registering everything. The `messages` option is a plain name array whose only job is surfacing those names in the debug window's per-device panel; it never filters delivery. Awaited send-message commands carry a command ID. Helper waits for every message listener's returned promise and posts `message:done`; one rejection marks handling failed but does not stop the server sequence.
+Handle messages with `on('message')`, dispatching on `envelope.messageName` — multi-page sites can register per page instead of pre-registering everything. The `messages` and `states` options are plain name arrays whose only job is surfacing those names in the debug window's / operation dashboard's per-device panel; they never filter delivery. Awaited send-message commands carry a command ID. Helper waits for every message listener's returned promise and posts `message:done`; one rejection marks handling failed but does not stop the server sequence.
+
+### States versus messages (stability)
+
+Model the screen as a function of `state`, not of the messages received so far. A message is delivered once: a page that loads late, reloads, or reconnects after a Player restart never sees it, and a page that saw it twice (redelivery) may double an effect. A state is a fact the server keeps per device: whatever the page's history, reading `state` (or `rk.state`) gives the current display, and the server replays it on every reconnect. Concretely:
+
+- Put "which screen / which values" in a state asset; set it with `setState`, a phase registration, or from the operation dashboard. Handle `'default'` for the no-state case (session start, after `clearState`, after a device reset).
+- Use messages for transient things — play an animation, flash, trigger a sound — and make them safe to miss.
+- Keep state handlers idempotent; the same state may arrive again after a reconnect (the helper already dedupes exact repeats).
 
 ## Haptics
 
@@ -175,6 +192,16 @@ interface HintError {
   hintId?: string;
 }
 
+/** The device's durable display state; `name === 'default'` = none active. */
+interface StateValue {
+  name: string;                      // state asset name, or 'default'
+  stateId: string | null;            // null for the default state
+  payload: Record<string, JsonValue>; // resolved field values ({} for default)
+}
+const DEFAULT_STATE: StateValue;     // { name: 'default', stateId: null, payload: {} }
+/** onState listener shape. */
+type StateHandler = (payload: Record<string, JsonValue>, state: StateValue) => void;
+
 /** Envelope delivered with every relayed message. */
 interface PlayerMessage {
   source: 'roomkit-player';
@@ -235,6 +262,7 @@ interface RoomKitHelperOptions {
   lockdown?: boolean;                           // default true; false for plain-browser dev
   renders?: Partial<HelperRenderClaims>;        // slots this site renders itself; default all false
   messages?: string[];                          // declared names for the debug window (never filters delivery)
+  states?: string[];                            // declared state names for the operation UI (never filters delivery)
   testCallbacks?: Record<string, TestCallback>; // debug-window callbacks (test sessions only)
   parentWindow?: Pick<Window, 'postMessage'>;                            // test seam
   selfWindow?: Pick<Window, 'addEventListener' | 'removeEventListener'>; // test seam
@@ -264,6 +292,7 @@ interface RoomKitHelperEvents {
   videoStop: [{ commandId: string }]; // claimed video slot only
   bridge: [HelperBridgeState];        // emitted on change
   mode: [SessionMode];                // emitted on change
+  state: [StateValue];                // emitted on change only (replays/re-posts are deduped)
 }
 
 class RoomKitHelper {
@@ -271,6 +300,9 @@ class RoomKitHelper {
   constructor(options?: RoomKitHelperOptions);
   get sessionMode(): SessionMode;         // 'production' until the player reports
   get bridgeState(): HelperBridgeState;   // 'timeout' = page runs outside the player
+  get state(): StateValue;                // current durable state; DEFAULT_STATE until told
+  /** Run handler when the named state (or 'default') becomes active — immediately if it already is. Returns unsubscribe. */
+  onState(name: string, handler: StateHandler): () => void;
   readonly haptics: HapticsApi;           // the player device's haptics
   trigger(event: string, payload?: JsonValue): void;
   /** Not recommended (see General API). Rejects on timeout or bridge-less page. */
@@ -335,6 +367,7 @@ interface RoomKitApi {
   readonly subtitle: SubtitleState;      // always null when the slot is unclaimed
   readonly hintCode: HintCodeState;
   readonly video: VideoState;
+  readonly state: StateValue;            // durable device state; render screens from this
   readonly helper: RoomKitHelper | null; // raw escape hatch; null before the provider/setup mounted
   readonly hint: RoomKitHintApi;
   readonly haptics: HapticsApi;          // player device haptics; rejects before mount
@@ -350,7 +383,7 @@ interface RoomKitApi {
 /** Also exported (advanced; app code rarely needs them). */
 function isOutsidePlayer(bridge: HelperBridgeState): boolean;
 interface RoomKitSnapshot { /* immutable merged state behind RoomKitApi: bridge, sessionMode,
-  remainingMs, hintCounts, subtitle, hintCode, video + hint/error/pending/hasPrev/hasNext/
+  remainingMs, hintCounts, subtitle, hintCode, video, state + hint/error/pending/hasPrev/hasNext/
   nextIsAnswer and connectionState ('connecting' | 'connected' | 'disconnected') */ }
 const IDLE_ROOMKIT_SNAPSHOT: RoomKitSnapshot; // served before mount / during SSR
 class RoomKitCore { /* owns helper + hint controller/counter; created by the provider/setup */ }
@@ -377,6 +410,12 @@ function useRoomKitEvent<K extends keyof RoomKitHelperEvents>(
  *  message. A returned promise defers the awaited (waitUntilEnd) ack. */
 function useRoomKitMessage(handler: MessageHandler): void;
 function useRoomKitMessage(name: string, handler: MessageHandler): void;
+
+/** State subscription for side effects. With `name`, runs when that state (or
+ *  'default') becomes active — immediately if it already is; without, on every
+ *  change. Render from useRoomKit().state instead where possible. */
+function useRoomKitState(handler: StateHandler): void;
+function useRoomKitState(name: string, handler: StateHandler): void;
 
 /** Headless code entry. All props optional. */
 function HintInput(props: {
@@ -421,6 +460,10 @@ class RoomKit implements RoomKitApi {
    *  promise defers the awaited (waitUntilEnd) ack. */
   onMessage(handler: MessageHandler): () => void;
   onMessage(name: string, handler: MessageHandler): () => void;
+  /** State subscription; with `name`, runs when that state (or 'default') becomes
+   *  active — immediately if it already is. Render from rk.state where possible. */
+  onState(handler: StateHandler): () => void;
+  onState(name: string, handler: StateHandler): () => void;
   onHintUpdate(handler: (hint: HintShow) => void): () => void;  // 'hint' event
   onHintError(handler: (error: HintError) => void): () => void; // 'hintError' event
   /** Remove every callback registered through THIS instance only. Idempotent;

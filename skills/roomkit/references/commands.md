@@ -7,7 +7,7 @@ Always use `rk describe commands --json` or `packages/shared/src/commands.ts` fo
 The current command type inventory is:
 
 - playback: `playDialogue`, `stopDialogue`, `playSfx`, `stopSfx`, `playVideo`, `stopVideo`, `playBgm`, `stopBgm`, `adjustBgmVolume`;
-- device: `resetDevice`, `resetAllDevices`, `navigate`, `sendMessage`, `sendWebsiteRequest`, `showHintCode`, `hideHintCode`;
+- device: `resetDevice`, `resetAllDevices`, `navigate`, `sendMessage`, `setState`, `clearState`, `sendWebsiteRequest`, `showHintCode`, `hideHintCode`;
 - flow/operation: `wait`, `switchPhase`, `callEvent`, `eval`, `endTheme`, `adjustTimer`, `notify`.
 
 Every type except `playDialogue` may also appear inside a dialogue line cue. `rk describe commands` remains authoritative if this inventory and an installed binary ever differ.
@@ -29,14 +29,15 @@ Placeholder playback has `url: null` and a duration. It follows the same acknowl
 
 - `resetDevice` and `resetAllDevices` return targets to initial state.
 - `navigate` resolves the website URL, appends authored query pairs, and waits for the target's load acknowledgment. A device's authored `startWebsite` uses the same wire, delivered on session start before `session:start` events so a hook's navigate wins. Test-session `urlOverrides` replace the resolved base URL for navigate and `sendWebsiteRequest`; query pairs still append.
-- `sendMessage` validates values against the message asset schema. With awaited handling, the client defers acknowledgment until all message listeners settle.
+- `sendMessage` validates values against the message asset schema. With awaited handling, the client defers acknowledgment until all message listeners settle. Messages are transient: the server does not remember them and never replays them, so use them for one-off effects and transitions.
+- `setState` validates values against the state asset schema (same rules as sendMessage) and sets the device's durable display state, replacing the previous one; `clearState` clears it (one device or all). Both ack immediately. The runtime remembers each device's current state for the session, shows it on the operation dashboard, and replays it whenever the device (re)connects or its page reloads — so the same state always yields the same display. Use states for what a screen should keep showing.
 - `sendWebsiteRequest` performs an HTTP request from the RoomKit server to a URL built from a website asset and path. GET/HEAD omit a body. Network and non-2xx responses are logged; the sequence continues.
 - `showHintCode` and `hideHintCode` update the default Player overlay or delegated Helper slot.
 
 ## Flow and operation commands
 
 - `wait` is a server timer paused together with the session.
-- `switchPhase` completes leave hooks before changing phase and then runs enter hooks.
+- `switchPhase` completes leave hooks before changing phase, applies the target phase's registrations (device states/websites, player BGM — idempotently, see [authoring](./authoring.md#phase-registrations)), and then runs enter hooks.
 - `callEvent` reuses another event sequence and passes the current payload. Optional waiting blocks until the callee completes. Recursion depth is limited to eight.
 - `eval` runs synchronous JavaScript in a server `node:vm` context with a one-second timeout. Returning `false` stops the current sequence.
 - `endTheme` records success/fail, resets devices, and ends the session according to current runtime behavior.
@@ -45,7 +46,7 @@ Placeholder playback has `url: null` and a duration. It follows the same acknowl
 
 ## Interpolation
 
-Supported string fields use `{{vars.path}}` and `{{payload.path}}`. A string consisting of exactly one template preserves the JSON type; unresolved exact values become null. Templates embedded in a larger string stringify the value. Query fields, message values, and website request fields support interpolation as documented by their schema.
+Supported string fields use `{{vars.path}}` and `{{payload.path}}`. A string consisting of exactly one template preserves the JSON type; unresolved exact values become null. Templates embedded in a larger string stringify the value. Query fields, message values, state values, and website request fields support interpolation as documented by their schema.
 
 Do not use interpolation for asset IDs. Resolve assets before writing the sequence and store their UUIDs.
 

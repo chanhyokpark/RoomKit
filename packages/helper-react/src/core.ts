@@ -1,4 +1,5 @@
 import {
+  DEFAULT_STATE,
   RoomKitHelper,
   type GetRemainingTimeOptions,
   type HapticsApi,
@@ -12,6 +13,7 @@ import {
   type RoomKitHelperEvents,
   type RoomKitHelperOptions,
   type SessionMode,
+  type StateValue,
   type TriggerAndWaitOptions,
 } from '@roomkit/helper';
 import {
@@ -63,6 +65,8 @@ export interface RoomKitSnapshot extends HintphoneSnapshot {
   hintCode: HintCodeState;
   /** Claimed video slot: active delegated playback, null = none. */
   video: VideoState;
+  /** The device's durable state; `'default'` when none is active. */
+  state: StateValue;
 }
 
 /** Snapshot served before a provider/setup has mounted (and during SSR). */
@@ -75,6 +79,7 @@ export const IDLE_ROOMKIT_SNAPSHOT: RoomKitSnapshot = {
   subtitle: null,
   hintCode: null,
   video: null,
+  state: DEFAULT_STATE,
 };
 
 /** True when the page runs outside the player (no bridge to talk to). */
@@ -143,6 +148,13 @@ export interface RoomKitApi {
   readonly hintCode: HintCodeState;
   /** Claimed video slot value. */
   readonly video: VideoState;
+  /**
+   * The device's durable state (`name` = state asset name or `'default'`,
+   * plus `payload`). Set by the server, remembered per device and replayed on
+   * reconnect — render stable screens from it; use messages for transient
+   * effects.
+   */
+  readonly state: StateValue;
   /** Raw helper escape hatch; null until the provider/setup has mounted. */
   readonly helper: RoomKitHelper | null;
   /** Hint navigation facade. */
@@ -232,6 +244,7 @@ const RELAY_EVENTS = [
   'videoStop',
   'bridge',
   'mode',
+  'state',
 ] as const;
 
 const BRIDGE_TO_STATE: Record<HelperBridgeState, HintphoneConnectionState> = {
@@ -316,6 +329,7 @@ export class RoomKitCore {
   private subtitle: SubtitleState = null;
   private hintCode: HintCodeState = null;
   private video: VideoState = null;
+  private state: StateValue = DEFAULT_STATE;
   private current: RoomKitSnapshot;
 
   private readonly onBridge = (bridge: HelperBridgeState): void => {
@@ -344,6 +358,10 @@ export class RoomKitCore {
     this.video = null;
     this.publish();
   };
+  private readonly onState = (state: StateValue): void => {
+    this.state = state;
+    this.publish();
+  };
 
   constructor(options: RoomKitOptions = {}, relay?: RoomKitRelay) {
     const { timerPollMs, ...helperOptions } = options;
@@ -354,13 +372,15 @@ export class RoomKitCore {
     this.counter = new HintphoneCounterCore(this.source);
     this.bridge = this.helper.bridgeState;
     this.sessionMode = this.helper.sessionMode;
+    this.state = this.helper.state;
     this.helper
       .on('bridge', this.onBridge)
       .on('mode', this.onMode)
       .on('subtitle', this.onSubtitle)
       .on('hintCode', this.onHintCode)
       .on('videoPlay', this.onVideoPlay)
-      .on('videoStop', this.onVideoStop);
+      .on('videoStop', this.onVideoStop)
+      .on('state', this.onState);
     this.cleanups.push(this.controller.subscribe(() => this.publish()));
     this.cleanups.push(this.counter.subscribe(() => this.publish()));
     if (relay) this.wireRelay(relay);
@@ -460,7 +480,8 @@ export class RoomKitCore {
       .off('subtitle', this.onSubtitle)
       .off('hintCode', this.onHintCode)
       .off('videoPlay', this.onVideoPlay)
-      .off('videoStop', this.onVideoStop);
+      .off('videoStop', this.onVideoStop)
+      .off('state', this.onState);
     this.helper.destroy();
     this.subscribers.clear();
   }
@@ -475,6 +496,7 @@ export class RoomKitCore {
       subtitle: this.subtitle,
       hintCode: this.hintCode,
       video: this.video,
+      state: this.state,
     };
   }
 

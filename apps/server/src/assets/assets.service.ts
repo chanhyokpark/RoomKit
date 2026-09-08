@@ -10,6 +10,7 @@ import {
   assetDataSchemas,
   CODED_ASSET_KINDS,
   EventDataSchema,
+  PhaseDataSchema,
   PlayerDataSchema,
   type AssetKind,
   type CreateAssetInput,
@@ -231,6 +232,52 @@ export class AssetsService {
         throw new BadRequestException(
           'phaseId must reference a phase asset in this theme',
         );
+      }
+    }
+    if (kind === 'phase') {
+      const phase = PhaseDataSchema.parse(data);
+      const refs: Record<'device' | 'state' | 'website' | 'player' | 'bgm', Set<string>> = {
+        device: new Set(),
+        state: new Set(),
+        website: new Set(),
+        player: new Set(),
+        bgm: new Set(),
+      };
+      const seenDevices = { states: new Set<string>(), websites: new Set<string>() };
+      const seenPlayers = new Set<string>();
+      for (const slot of phase.deviceStates) {
+        if (seenDevices.states.has(slot.deviceId))
+          throw new BadRequestException('deviceStates lists a device twice');
+        seenDevices.states.add(slot.deviceId);
+        refs.device.add(slot.deviceId);
+        if (slot.mode === 'set') refs.state.add(slot.stateId);
+      }
+      for (const slot of phase.deviceWebsites) {
+        if (seenDevices.websites.has(slot.deviceId))
+          throw new BadRequestException('deviceWebsites lists a device twice');
+        seenDevices.websites.add(slot.deviceId);
+        refs.device.add(slot.deviceId);
+        if (slot.mode === 'set') refs.website.add(slot.websiteId);
+      }
+      for (const slot of phase.playerBgms) {
+        if (seenPlayers.has(slot.playerId))
+          throw new BadRequestException('playerBgms lists a player twice');
+        seenPlayers.add(slot.playerId);
+        refs.player.add(slot.playerId);
+        if (slot.mode === 'set') refs.bgm.add(slot.bgmId);
+      }
+      for (const [refKind, ids] of Object.entries(refs) as Array<
+        [AssetKind, Set<string>]
+      >) {
+        if (ids.size === 0) continue;
+        const count = await this.prisma.asset.count({
+          where: { id: { in: [...ids] }, themeId, kind: refKind },
+        });
+        if (count !== ids.size) {
+          throw new BadRequestException(
+            `Phase registrations must reference ${refKind} assets in this theme`,
+          );
+        }
       }
     }
   }

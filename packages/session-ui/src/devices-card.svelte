@@ -7,7 +7,7 @@
 	import SquareIcon from '@lucide/svelte/icons/square';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
-	import type { Command, JsonValue, PlayChannel, PlayingMedia } from '@roomkit/shared';
+	import type { Command, JsonValue, MessageField, PlayChannel, PlayingMedia } from '@roomkit/shared';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
@@ -19,7 +19,7 @@
 	import { cn } from '$lib/utils';
 	import { assetName, assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
-	import type { MessageAsset } from './types.js';
+	import type { MessageAsset, StateAsset } from './types.js';
 
 	const { model, actions } = useSessionUi();
 	const expanded = new SvelteSet<string>();
@@ -31,8 +31,14 @@
 		wait: boolean;
 	}
 
+	interface StateForm {
+		stateId: string;
+		values: Record<string, string>;
+	}
+
 	let navigation = $state<Record<string, string>>({});
 	let messageForms = $state<Record<string, MessageForm>>({});
+	let stateForms = $state<Record<string, StateForm>>({});
 	let callbackResults = $state<Record<string, 'running' | 'ok' | 'fail'>>({});
 	/** Device whose screenshot is shown enlarged; the image keeps updating live. */
 	let enlargedDeviceId = $state<string | null>(null);
@@ -63,6 +69,7 @@
 	const allDevices = $derived(assetsOf(model.assets, 'device'));
 	const websites = $derived(assetsOf(model.assets, 'website'));
 	const messages = $derived(assetsOf(model.assets, 'message'));
+	const states = $derived(assetsOf(model.assets, 'state'));
 	const codeDeviceIds = $derived(new Set(model.testDeviceCodes.map((entry) => entry.deviceId)));
 	const devices = $derived(
 		codeDeviceIds.size > 0
@@ -75,6 +82,9 @@
 	const media = $derived(model.media);
 	const websiteByDevice = $derived(
 		new Map((media?.websites ?? []).map((website) => [website.deviceId, website]))
+	);
+	const stateByDevice = $derived(
+		new Map((media?.states ?? []).map((entry) => [entry.deviceId, entry]))
 	);
 	const playingByDevice = $derived.by(() => {
 		const result = new Map<string, PlayingMedia[]>();
@@ -113,6 +123,43 @@
 		return messages.filter((message) => registered.includes(message.name));
 	}
 
+	function stateFormFor(deviceId: string): StateForm {
+		if (!stateForms[deviceId]) stateForms[deviceId] = { stateId: '', values: {} };
+		return stateForms[deviceId];
+	}
+
+	function statesFor(deviceId: string): StateAsset[] {
+		const registered = model.statusOf(deviceId)?.helperStates;
+		if (!registered || registered.length === 0) return states;
+		return states.filter((state) => registered.includes(state.name));
+	}
+
+	/** Raw form strings → typed values per the field schema; null after a toast on bad JSON. */
+	function parseValues(
+		fields: MessageField[],
+		raw: Record<string, string>
+	): Record<string, JsonValue> | null {
+		const values: Record<string, JsonValue> = {};
+		for (const field of fields) {
+			const text = raw[field.key] ?? '';
+			if (text === '' && !field.required) continue;
+			try {
+				values[field.key] =
+					field.type === 'number'
+						? Number(text)
+						: field.type === 'boolean'
+							? text === 'true'
+							: field.type === 'json'
+								? (JSON.parse(text || 'null') as JsonValue)
+								: text;
+			} catch {
+				toast.error(`필드 "${field.label || field.key}"의 JSON이 올바르지 않습니다.`);
+				return null;
+			}
+		}
+		return values;
+	}
+
 	async function run(key: string, action: () => Promise<void>, success?: string): Promise<void> {
 		if (busyKeys.has(key)) return;
 		busyKeys.add(key);
@@ -135,28 +182,29 @@
 		}
 	}
 
+	function setDeviceState(deviceId: string): void {
+		const form = stateFormFor(deviceId);
+		const state = states.find((candidate) => candidate.id === form.stateId);
+		if (!state) return;
+		const values = parseValues(state.data.fields, form.values);
+		if (!values) return;
+		void run(`state:${deviceId}`, () =>
+			actions.runCommand({ type: 'setState', deviceId, stateId: state.id, values })
+		);
+	}
+
+	function clearDeviceState(deviceId: string): void {
+		void run(`state:${deviceId}`, () =>
+			actions.runCommand({ type: 'clearState', deviceId, allDevices: false })
+		);
+	}
+
 	function sendMessage(deviceId: string): void {
 		const form = formFor(deviceId);
 		const message = messages.find((candidate) => candidate.id === form.messageId);
 		if (!message) return;
-		const values: Record<string, JsonValue> = {};
-		for (const field of message.data.fields) {
-			const raw = form.values[field.key] ?? '';
-			if (raw === '' && !field.required) continue;
-			try {
-				values[field.key] =
-					field.type === 'number'
-						? Number(raw)
-						: field.type === 'boolean'
-							? raw === 'true'
-							: field.type === 'json'
-								? (JSON.parse(raw || 'null') as JsonValue)
-								: raw;
-			} catch {
-				toast.error(`필드 "${field.label || field.key}"의 JSON이 올바르지 않습니다.`);
-				return;
-			}
-		}
+		const values = parseValues(message.data.fields, form.values);
+		if (!values) return;
 		void run(`message:${deviceId}`, () =>
 			actions.runCommand({
 				type: 'sendMessage',
@@ -190,11 +238,38 @@
 	}
 </script>
 
+{#snippet valueInputs(values: Record<string, string>, fields: MessageField[], prefix: string)}
+	<Field.FieldGroup class="gap-2">
+		{#each fields as field (field.key)}
+			<Field.Field orientation="horizontal">
+				<Field.FieldLabel for="{prefix}-{field.key}" class="w-32">
+					{field.label || field.key}{field.required ? ' *' : ''}
+				</Field.FieldLabel>
+				{#if field.type === 'boolean'}
+					<Select.Root type="single" bind:value={values[field.key]}>
+						<Select.Trigger id="{prefix}-{field.key}" size="sm" class="flex-1">
+							{values[field.key] || '선택 안 함'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Group>
+								<Select.Item value="true" label="true">true</Select.Item>
+								<Select.Item value="false" label="false">false</Select.Item>
+							</Select.Group>
+						</Select.Content>
+					</Select.Root>
+				{:else}
+					<Input id="{prefix}-{field.key}" placeholder={field.type} bind:value={values[field.key]} />
+				{/if}
+			</Field.Field>
+		{/each}
+	</Field.FieldGroup>
+{/snippet}
+
 <Card.Root class="md:col-span-2">
 	<Card.Header>
 		<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
 		<Card.Description>
-			연결, 웹사이트, Helper 등록 항목과 미디어 상태를 한곳에서 테스트합니다.
+			연결, 웹사이트, 상태, Helper 등록 항목과 미디어를 한곳에서 확인하고 조작합니다.
 		</Card.Description>
 		<Card.Action>
 			<Button
@@ -214,6 +289,7 @@
 		{#each devices as device (device.id)}
 			{@const status = model.statusOf(device.id)}
 			{@const currentWebsite = websiteByDevice.get(device.id)}
+			{@const currentState = stateByDevice.get(device.id)}
 			{@const currentMedia = playingByDevice.get(device.id) ?? []}
 			{@const code = codeByDevice.get(device.id)}
 			{@const screenshot = model.screenshotOf(device.id)}
@@ -267,8 +343,26 @@
 					</div>
 				{/if}
 
-				{#if currentWebsite || currentMedia.length > 0}
+				{#if currentWebsite || currentState || currentMedia.length > 0}
 					<div class="flex flex-col gap-1.5 border-t px-3 py-2">
+						{#if currentState}
+							<div class="flex items-center gap-2 text-xs">
+								<Badge variant="outline">상태</Badge>
+								<span class="min-w-0 truncate" title={JSON.stringify(currentState.values)}>
+									{assetName(model.assets, currentState.stateId) ?? currentState.stateName}
+								</span>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									class="ml-auto"
+									aria-label="상태 해제"
+									disabled={busyKeys.has(`state:${device.id}`) || model.session?.state === 'ended'}
+									onclick={() => clearDeviceState(device.id)}
+								>
+									<SquareIcon />
+								</Button>
+							</div>
+						{/if}
 						{#if currentWebsite}
 							<div class="flex items-center gap-2 text-xs">
 								<Badge variant="outline">웹사이트</Badge>
@@ -318,6 +412,9 @@
 
 				{#if expanded.has(device.id)}
 					{@const form = formFor(device.id)}
+					{@const stateForm = stateFormFor(device.id)}
+					{@const registeredStates = status?.helperStates ?? []}
+					{@const availableStates = statesFor(device.id)}
 					{@const registeredMessages = status?.helperMessages ?? []}
 					{@const callbacks = status?.helperTestCallbacks ?? []}
 					{@const availableMessages = messagesFor(device.id)}
@@ -429,38 +526,11 @@
 										(message) => message.id === form.messageId
 									)}
 									{#if selectedMessage}
-										<Field.FieldGroup class="gap-2">
-											{#each selectedMessage.data.fields as field (field.key)}
-												<Field.Field orientation="horizontal">
-													<Field.FieldLabel for="field-{device.id}-{field.key}" class="w-32">
-														{field.label || field.key}{field.required ? ' *' : ''}
-													</Field.FieldLabel>
-													{#if field.type === 'boolean'}
-														<Select.Root type="single" bind:value={form.values[field.key]}>
-															<Select.Trigger
-																id="field-{device.id}-{field.key}"
-																size="sm"
-																class="flex-1"
-															>
-																{form.values[field.key] || '선택 안 함'}
-															</Select.Trigger>
-															<Select.Content>
-																<Select.Group>
-																	<Select.Item value="true" label="true">true</Select.Item>
-																	<Select.Item value="false" label="false">false</Select.Item>
-																</Select.Group>
-															</Select.Content>
-														</Select.Root>
-													{:else}
-														<Input
-															id="field-{device.id}-{field.key}"
-															placeholder={field.type}
-															bind:value={form.values[field.key]}
-														/>
-													{/if}
-												</Field.Field>
-											{/each}
-										</Field.FieldGroup>
+										{@render valueInputs(
+											form.values,
+											selectedMessage.data.fields,
+											`field-${device.id}`
+										)}
 									{/if}
 								{/if}
 								{#if registeredMessages.length > 0}
@@ -468,6 +538,67 @@
 										페이지 등록: {registeredMessages.join(', ')}
 									</Field.FieldDescription>
 								{/if}
+							</Field.Field>
+
+							<Field.Field>
+								<Field.FieldLabel for="state-{device.id}">상태 설정</Field.FieldLabel>
+								<div class="flex flex-wrap items-center gap-2">
+									<Select.Root type="single" bind:value={stateForm.stateId}>
+										<Select.Trigger id="state-{device.id}" size="sm" class="min-w-48 flex-1">
+											{availableStates.find((state) => state.id === stateForm.stateId)?.data
+												.displayName ||
+												availableStates.find((state) => state.id === stateForm.stateId)?.name ||
+												'상태 선택'}
+										</Select.Trigger>
+										<Select.Content>
+											<Select.Group>
+												{#each availableStates as state (state.id)}
+													<Select.Item value={state.id} label={state.data.displayName || state.name}>
+														{state.data.displayName || state.name}{registeredStates.includes(
+															state.name
+														)
+															? ' ✓'
+															: ''}
+													</Select.Item>
+												{/each}
+											</Select.Group>
+										</Select.Content>
+									</Select.Root>
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={!stateForm.stateId || busyKeys.has(`state:${device.id}`)}
+										onclick={() => setDeviceState(device.id)}
+									>
+										설정
+									</Button>
+									<Button
+										variant="ghost"
+										size="sm"
+										disabled={!currentState || busyKeys.has(`state:${device.id}`)}
+										onclick={() => clearDeviceState(device.id)}
+									>
+										해제
+									</Button>
+								</div>
+								{#if stateForm.stateId}
+									{@const selectedState = availableStates.find(
+										(state) => state.id === stateForm.stateId
+									)}
+									{#if selectedState}
+										{@render valueInputs(
+											stateForm.values,
+											selectedState.data.fields,
+											`state-field-${device.id}`
+										)}
+									{/if}
+								{/if}
+								<Field.FieldDescription>
+									{#if registeredStates.length > 0}
+										페이지 등록: {registeredStates.join(', ')} ·
+									{/if}
+									상태는 장치가 다시 접속해도 유지됩니다. 일시적인 효과에는 메시지를 쓰세요.
+								</Field.FieldDescription>
 							</Field.Field>
 						</Field.FieldGroup>
 

@@ -5,6 +5,7 @@ import {
   type DialogueData,
   type EventData,
   type HintData,
+  type PhaseData,
   type PlayerData,
   type SequenceEntry,
   type WebsiteData,
@@ -20,11 +21,11 @@ import { z } from 'zod';
  */
 
 /** Kinds whose `data` carries cross-asset id references. */
-const REF_CARRYING_KINDS = ['player', 'event'] as const;
+const REF_CARRYING_KINDS = ['player', 'event', 'phase'] as const;
 type RefCarryingKind = (typeof REF_CARRYING_KINDS)[number];
 
-/** Cross-asset id references, remapped through `idMap`: player (device ids)
- * and event (phaseId + sequence command refs). */
+/** Cross-asset id references, remapped through `idMap`: player (device ids),
+ * event (phaseId + sequence command refs) and phase (registration slots). */
 export function remapAssetData(
   kind: string,
   data: Prisma.JsonValue,
@@ -57,6 +58,28 @@ export function remapAssetData(
           event.phaseId === null ? null : (idMap.get(event.phaseId) ?? null),
         sequence: event.sequence.map((entry) =>
           remapSequenceEntry(entry, idMap),
+        ),
+      };
+    }
+    case 'phase': {
+      const phase = parsed.data as PhaseData;
+      const map = (id: string) => idMap.get(id) ?? id;
+      return {
+        ...phase,
+        deviceStates: phase.deviceStates.map((slot) =>
+          slot.mode === 'set'
+            ? { ...slot, deviceId: map(slot.deviceId), stateId: map(slot.stateId) }
+            : { ...slot, deviceId: map(slot.deviceId) },
+        ),
+        deviceWebsites: phase.deviceWebsites.map((slot) =>
+          slot.mode === 'set'
+            ? { ...slot, deviceId: map(slot.deviceId), websiteId: map(slot.websiteId) }
+            : { ...slot, deviceId: map(slot.deviceId) },
+        ),
+        playerBgms: phase.playerBgms.map((slot) =>
+          slot.mode === 'set'
+            ? { ...slot, playerId: map(slot.playerId), bgmId: map(slot.bgmId) }
+            : { ...slot, playerId: map(slot.playerId) },
         ),
       };
     }
@@ -162,6 +185,27 @@ export function remapManifestData(
           remapManifestEntry(entry, idMap),
         );
       }
+      return out;
+    }
+    case 'phase': {
+      const out: Record<string, unknown> = { ...data };
+      const mapSlots = (slots: unknown, fields: string[]) =>
+        Array.isArray(slots)
+          ? slots.map((slot: unknown) => {
+              if (!isRecord(slot)) return slot;
+              const mapped: Record<string, unknown> = { ...slot };
+              for (const field of fields) {
+                if (field in slot) mapped[field] = mapRequiredRef(slot[field], idMap);
+              }
+              return mapped;
+            })
+          : slots;
+      if ('deviceStates' in data)
+        out.deviceStates = mapSlots(data.deviceStates, ['deviceId', 'stateId']);
+      if ('deviceWebsites' in data)
+        out.deviceWebsites = mapSlots(data.deviceWebsites, ['deviceId', 'websiteId']);
+      if ('playerBgms' in data)
+        out.playerBgms = mapSlots(data.playerBgms, ['playerId', 'bgmId']);
       return out;
     }
     case 'dialogue': {

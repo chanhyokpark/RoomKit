@@ -29,8 +29,9 @@ pnpm dev
 - BGM 반복/페이드와 직접 볼륨 조정, SFX·대사의 BGM ducking과 플레이스홀더 시간을 처리합니다.
 - 대사 speaker/screen/both 역할, 라인 progress와 `holdBefore` 재개 신호, HTML/CSS 자막을 처리합니다.
 - 비디오 frame, 실제 파일 완료/실패 응답과 플레이스홀더 타이머를 처리합니다.
-- stop은 재생을 정상 완료시키고 reset은 전체 미디어·화면·힌트 코드를 초기화합니다.
+- stop은 재생을 정상 완료시키고 reset은 전체 미디어·화면·상태·힌트 코드를 초기화합니다.
 - awaited 메시지 handler의 Promise가 끝난 뒤 Client가 자동으로 응답합니다.
+- `state` 이벤트로 장치의 현재 상태(`{ stateId, stateName, payload }` 또는 `null`)를 받아 화면에 표시합니다. 서버가 재접속 때마다 다시 보내므로 같은 상태는 그대로 두고, 메시지는 일시적인 효과에만 사용하세요. 재접속 리플레이(같은 URL의 navigate, `offsetMs`가 붙은 BGM/비디오 play)도 멱등하게 처리합니다.
 
 프로젝트에 적용하실 때 `roomkit-device.ts`의 오디오 정책, 자동 재생 안내, 캐시와 접근성 UI를 운영 환경에 맞게 확장해 주세요. 브라우저 자동 재생 정책 때문에 최초 사용자 상호작용이 필요할 수 있습니다.
 

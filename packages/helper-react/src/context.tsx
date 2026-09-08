@@ -106,6 +106,7 @@ function createView(core: RoomKitCore | null, snapshot: RoomKitSnapshot): RoomKi
     subtitle: snapshot.subtitle,
     hintCode: snapshot.hintCode,
     video: snapshot.video,
+    state: snapshot.state,
     helper: core?.helper ?? null,
     hint: {
       data: snapshot.hint,

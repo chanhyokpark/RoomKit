@@ -53,11 +53,17 @@
 		[reordered[index], reordered[target]] = [reordered[target], reordered[index]];
 		void run(async () => {
 			// Renormalize to 0..n-1 and patch only the phases whose order changed.
+			// `data` is a full replacement — keep the phase's registrations.
 			await Promise.all(
 				reordered.map((phase, order) =>
 					phase.data.order === order
 						? Promise.resolve()
-						: updateAsset(editorData.themeId, phase.id, { data: { order } })
+						: updateAsset(editorData.themeId, phase.id, {
+								data: {
+									...($state.snapshot(phase.data) as unknown as Record<string, JsonValue>),
+									order
+								}
+							})
 				)
 			);
 		}, '페이즈 순서 변경에 실패했습니다.');

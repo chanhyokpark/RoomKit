@@ -386,6 +386,48 @@ export class CommandResolver {
             : {}),
         };
       }
+      case 'setState': {
+        const device = await this.getDevice(themeId, cmd.deviceId, opts);
+        const state = await this.getAsset(themeId, cmd.stateId, 'state');
+        return {
+          deliveries: [
+            {
+              deviceId: device.id,
+              wire: {
+                id: randomUUID(),
+                type: 'state' as const,
+                state: {
+                  stateId: state.id,
+                  stateName: state.name,
+                  payload: buildMessagePayload(
+                    state.data,
+                    cmd.values,
+                    scopeOf(opts),
+                  ),
+                },
+              },
+            },
+          ],
+        };
+      }
+      case 'clearState': {
+        const targets = opts.forceDeviceId
+          ? [opts.forceDeviceId]
+          : cmd.allDevices
+            ? (
+                await this.prisma.asset.findMany({
+                  where: { themeId, kind: 'device' },
+                  select: { id: true },
+                })
+              ).map((d) => d.id)
+            : [(await this.getAsset(themeId, cmd.deviceId, 'device')).id];
+        return {
+          deliveries: targets.map((deviceId) => ({
+            deviceId,
+            wire: { id: randomUUID(), type: 'state' as const, state: null },
+          })),
+        };
+      }
       case 'sendWebsiteRequest': {
         const website = await this.getAsset(themeId, cmd.websiteId, 'website');
         const scope = scopeOf(opts);
@@ -684,8 +726,9 @@ function duckField(percent: number | null): { bgmDuck?: number } {
   return percent === null ? {} : { bgmDuck: percent / 100 };
 }
 
+/** Builds a message/state payload from its field schema and authored values. */
 function buildMessagePayload(
-  message: MessageData,
+  message: Pick<MessageData, 'fields'>,
   values: Record<string, JsonValue>,
   scope: TemplateScope,
 ): Record<string, JsonValue> {

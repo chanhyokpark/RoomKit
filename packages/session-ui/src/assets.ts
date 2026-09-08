@@ -45,6 +45,10 @@ export function commandLabel(entry: SequenceEntry, assets: Asset[]): string {
       return `이동: ${name(entry.deviceId)} → ${name(entry.websiteId)}`;
     case 'sendMessage':
       return `메시지 전송: ${name(entry.deviceId)} ← ${name(entry.messageId)}`;
+    case 'setState':
+      return `상태 설정: ${name(entry.deviceId)} ← ${name(entry.stateId)}`;
+    case 'clearState':
+      return `상태 해제${entry.allDevices ? ' (전체)' : `: ${name(entry.deviceId)}`}`;
     case 'sendWebsiteRequest':
       return `웹 요청: ${entry.method} ${name(entry.websiteId)}${entry.path}`;
     case 'switchPhase':
