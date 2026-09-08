@@ -12,6 +12,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { createSession } from '$lib/api/sessions';
 	import { useOperationData } from './operation-data.svelte';
+	import PlayerLinkButton from './player-link-button.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -145,7 +146,8 @@
 		<Dialog.Header>
 			<Dialog.Title>테스트 세션 만들기</Dialog.Title>
 			<Dialog.Description>
-				연결된 플레이어에서 자동으로 시작하거나, 장치별 테스트 코드를 직접 입력하세요.
+				연결된 플레이어에서 자동으로 시작하거나, 장치별 테스트 코드를 직접 입력하세요. 직접 입력한
+				세션은 앱 링크로 이 컴퓨터의 Player 에서 열 수 있습니다.
 			</Dialog.Description>
 		</Dialog.Header>
 		{#if createdId}
@@ -153,6 +155,13 @@
 				<p class="text-sm text-muted-foreground">
 					플레이어에서 디바이스 창이 자동으로 열렸습니다. 생성된 코드:
 				</p>
+			{:else}
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<p class="text-sm text-muted-foreground">
+						코드를 장치에 입력하거나, 이 컴퓨터의 Player 앱에서 바로 여세요.
+					</p>
+					<PlayerLinkButton sessionId={createdId} />
+				</div>
 			{/if}
 			<div class="flex flex-col gap-1.5">
 				{#each createdCodes as entry (entry.deviceId)}

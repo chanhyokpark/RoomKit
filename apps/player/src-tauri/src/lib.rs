@@ -18,7 +18,19 @@ pub fn run() {
       "--autoplay-policy=no-user-gesture-required",
     );
   }
-  tauri::Builder::default()
+  let builder = tauri::Builder::default();
+  // Must be the first plugin: on Windows/Linux an app link starts a second
+  // process, and single-instance hands its argv (the URL) to this one, which
+  // the deep-link plugin then emits as `deep-link://new-url`.
+  #[cfg(desktop)]
+  let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    if let Some(window) = app.get_webview_window("main") {
+      let _ = window.unminimize();
+      let _ = window.set_focus();
+    }
+  }));
+  builder
+    .plugin(tauri_plugin_deep_link::init())
     .plugin(tauri_plugin_store::Builder::default().build())
     .plugin(tauri_plugin_os::init())
     // Vibration/haptic feedback relayed from helper sites (mobile only; the
@@ -35,6 +47,16 @@ pub fn run() {
       screenshot::capture_webview
     ])
     .setup(|app| {
+      // Installers register the scheme (macOS: Info.plist, Windows/Linux:
+      // registry / .desktop). `tauri dev` has no installer, so register at
+      // runtime where the OS allows it — macOS only honours the bundle.
+      #[cfg(any(windows, target_os = "linux"))]
+      {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        if let Err(e) = app.deep_link().register_all() {
+          eprintln!("[deep-link] register failed: {e}");
+        }
+      }
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

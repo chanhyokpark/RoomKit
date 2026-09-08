@@ -57,4 +57,21 @@ describe('roomkit.json', () => {
     writeFileSync(join(root, 'roomkit.json'), JSON.stringify({ version: 2 }));
     assert.throws(() => findProject(undefined, root), /roomkit.json is invalid/);
   });
+
+  it('keeps dev/test fields and orders them stably', () => {
+    const root = tmp();
+    const site = { name: 'main', dir: '.', assetId: SITE, assetKey: 'main', build: 'pnpm build', dist: 'dist', dev: { command: 'pnpm dev', url: 'http://localhost:5173' } };
+    saveProject(root, { ...emptyConfig(), theme: { id: THEME, name: 'T' }, ai: { tools: ['claude'] }, test: { devices: ['screen'] }, websites: [site] });
+    const raw = readFileSync(join(root, 'roomkit.json'), 'utf8');
+    assert.deepEqual(Object.keys(JSON.parse(raw)), ['version', 'theme', 'websites', 'test', 'ai']);
+    const loaded = findProject(undefined, root)!;
+    assert.deepEqual(loaded.config.websites[0]!.dev, { command: 'pnpm dev', url: 'http://localhost:5173' });
+    assert.deepEqual(loaded.config.test, { devices: ['screen'] });
+  });
+
+  it('rejects a dev block without a valid url', () => {
+    const root = tmp();
+    writeFileSync(join(root, 'roomkit.json'), JSON.stringify({ version: 1, websites: [{ name: 'a', dir: '.', assetId: SITE, dist: 'dist', dev: { url: 'nope' } }] }));
+    assert.throws(() => findProject(undefined, root), ToolError);
+  });
 });

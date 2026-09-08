@@ -2,7 +2,7 @@
 name: roomkit
 description: Build, deploy, author, and test RoomKit escape-room projects with the `rk` CLI — website projects (Helper), themes, assets, event sequences, sessions, and virtual devices.
 metadata:
-  roomkit-cli-version: "0.1.1"
+  roomkit-cli-version: "0.2.0"
   source: github:chanhyokpark/RoomKit#path:skills/roomkit
 ---
 
@@ -36,6 +36,7 @@ The server owns every piece of game logic — phases, timers, variables, event s
 | --- | --- |
 | New website project from template | `rk init --dir site --template react --create-asset "Main screen" --asset-key main --ai claude,codex` |
 | Theme + skill only (no project scaffold) | `rk init ai --theme "Stella" --ai claude` |
+| Test a website against its dev server in Player | `rk dev` (starts `websites[].dev`, creates a test session with URL overrides, opens it in Player via `roomkit-player://` app link; `--json --no-open` for agents) |
 | Build + deploy the website(s) in `roomkit.json` | `rk deploy` (`rk deploy <name>`, `--all`, `--no-build`) |
 | Themes | `rk theme list|use|create|update|delete|duplicate|export|import` |
 | Assets | `rk asset list --kind event`, `rk asset get <ref>`, `rk asset create --kind sfx --name Beep --key beep --file ./beep.mp3`, `rk asset update <ref> --data @data.json` |

@@ -29,6 +29,13 @@ futures-util = "0.3"
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 tauri-plugin-haptics = "2.3.3"
+# `roomkit-player://` app links (Studio "open in Player", `rk dev`); see src/lib/deep-link.ts.
+tauri-plugin-deep-link = "2"
+
+# Desktop: a second launch (Windows/Linux deliver app links as a new process)
+# forwards its URL to the running instance instead of starting another player.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 # Stage screenshots via the webview's own snapshot API (no screen-recording
 # permission); see src/screenshot.rs.

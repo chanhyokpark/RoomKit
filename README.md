@@ -57,6 +57,7 @@ AI 도구로 해당 프로젝트를 연 뒤 RoomKit을 사용하라고 지시하
 ```sh
 rk init           # 템플릿으로 웹사이트 프로젝트 생성 (roomkit.json 작성, AI 스킬 설치)
 rk init ai        # 프로젝트 생성 없이 테마 지정과 AI 스킬 설치만
+rk dev            # 개발 서버를 띄우고 Player 앱 링크로 테스트 세션 열기
 rk deploy         # 빌드 후 ZIP 호스팅 배포
 ```
 

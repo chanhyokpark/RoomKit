@@ -13,3 +13,4 @@ export * from './logs.js';
 export * from './uploads.js';
 export * from './theme-export.js';
 export * from './version.js';
+export * from './player-link.js';

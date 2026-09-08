@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import pc from 'picocolors';
-import type { Session, SessionResponse } from '@roomkit/shared';
+import type { Session, SessionLogEntry, SessionResponse } from '@roomkit/shared';
 import type { CliContext } from '../context.js';
 import {
   abortSessionRun,
@@ -41,6 +41,13 @@ function printSession(s: SessionResponse | Session): void {
     out.line(pc.bold('테스트 장치 코드'));
     out.line(table(['장치', '코드'], s.testDeviceCodes.map((d) => [d.deviceName ?? d.deviceId, d.code])));
   }
+}
+
+/** One human-readable line per session log entry (shared with `rk dev`). */
+export function formatLogLine(l: SessionLogEntry): string {
+  const level = l.level === 'error' ? pc.red(l.level) : l.level === 'warn' ? pc.yellow(l.level) : pc.dim(l.level);
+  const data = l.data !== null && l.data !== undefined ? ` ${pc.dim(JSON.stringify(l.data))}` : '';
+  return `${pc.dim(String(l.id).padStart(6))} ${pc.dim(fmtDate(l.at))} ${level} ${pc.cyan(l.kind)} ${l.message}${data}`;
 }
 
 async function control(c: CliContext, sessionId: string, action: ControlAction, label: string): Promise<void> {
@@ -209,14 +216,8 @@ export function register(program: Command, ctx: GetContext): void {
       const c = ctx();
       let afterId = opts.after !== undefined ? parseInteger(opts.after, '--after') : undefined;
       const limit = opts.limit !== undefined ? parseInteger(opts.limit, '--limit') : undefined;
-      const printEntries = (logs: Awaited<ReturnType<typeof getSessionLogs>>['logs']) => {
-        for (const l of logs) {
-          if (c.json) out.line(JSON.stringify(l));
-          else {
-            const level = l.level === 'error' ? pc.red(l.level) : l.level === 'warn' ? pc.yellow(l.level) : pc.dim(l.level);
-            out.line(`${pc.dim(String(l.id).padStart(6))} ${pc.dim(fmtDate(l.at))} ${level} ${pc.cyan(l.kind)} ${l.message}${l.data !== null && l.data !== undefined ? ` ${pc.dim(JSON.stringify(l.data))}` : ''}`);
-          }
-        }
+      const printEntries = (logs: SessionLogEntry[]) => {
+        for (const l of logs) out.line(c.json ? JSON.stringify(l) : formatLogLine(l));
       };
       if (!opts.follow) {
         const result = await getSessionLogs(c, sessionId, { afterId, limit });

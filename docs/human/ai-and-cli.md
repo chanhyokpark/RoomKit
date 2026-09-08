@@ -67,18 +67,35 @@ rk init ai --theme "스텔라호" --ai claude --yes    # 옵션으로 지정
       "assetId": "…",
       "assetKey": "main",
       "build": "pnpm build",
-      "dist": "dist"
+      "dist": "dist",
+      "dev": { "command": "pnpm dev", "url": "http://localhost:5173" }
     }
   ],
+  "test": { "devices": ["main-screen"] },
   "ai": { "tools": ["claude", "codex"] }
 }
 ```
 
 - `theme`: 이 프로젝트가 작업하는 테마. `rk theme use <이름>` 으로 바꿉니다. 모든 테마 관련 명령이 이 값을 사용하며 `--theme` 옵션으로 한 번만 바꿀 수 있습니다.
 - `websites`: 배포 대상. `dir` 은 `roomkit.json` 기준 상대 경로(단일 프로젝트는 `.`), `build` 는 그 디렉터리에서 실행할 빌드 명령, `dist` 는 `index.html` 이 있는 빌드 결과 디렉터리입니다.
+- `websites[].dev`: `rk dev` 가 사용하는 개발 서버. `command` 는 `dir` 에서 실행할 명령(`null` 이면 이미 떠 있다고 가정), `url` 은 테스트 세션 동안 이 웹사이트 애셋을 대신할 주소입니다. 포트를 바꿨다면 `url` 도 맞춰 주세요.
+- `test.devices`: `rk dev` 가 창을 열 장치 애셋(키/코드/이름). 비워 두면 개발 웹사이트를 시작 페이지로 쓰는 장치를 자동으로 고릅니다.
 - 비밀 정보는 없으므로 커밋해도 됩니다.
 
-개발 중에는 `pnpm dev` 로 개발 서버를 띄우고 Player 런처 **테스트** 탭의 **웹사이트 URL 대체**에 주소를 넣어 실제 세션에서 확인합니다 ([Helper 문서](./websites.md)).
+## 개발 서버로 테스트하기
+
+```sh
+rk dev
+```
+
+`websites[].dev` 의 개발 서버가 떠 있지 않으면 실행하고, 그 주소로 **웹사이트 URL 대체**가 걸린 테스트 세션을 만든 뒤, 이 컴퓨터의 Player 앱을 **앱 링크**(`roomkit-player://test?server=…&session=…`)로 열어 장치 창과 디버그 창을 띄웁니다. 터미널에는 세션 로그가 흐르고 Ctrl-C 를 누르면 세션을 종료하고 개발 서버도 정리합니다. 세션 시작은 디버그 창에서 하거나 `--start` 를 붙입니다.
+
+- `rk dev --devices main-screen,console --save`: 열 장치를 지정하고 `test.devices` 에 저장
+- `rk dev --host auto`: 다른 기기의 Player 가 접근할 수 있도록 대체 URL 의 localhost 를 이 컴퓨터의 LAN 주소로 바꿈
+- `rk dev --player <런처 id>`: 앱 링크 대신 서버에 연결된 Player 런처에 창을 열도록 요청 (태블릿 등 원격 Player)
+- `rk dev --json --no-open`: 세션만 만들고 종료 (AI 에이전트용). `rk session end <id>` 로 정리합니다.
+
+앱 링크가 열리지 않으면(Player 미설치, 또는 macOS 에서 `tauri dev` 로 실행한 개발용 Player) Player 테스트 탭의 **세션 ID로 열기**에 출력된 세션 id 를 붙여 넣으면 같은 창이 열립니다. Player 런처의 테스트 탭에서 직접 테마·장치·URL 대체를 고르는 방법은 [Player 문서](./player.md)에 있습니다.
 
 ## 배포
 
@@ -117,7 +134,7 @@ rk deploy --all --no-build
 - 테마: `rk theme list|create|update|duplicate|export|import|delete`
 - 태그·애셋: `rk tag …`, `rk asset list|get|create|update|delete` (`rk asset create` 는 옵션 없이 실행하면 마법사), `rk upload <파일> --set <애셋>`, `rk import media sfx <zip>`
 - 시퀀스: `rk sequence get <이벤트> --outline`, `rk sequence edit <이벤트> --ops @ops.json`, `rk sequence set`, `rk sequence validate`
-- 세션: `rk session create|start|pause|resume|end|phase|trigger|hint|timer|command|logs|summary|delete`
+- 세션: `rk session create|start|pause|resume|end|phase|trigger|hint|timer|command|logs|summary|delete` · 개발 서버와 Player 로 바로 테스트: `rk dev`
 - 가상 장치: `rk device connect --session <id>` (연결을 유지하며 받은 커맨드를 출력) · `rk device trigger <코드> <이벤트>`
 
 애셋은 uuid 대신 `key`(테마 안에서 유일한 슬러그)로 참조할 수 있습니다. 입력 형식은 `rk describe commands`, `rk describe asset <종류>` 로 확인할 수 있고, 전체 명령 설명은 `rk <명령> --help` 와 [CLI 레퍼런스(영문)](../../skills/roomkit/references/cli.md)에 있습니다.

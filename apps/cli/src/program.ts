@@ -10,6 +10,7 @@ import * as tag from './commands/tag.js';
 import * as asset from './commands/asset.js';
 import * as files from './commands/files.js';
 import * as deploy from './commands/deploy.js';
+import * as dev from './commands/dev.js';
 import * as sequence from './commands/sequence.js';
 import * as session from './commands/session.js';
 import * as device from './commands/device.js';
@@ -20,7 +21,7 @@ import * as init from './commands/init.js';
 import * as skill from './commands/skill.js';
 import * as maintenance from './commands/maintenance.js';
 
-const MODULES: CommandModule[] = [auth, theme, tag, asset, files, deploy, sequence, session, device, importCmd, docs, describe, init, skill, maintenance];
+const MODULES: CommandModule[] = [auth, theme, tag, asset, files, deploy, dev, sequence, session, device, importCmd, docs, describe, init, skill, maintenance];
 
 /** Commands that must not trigger the background update check. */
 const NO_UPDATE_CHECK = new Set(['version', 'upgrade', 'help']);

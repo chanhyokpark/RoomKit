@@ -12,8 +12,10 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import logo from '../assets/logo.svg';
+	import { listenForAppLinks } from '../deep-link';
 	import { auth } from '../stores/auth.svelte';
 	import { config } from '../stores/config.svelte';
+	import { launch } from '../stores/launch.svelte';
 	import { player } from '../stores/player.svelte';
 	import { testSetup } from '../stores/test-setup.svelte';
 	import { isMobile } from '../tauri';
@@ -28,6 +30,8 @@
 	let tab = $state<'prod' | 'test'>('prod');
 	let loginId = $state('');
 	let loginPassword = $state('');
+	/** Test tab: paste a session id (from `rk dev --no-open` or Studio) to open its windows. */
+	let openSessionId = $state('');
 
 	// Settings persist to disk but the launcher still opens on every start —
 	// the operator explicitly opens device windows from here.
@@ -52,7 +56,20 @@
 				if (ok) void testSetup.loadThemes();
 			});
 		}
-		return () => player.disconnect();
+		// App links (roomkit-player://…) from Studio / `rk dev`: the launch
+		// store opens the session's windows, asking first when the link names
+		// another server or no admin login is available.
+		let unlisten: (() => void) | null = null;
+		void listenForAppLinks((link) => launch.handle(link)).then((stop) => (unlisten = stop));
+		return () => {
+			unlisten?.();
+			player.disconnect();
+		};
+	});
+
+	// A pending link that only waits for a login is served right after one.
+	$effect(() => {
+		if (auth.loggedIn && launch.pending && !launch.pending.serverMismatch) void launch.resume();
 	});
 
 	const statusLabel = $derived(
@@ -85,6 +102,11 @@
 			loginPassword = '';
 			void testSetup.loadThemes();
 		}
+	}
+
+	async function submitOpenSession(event: SubmitEvent) {
+		event.preventDefault();
+		if (await launch.openSession(openSessionId)) openSessionId = '';
 	}
 
 	function toggleDevice(deviceId: string, checked: boolean) {
@@ -245,6 +267,30 @@
 				로그아웃
 			</Button>
 		</div>
+
+		<form class="flex flex-col gap-1.5" onsubmit={submitOpenSession}>
+			<Label for="open-session-id" class="text-sm font-medium">세션 ID로 열기</Label>
+			<div class="flex gap-2">
+				<Input
+					id="open-session-id"
+					class="min-w-0 flex-1 font-mono"
+					placeholder="rk dev / Studio 가 만든 테스트 세션 id"
+					bind:value={openSessionId}
+					disabled={launch.status === 'opening'}
+				/>
+				<Button type="submit" variant="outline" disabled={!openSessionId.trim() || launch.status === 'opening'}>
+					{#if launch.status === 'opening'}<Spinner data-icon="inline-start" />{/if}
+					열기
+				</Button>
+			</div>
+			<p class="text-xs text-muted-foreground">
+				이미 만들어진 테스트 세션의 장치 창과 디버그 창을 엽니다. 앱 링크
+				(<code>roomkit-player://</code>)가 동작하지 않을 때 사용하세요.
+			</p>
+			{#if launch.status === 'error' && !launch.pending}
+				<p class="text-xs text-destructive">{launch.error}</p>
+			{/if}
+		</form>
 
 		<Field.Field>
 			<Field.FieldLabel>테마</Field.FieldLabel>
@@ -420,6 +466,55 @@
 			<Input id="player-name" bind:value={config.playerName} oninput={persistAndReconnect} />
 		</Field.Field>
 	</Field.FieldGroup>
+
+	{#if launch.pending}
+		<Alert.Root>
+			<Alert.Title>앱 링크</Alert.Title>
+			<Alert.Description class="flex flex-col gap-2">
+				{#if launch.pending.serverMismatch}
+					<span>
+						링크가 다른 서버를 가리킵니다: <code class="font-mono">{launch.pending.link.server}</code>.
+						서버 URL을 바꾸고 계속할까요?
+					</span>
+					<div class="flex gap-2">
+						<Button size="sm" onclick={() => void launch.accept()}>서버 전환 후 열기</Button>
+						<Button size="sm" variant="outline" onclick={() => launch.dismiss()}>무시</Button>
+					</div>
+				{:else if launch.pending.link.action === 'test'}
+					<span>
+						테스트 세션 <code class="font-mono">{launch.pending.link.sessionId.slice(0, 8)}…</code>
+						을 열려면 관리자 로그인이 필요합니다.
+						{#if mobile}
+							설정에 저장된 관리자 계정이 없습니다.
+						{:else}
+							테스트 탭에서 로그인하면 바로 열립니다.
+						{/if}
+					</span>
+					<div class="flex gap-2">
+						{#if !mobile}
+							<Button size="sm" onclick={() => (tab = 'test')}>테스트 탭으로</Button>
+						{/if}
+						<Button size="sm" variant="outline" onclick={() => launch.dismiss()}>무시</Button>
+					</div>
+				{/if}
+			</Alert.Description>
+		</Alert.Root>
+	{:else if launch.status === 'error' && launch.error}
+		<Alert.Root variant="destructive">
+			<Alert.Title>앱 링크</Alert.Title>
+			<Alert.Description class="flex items-center justify-between gap-2">
+				<span>{launch.error}</span>
+				<Button size="sm" variant="outline" onclick={() => launch.dismiss()}>닫기</Button>
+			</Alert.Description>
+		</Alert.Root>
+	{:else if launch.status === 'done' && launch.lastSessionId}
+		<Alert.Root>
+			<Alert.Description>
+				앱 링크로 테스트 세션 <code class="font-mono">{launch.lastSessionId.slice(0, 8)}…</code>
+				의 창을 열었습니다.
+			</Alert.Description>
+		</Alert.Root>
+	{/if}
 
 	{#if mobile}
 		<Alert.Root>

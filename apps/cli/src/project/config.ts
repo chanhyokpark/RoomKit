@@ -9,6 +9,15 @@ export const AI_TOOL_IDS = ['claude', 'codex', 'cursor', 'gemini', 'copilot', 'a
 export const AiToolSchema = z.enum(AI_TOOL_IDS);
 export type AiTool = z.infer<typeof AiToolSchema>;
 
+/** Local development server of a website entry, used by `rk dev`. */
+export const WebsiteDevSchema = z.object({
+  /** Shell command run in `dir` to start the dev server; null = assume it is already running. */
+  command: z.string().nullable().optional(),
+  /** Dev server origin the website asset is redirected to during `rk dev` sessions. */
+  url: z.string().url(),
+});
+export type WebsiteDev = z.infer<typeof WebsiteDevSchema>;
+
 export const WebsiteEntrySchema = z.object({
   /** Short handle used by `rk deploy <name>`. */
   name: z.string().min(1),
@@ -22,6 +31,8 @@ export const WebsiteEntrySchema = z.object({
   build: z.string().nullable().optional(),
   /** Build output directory relative to `dir`. */
   dist: z.string().min(1),
+  /** Dev server for `rk dev` (absent = this entry is deploy-only). */
+  dev: WebsiteDevSchema.optional(),
 });
 export type WebsiteEntry = z.infer<typeof WebsiteEntrySchema>;
 
@@ -33,6 +44,13 @@ export const RoomkitConfigSchema = z
     server: z.string().optional(),
     theme: z.object({ id: z.uuid(), name: z.string() }).optional(),
     websites: z.array(WebsiteEntrySchema).default([]),
+    /** `rk dev` defaults. */
+    test: z
+      .object({
+        /** Device assets (uuid/key/code/name) whose stage windows a dev session opens; empty = auto. */
+        devices: z.array(z.string().min(1)).default([]),
+      })
+      .optional(),
     ai: z.object({ tools: z.array(AiToolSchema).default([]) }).optional(),
   })
   .passthrough();
@@ -94,13 +112,14 @@ export function emptyConfig(): RoomkitConfig {
 
 /** Writes roomkit.json, keeping a stable key order for readable diffs. */
 export function saveProject(root: string, config: RoomkitConfig): ProjectHandle {
-  const { $schema, version, server, theme, websites, ai, ...rest } = config;
+  const { $schema, version, server, theme, websites, test, ai, ...rest } = config;
   const ordered = {
     ...($schema && { $schema }),
     version,
     ...(server && { server }),
     ...(theme && { theme }),
     websites,
+    ...(test && { test }),
     ...(ai && { ai }),
     ...rest,
   };

@@ -65,9 +65,11 @@ Lives at the project root (committed; contains no secrets). Found by walking up 
       "assetId": "<uuid>",
       "assetKey": "main",
       "build": "pnpm build",
-      "dist": "dist"
+      "dist": "dist",
+      "dev": { "command": "pnpm dev", "url": "http://localhost:5173" }
     }
   ],
+  "test": { "devices": ["screen"] },
   "ai": { "tools": ["claude", "codex"] }
 }
 ```
@@ -75,9 +77,11 @@ Lives at the project root (committed; contains no secrets). Found by walking up 
 - `server`: the server the theme id belongs to. A different login target produces a warning.
 - `theme`: the current theme for every theme-scoped command (`rk theme use` writes it).
 - `websites[]`: deploy targets. `dir` is relative to the file (`.` for a single-package project, `apps/site` in a monorepo); `build` runs in `dir` (`null` = no build); `dist` is relative to `dir` and must contain `index.html` at its root.
+- `websites[].dev` (optional): the entry's local dev server for `rk dev` — `command` runs in `dir` (`null` = assume it is already running) and `url` is the origin the website asset is redirected to during the dev session. `rk init` writes the template default (`pnpm dev`, port 5173); change `url` when the dev server uses another port.
+- `test.devices` (optional): device assets (uuid/key/code/name) whose stage windows `rk dev` opens. Empty/absent = devices whose starting webpage is one of the dev websites, else a prompt (TTY) or every device.
 - `ai.tools`: which AI tools `rk skill install` targets (`claude`, `codex`, `cursor`, `gemini`, `copilot`, `agents`).
 
-## Projects: `init`, `deploy`, `skill`
+## Projects: `init`, `dev`, `deploy`, `skill`
 
 ### `rk init`
 
@@ -126,6 +130,26 @@ rk deploy --dir . --asset main --dist dist [--build-command "pnpm build"] [--sav
 ```
 
 Per entry: run `build` in `dir` → zip `dist` (must contain `index.html`; `.DS_Store`/`__MACOSX` skipped) → `POST /api/themes/:id/imports/site` → `PATCH` the website asset to `{mode:"hosted", sitePrefix}`. The site is served at `{server}/api/sites/{assetId}/` (stable URL; the previous upload stays in storage unreferenced). JSON output: `{deployed:[{name, assetId, url, fileCount}], failed:[{name, error}]}`; exit 1 when any entry failed.
+
+### `rk dev`
+
+```sh
+rk dev                       # every website with a `dev` block
+rk dev main --devices screen,console --save
+rk dev --host auto           # a Player on another machine (LAN address in the overrides)
+rk dev --player <launcherId> # windows opened by a connected Player launcher instead of the app link
+rk dev --json --no-open      # create the session and exit; prints session, link, codes
+```
+
+The dev-time counterpart of `rk deploy`: start the website dev server(s), create a test session whose `urlOverrides` point the website assets at them, and open the session in the Player app on this computer through the `roomkit-player://test?server=…&session=…` app link (Player fetches the session, opens one stage window per device code, and its debug window). Steps:
+
+1. Websites: the named entries, or every entry with `dev`. Each `dev.url` is probed; a server that is down is started with `dev.command` in `dir` (skipped with `--no-dev-server`, `--detach`, `--json`, or `command: null` — then a warning is printed) and awaited up to `--wait-timeout` seconds.
+2. Devices: `--all-devices`, `--devices <refs>`, `roomkit.json` `test.devices`, else devices whose `startWebsite` is a dev website, else a multiselect (TTY) / all devices. `--save` stores `--devices` into `test.devices`.
+3. Session: `POST /sessions` with `mode: "test"`, `rk-…` codes minted for the chosen devices, and `urlOverrides` (`--host <ip|auto>` rewrites `localhost` in them so another machine's Player can reach the dev server). With `--player <id>` the server mints the codes and pushes `test:start` to that launcher instead. `--start` starts the session immediately; by default it is started from the debug window.
+4. App link: opened with the OS handler unless `--no-open`/`--player`. If nothing opens (Player not installed, or a `tauri dev` build on macOS, which cannot register the scheme), paste the session id into Player's test tab "세션 ID로 열기".
+5. Foreground (default): streams the session log until Ctrl-C, which ends the session and stops the dev servers it started; also exits when the session ends elsewhere. `--detach` (implied by `--json`) returns right after step 4 — end the session with `rk session end <id>`.
+
+JSON output: `{session, link, opened, started, player, devices:[{deviceId, deviceName, displayName, code}], urlOverrides:[{websiteId, website, url}], devServers:[{name, url, started}]}`.
 
 ### `rk skill`
 
@@ -213,7 +237,7 @@ rk session list [--active] [--all-themes]  ·  rk session get <id>  ·  rk sessi
 rk session logs <id> [--after <logId>] [--limit 500] [--follow --interval 1000]
 ```
 
-`create` in test mode without `--device-code`/`--player` mints an `rk-…` code per device asset and returns `generatedDeviceCodes`.
+`create` in test mode without `--device-code`/`--player` mints an `rk-…` code per device asset and returns `generatedDeviceCodes`. Any test session can be opened in the Player app on the current machine with the app link `roomkit-player://test?server=<origin>&session=<id>` (`playerTestLink()` in `@roomkit/shared`; `rk dev` does this automatically, and Studio shows an "open in Player" button for test sessions).
 
 ```sh
 rk device connect --session <id> | --code <c>... [--for 5m] [--until-end]   # foreground; streams received commands

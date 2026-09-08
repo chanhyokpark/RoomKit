@@ -186,7 +186,15 @@ export async function runInit(ctx: CliContext, flags: InitFlags) {
   config = { ...config, server: ctx.state.apiUrl ?? config.server, theme: { id: theme.id, name: theme.name }, ...(mergedTools.length && { ai: { tools: mergedTools } }) };
   const websiteName = asset ? asset.key ?? slug(asset.name) : projectName;
   if (asset) {
-    config = upsertWebsite(config, { name: websiteName, dir: websiteDir, assetId: asset.id, assetKey: asset.key, build: template.build, dist: template.dist });
+    config = upsertWebsite(config, {
+      name: websiteName,
+      dir: websiteDir,
+      assetId: asset.id,
+      assetKey: asset.key,
+      build: template.build,
+      dist: template.dist,
+      dev: { command: template.dev, url: template.devUrl },
+    });
   }
   const saved = saveProject(projectRoot, config);
   ctx.reloadProject();
@@ -280,7 +288,7 @@ export function register(program: Command, ctx: GetContext): void {
         const steps = [
           rel !== '.' ? `cd ${rel}` : null,
           result.installed ? null : 'pnpm install',
-          `${template.dev}   # 개발 서버 (Player 테스트 탭의 "웹사이트 URL 대체"에 주소 입력)`,
+          result.asset ? `rk dev   # 개발 서버를 띄우고 Player 에서 테스트 세션 열기` : `${template.dev}   # 개발 서버 (Player 테스트 탭의 "웹사이트 URL 대체"에 주소 입력)`,
           result.asset ? `rk deploy ${result.website}   # 빌드 후 호스팅 배포` : 'rk deploy --dir . --asset <ref> --dist ' + template.dist + ' --save',
         ].filter(Boolean);
         if (c.interactive()) {

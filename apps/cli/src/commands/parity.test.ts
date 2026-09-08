@@ -66,7 +66,7 @@ describe('MCP tool parity', () => {
 
   it('also registers the CLI-only commands', () => {
     const { program } = createProgram();
-    for (const path of ['init', 'init ai', 'skill install', 'theme export', 'theme import', 'import media', 'doctor', 'upgrade', 'version', 'logout', 'whoami']) {
+    for (const path of ['init', 'init ai', 'dev', 'skill install', 'theme export', 'theme import', 'import media', 'doctor', 'upgrade', 'version', 'logout', 'whoami']) {
       assert.ok(find(program, path), `missing rk ${path}`);
     }
   });

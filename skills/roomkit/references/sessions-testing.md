@@ -15,7 +15,7 @@ Use the cheapest feedback loop that can prove the behavior:
 1. `rk sequence validate` for schema and reference checks.
 2. A one-off `rk session command` against an active test session.
 3. Virtual devices (`rk device connect` / `rk device trigger`) for complete event routing without Player.
-4. A player-side test session with `urlOverrides` pointing website assets at a local dev server for Helper and visual integration.
+4. A player-side test session with `urlOverrides` pointing website assets at a local dev server for Helper and visual integration (`rk dev` sets this up in one command).
 5. A full test session with Player and deployed sites for actual media timing, iframe behavior, audio, and cache.
 6. Production rehearsal on room hardware.
 
@@ -33,6 +33,11 @@ Virtual devices acknowledge every command immediately. They accurately test targ
 ## Player test sessions
 
 The former in-memory "website test" harness was removed. Its replacement is a real test session launched from Player itself: the launcher's test tab (desktop only, admin login required) selects a theme, a device subset, and per-website URL overrides, then creates the session with `mode: 'test'`, `playerId`, `deviceIds`, and `urlOverrides`. The server pushes a `test:start` request that opens the device windows, and the launcher opens a debug window. The same session shape is available over REST and `rk session create --player <id> --url-override <websiteRef>=<url>`; manual navigation is a one-off `rk session command <id> --command '{"type":"navigate",...}'`.
+
+Two more ways to land in the same windows without touching the test tab:
+
+- **App link.** Player registers the `roomkit-player://` URL scheme. `roomkit-player://test?server=<origin>&session=<id>` makes the launcher fetch the test session, open one stage window per test device code, and open the debug window (mobile: the single webview becomes the first device's stage; no debug window). A link naming a different server than the configured one is confirmed first; an admin login is required (stored credentials are used, otherwise the launcher asks). `roomkit-player://launch?server=<origin>` only starts/focuses Player. Studio shows an "open in Player" button for test sessions it created with manual codes and on the dashboard of any live test session. The launcher's test tab also has a "세션 ID로 열기" box for the same action when the scheme is not registered (a `tauri dev` build on macOS).
+- **`rk dev`.** Reads `websites[].dev` and `test.devices` from `roomkit.json`, starts the dev server(s) if they are down, creates the test session with the URL overrides and `rk-…` codes, opens the app link, and streams the log until Ctrl-C ends the session. `--player <id>` uses the server push instead of the app link (for a Player on another machine; combine with `--host auto` so the overrides use the LAN address). See [cli.md](./cli.md#rk-dev).
 
 `urlOverrides` (test mode only) replace the hosted/external base URL of the referenced website asset at resolution time for navigate and website requests; authored query parameters still append. Point an override at a Vite dev server to exercise Helper hello/claims, messages, test callbacks, subtitle/video delegation, trigger names, and timer requests against the real engine — timer, phases, hints, and answers all behave exactly as in any test session.
 
