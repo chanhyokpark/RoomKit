@@ -2,6 +2,8 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import PhoneIcon from '@lucide/svelte/icons/phone';
+	import PhoneOffIcon from '@lucide/svelte/icons/phone-off';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import RouterIcon from '@lucide/svelte/icons/router';
 	import SquareIcon from '@lucide/svelte/icons/square';
@@ -65,6 +67,21 @@
 	}
 
 	const enlarged = $derived(enlargedDeviceId ? model.screenshotOf(enlargedDeviceId) : null);
+
+	// Voice calls: hosts without call support (player debug window) and test
+	// sessions show no call controls at all.
+	const callsEnabled = $derived(
+		!!actions.startCall &&
+			model.session?.mode === 'production' &&
+			model.session.state !== 'ended'
+	);
+	const activeCall = $derived(model.call ?? null);
+	const callStatusLabels = { requested: '통화 요청', connecting: '연결 중', connected: '통화 중' };
+
+	function canCall(deviceId: string): boolean {
+		const status = model.statusOf(deviceId);
+		return !!status?.online && status.helperVersion !== undefined && !activeCall;
+	}
 
 	const allDevices = $derived(assetsOf(model.assets, 'device'));
 	const websites = $derived(assetsOf(model.assets, 'website'));
@@ -340,6 +357,67 @@
 								{ago(screenshot.capturedAt)}
 							</span>
 						</button>
+					</div>
+				{/if}
+
+				{#if callsEnabled}
+					<div class="flex items-center gap-2 border-t px-3 py-1.5 text-xs">
+						{#if activeCall?.deviceId === device.id}
+							<Badge variant={activeCall.status === 'connected' ? 'default' : 'secondary'}>
+								{callStatusLabels[activeCall.status]}
+							</Badge>
+							{#if activeCall.status === 'requested'}
+								<Button
+									size="sm"
+									class="ml-auto"
+									disabled={busyKeys.has(`call:${device.id}`) || !actions.acceptCall}
+									onclick={() => {
+										const callId = activeCall.callId;
+										void run(`call:${device.id}`, () => actions.acceptCall!(callId));
+									}}
+								>
+									<PhoneIcon data-icon="inline-start" />수락
+								</Button>
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={busyKeys.has(`call:${device.id}`) || !actions.declineCall}
+									onclick={() => {
+										const callId = activeCall.callId;
+										void run(`call:${device.id}`, () => actions.declineCall!(callId));
+									}}
+								>
+									<PhoneOffIcon data-icon="inline-start" />거절
+								</Button>
+							{:else if model.ownsCall}
+								<Button
+									size="sm"
+									variant="destructive"
+									class="ml-auto"
+									disabled={busyKeys.has(`call:${device.id}`) || !actions.endCall}
+									onclick={() => run(`call:${device.id}`, () => actions.endCall!())}
+								>
+									<PhoneOffIcon data-icon="inline-start" />종료
+								</Button>
+							{:else}
+								<span class="ml-auto text-muted-foreground">다른 운영자가 통화 중</span>
+							{/if}
+						{:else}
+							<span class="text-muted-foreground">
+								{status?.helperVersion === undefined
+									? 'Helper 웹사이트에서만 통화할 수 있습니다.'
+									: '음성 통화'}
+							</span>
+							<Button
+								size="sm"
+								variant="outline"
+								class="ml-auto"
+								disabled={!canCall(device.id) || busyKeys.has(`call:${device.id}`)}
+								onclick={() => run(`call:${device.id}`, () => actions.startCall!(device.id))}
+							>
+								<PhoneIcon data-icon="inline-start" />통화
+							</Button>
+						{/if}
 					</div>
 				{/if}
 

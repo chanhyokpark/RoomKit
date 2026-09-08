@@ -3,6 +3,7 @@ import type { WirePlayCommand, WireStop } from '@roomkit/shared';
 import { stage } from '../stores/stage.svelte';
 import { BgmChannel } from './bgm';
 import { DialogueChannel } from './dialogue';
+import { setAudioMuted } from './mute';
 import { SfxChannel } from './sfx';
 import { VideoChannel } from './video';
 
@@ -134,6 +135,16 @@ export class PlaybackEngine {
 				else this.dialogue.stop(cmd.playerId);
 				break;
 		}
+	}
+
+	/**
+	 * Voice call mute: silences every channel's audio (running and future
+	 * tracks) and the stage video. Playback itself continues — acks, ducking
+	 * and sequences are unaffected, only the speaker goes quiet.
+	 */
+	setMuted(muted: boolean): void {
+		setAudioMuted(muted);
+		stage.callMuted = muted;
 	}
 
 	/** Wire reset: device returns to its initial (idle black) state. */

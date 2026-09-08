@@ -32,9 +32,13 @@ export async function createSocketTestApp(): Promise<{
   return { app, url: await app.getUrl() };
 }
 
-export function connectDevice(url: string, deviceCode: string): Socket {
+export function connectDevice(
+  url: string,
+  deviceCode: string,
+  auth: Record<string, unknown> = {},
+): Socket {
   return io(`${url}${DEVICE_NAMESPACE}`, {
-    auth: { deviceCode },
+    auth: { deviceCode, ...auth },
     transports: ['websocket'],
     reconnection: false,
   });

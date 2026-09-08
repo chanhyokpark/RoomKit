@@ -11,6 +11,8 @@ import {
 } from '@nestjs/websockets';
 import {
   AckSchema,
+  CallCancelSchema,
+  CallStatusReportSchema,
   DEVICE_NAMESPACE,
   DeviceAuthSchema,
   DeviceDataSchema,
@@ -21,6 +23,7 @@ import {
   HintSubmitSchema,
   PlaybackProgressSchema,
   TriggerSchema,
+  type CallRequestAck,
   type DeviceAssetManifest,
   type HintShow,
   type PlaybackProgress,
@@ -33,6 +36,7 @@ import { DeviceAssetsService } from '../assets/device-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { AdminGateway } from './admin.gateway';
+import { CallService } from './call.service';
 import {
   ConnectionRegistry,
   type AttachedDevice,
@@ -78,7 +82,14 @@ export class DeviceGateway
     private readonly registry: ConnectionRegistry,
     private readonly deviceAssets: DeviceAssetsService,
     private readonly admin: AdminGateway,
-  ) {}
+    private readonly calls: CallService,
+  ) {
+    calls.onDeviceState((sessionId, deviceId, state) =>
+      this.server
+        .to(deviceRoom(sessionId, deviceId))
+        .emit(DeviceEvents.callState, state),
+    );
+  }
 
   afterInit(): void {
     this.server.use((socket, next) => {
@@ -172,6 +183,7 @@ export class DeviceGateway
         socket,
       );
       if (wentOffline) {
+        this.calls.deviceOffline(attach.sessionId, attach.deviceId);
         this.runtime.deviceStatusChanged(
           attach.sessionId,
           attach.deviceId,
@@ -366,6 +378,44 @@ export class DeviceGateway
     };
     this.registry.setScreenshot(screenshot);
     this.admin.broadcastDeviceScreenshot(screenshot);
+  }
+
+  // ── voice calls ──────────────────────────────────────────────────────────
+
+  /** Returned value = socket.io ack (`CallRequestAck`). */
+  @SubscribeMessage(DeviceEvents.callRequest)
+  onCallRequest(@ConnectedSocket() socket: DeviceSocket): CallRequestAck {
+    const attach = socket.data.attach;
+    if (!attach) return { ok: false, reason: 'session_not_live' };
+    return this.calls.request(
+      attach.sessionId,
+      attach.deviceId,
+      attach.deviceName,
+    );
+  }
+
+  @SubscribeMessage(DeviceEvents.callCancel)
+  onCallCancel(
+    @ConnectedSocket() socket: DeviceSocket,
+    @MessageBody() body: unknown,
+  ): void {
+    const attach = socket.data.attach;
+    if (!attach) return;
+    const parsed = CallCancelSchema.safeParse(body);
+    if (!parsed.success) return;
+    this.calls.cancel(attach.sessionId, attach.deviceId, parsed.data.callId);
+  }
+
+  @SubscribeMessage(DeviceEvents.callStatus)
+  onCallStatus(
+    @ConnectedSocket() socket: DeviceSocket,
+    @MessageBody() body: unknown,
+  ): void {
+    const attach = socket.data.attach;
+    if (!attach) return;
+    const parsed = CallStatusReportSchema.safeParse(body);
+    if (!parsed.success) return;
+    this.calls.report(attach.sessionId, attach.deviceId, parsed.data);
   }
 
   @SubscribeMessage(DeviceEvents.progress)

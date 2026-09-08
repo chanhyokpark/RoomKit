@@ -69,6 +69,7 @@ Reset should stop all media, clear subtitles/overlays, clear the durable state (
 - `submitHint` and `requestHintStep` drive hint UI.
 - `getRemainingTime({ resync?, timeoutMs? })` computes from the last state or requests a fresh snapshot.
 - `fetchAssetManifest()` returns role-scoped media and presigned URLs for pre-caching.
+- `requestCall()` / `cancelCall()` / `reportCallStatus()` and the `callState` event are Player-internal voice-call plumbing (see [API protocol](./api-protocol.md#voice-calls)); the server only accepts them from a Player window with a Helper website, so standalone devices never use them.
 
 Presigned manifest URLs expire; refresh before long downloads. File keys are immutable, so cache presence by key is sufficient and entries removed from the latest manifest may be pruned.
 
@@ -115,6 +116,8 @@ interface RoomKitClientEvents {
   status: [ConnectionStatus, string?];           // detail = connect_error message when present
   hint: [HintShow];                              // reply to submitHint/requestHintStep, or operator push
   hintError: [HintError];
+  /** Player-internal voice-call control (connecting / ended). */
+  callState: [DeviceCallState];
   hintCode: [WireHintCode];                      // show (code set) / hide (code null) the entry-code overlay
   testCallback: [WireTestCallback, DoneFn];      // debug window asked to run a registered test callback
 }
@@ -140,6 +143,11 @@ class RoomKitClient {
   sendProgress(commandId: string, lineIndex: number, waiting?: boolean): void;
   /** Player-internal: relay the embedded website's helper version/names. */
   reportHelperInfo(version: string | null, extras?: { messages?: string[]; testCallbacks?: string[]; states?: string[] }): void;
+  /** Player-internal voice calls. requestCall rejects with the refusal reason
+   *  ('busy', 'test_session', 'no_helper', ...), 'not connected' or 'call request timed out'. */
+  requestCall(timeoutMs?: number): Promise<{ callId: string }>;
+  cancelCall(callId: string): void;
+  reportCallStatus(callId: string, status: 'connected' | 'failed', reason?: string): void;
   on<K extends keyof RoomKitClientEvents>(event: K, listener: (...args: RoomKitClientEvents[K]) => void): this;
   off<K extends keyof RoomKitClientEvents>(event: K, listener: (...args: RoomKitClientEvents[K]) => void): this;
 }

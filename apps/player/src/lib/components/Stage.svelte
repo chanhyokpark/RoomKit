@@ -5,8 +5,10 @@
 	import { startKiosk } from '../kiosk';
 	import { startScreenshotReporter } from '../screenshot';
 	import { config } from '../stores/config.svelte';
+	import { call } from '../stores/call.svelte';
 	import { connection } from '../stores/connection.svelte';
 	import { stage } from '../stores/stage.svelte';
+	import CallOverlay from './CallOverlay.svelte';
 	import ConnectionBadge from './ConnectionBadge.svelte';
 	import HintCodeOverlay from './HintCodeOverlay.svelte';
 	import PlaceholderOverlay from './PlaceholderOverlay.svelte';
@@ -54,6 +56,8 @@
 		if (!device) return;
 		const client = connection.start(config.serverUrl, device.deviceCode, device.label);
 		engine = new PlaybackEngine(client);
+		// Operator voice calls: overlay + mic + mute live for this window.
+		call.attach(client, engine);
 		// Pre-download this device's media; re-sync on every (re)welcome.
 		void cache.init().then(() => {
 			client.on('welcome', () => void cache.sync(client));
@@ -67,6 +71,7 @@
 
 	onDestroy(() => {
 		stopScreenshots?.();
+		call.detach();
 		engine?.resetAll();
 		connection.stop();
 	});
@@ -92,6 +97,7 @@
 					style={videoFrameStyle}
 					src={stage.videoSrc}
 					autoplay
+					muted={stage.callMuted}
 					oncontextmenu={(e) => e.preventDefault()}
 					onloadedmetadata={(e) => {
 						// Reconnect replay: resume where the original playback would be.
@@ -110,6 +116,7 @@
 			{/if}
 			<SubtitleOverlay />
 			<HintCodeOverlay />
+			<CallOverlay />
 			<ConnectionBadge />
 		</div>
 	</div>

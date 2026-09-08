@@ -13,6 +13,7 @@ import type {
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import type { RuntimeTransport } from '../runtime/runtime-transport';
 import { AdminGateway } from './admin.gateway';
+import { CallService } from './call.service';
 import { ConnectionRegistry } from './connection-registry';
 import { DeviceGateway } from './device.gateway';
 
@@ -24,6 +25,7 @@ export class RuntimeTransportAdapter implements RuntimeTransport, OnModuleInit {
     private readonly adminGateway: AdminGateway,
     private readonly runtime: SessionRuntimeService,
     private readonly registry: ConnectionRegistry,
+    private readonly calls: CallService,
   ) {}
 
   onModuleInit(): void {
@@ -61,6 +63,8 @@ export class RuntimeTransportAdapter implements RuntimeTransport, OnModuleInit {
     // Socket.io writes packets in order, so clients see the ended state before
     // the disconnect. Their reconnect re-auths into the lobby/next session.
     if (state.state === 'ended') {
+      // The device still hears `call:state ended` before its socket goes.
+      this.calls.sessionEnded(state.sessionId);
       this.deviceGateway.endSession(state.sessionId);
     }
   }

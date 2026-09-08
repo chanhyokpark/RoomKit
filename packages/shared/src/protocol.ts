@@ -63,6 +63,14 @@ export const DeviceEvents = {
    * and relays it to /admin as `device:screenshot`.
    */
   screenshot: 'device:screenshot',
+  /** S→C: voice call control for this device (`DeviceCallState`). */
+  callState: 'call:state',
+  /** C→S: the site asked for a call; socket.io ack = `CallRequestAck`. */
+  callRequest: 'call:request',
+  /** C→S: withdraw a pending call request (`CallCancel`). */
+  callCancel: 'call:cancel',
+  /** C→S: media outcome of a connecting call (`CallStatusReport`). */
+  callStatus: 'call:status',
 } as const;
 
 /** Events on the /admin namespace (studio). */
@@ -82,6 +90,18 @@ export const AdminEvents = {
   notification: 'notification',
   /** A theme's assets or tags changed via REST — refetch to stay in sync. */
   themeAssets: 'theme:assets',
+  /** A session's voice call changed (`AdminCallState`); also in the connect dump. */
+  callState: 'call:state',
+  /** C→S with ack (`CallConfig`): ICE servers for the operator's Peer. */
+  callConfig: 'call:config',
+  /** C→S with ack (`CallActionAck`): start a call to a device (`CallStartInput`). */
+  callStart: 'call:start',
+  /** C→S with ack: accept a device's request (`CallAcceptInput`). */
+  callAccept: 'call:accept',
+  /** C→S with ack: decline a device's request (`CallDeclineInput`). */
+  callDecline: 'call:decline',
+  /** C→S with ack: end the session's call — owner only (`CallEndInput`). */
+  callEnd: 'call:end',
 } as const;
 
 /** /admin `theme:assets` payload. */

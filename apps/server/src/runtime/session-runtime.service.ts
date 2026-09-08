@@ -16,6 +16,7 @@ import type {
   HintNext,
   HintShow,
   HintSubmit,
+  JsonValue,
   PlaybackProgress,
   PushHintInput,
   SessionLogEntry,
@@ -255,6 +256,17 @@ export class SessionRuntimeService
     this.engines
       .get(sessionId)
       ?.deviceStatusChanged(deviceId, deviceName, online);
+  }
+
+  /** Append to a live session's log (no-op once the session is gone). */
+  log(
+    sessionId: string,
+    level: 'info' | 'warn' | 'error',
+    kind: SessionLogEntry['kind'],
+    message: string,
+    data?: JsonValue,
+  ): void {
+    void this.engines.get(sessionId)?.appendLog(level, kind, message, data);
   }
 
   /** Live state for one session (null when not live). */

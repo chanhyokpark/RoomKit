@@ -2,6 +2,8 @@ import type { DoneFn, RoomKitClient } from '@roomkit/client';
 import {
 	HelperToPlayerSchema,
 	PLAYER_SOURCE,
+	type HelperCallRequest,
+	type HelperCallState,
 	type HelperHaptics,
 	type HelperTimerGet,
 	type HintError,
@@ -15,6 +17,7 @@ import {
 	type WireMessage,
 	type WireTestCallback
 } from '@roomkit/shared';
+import { call } from '../stores/call.svelte';
 import { connection } from '../stores/connection.svelte';
 import { runHaptics } from '../haptics';
 import { vlog } from '../log';
@@ -205,6 +208,11 @@ export class HelperBridge {
 		this.send({ source: PLAYER_SOURCE, type: 'state', state });
 	}
 
+	/** The player's voice-call state; sites mute themselves on connecting/connected. */
+	postCallState(state: HelperCallState): void {
+		this.send({ source: PLAYER_SOURCE, type: 'call:state', state });
+	}
+
 	postVideoPlay(video: Omit<PlayerVideoPlay, 'source' | 'type'>): void {
 		this.send({ source: PLAYER_SOURCE, type: 'video:play', ...video });
 	}
@@ -250,6 +258,7 @@ export class HelperBridge {
 				// Likewise the current durable state — a reloaded page must render
 				// the same display (the helper dedupes against WebsiteFrame's post).
 				this.post({ source: PLAYER_SOURCE, type: 'state', state: stage.state });
+				this.post({ source: PLAYER_SOURCE, type: 'call:state', state: call.state });
 				for (const queued of this.buffered.splice(0)) this.post(queued);
 				return;
 			}
@@ -282,6 +291,12 @@ export class HelperBridge {
 				return;
 			case 'haptics':
 				void this.answerHaptics(msg);
+				return;
+			case 'call:request':
+				void this.answerCallRequest(msg);
+				return;
+			case 'call:cancel':
+				call.cancel();
 				return;
 			case 'video:ended':
 				stage.videoDelegate?.ended(msg.commandId);
@@ -316,6 +331,24 @@ export class HelperBridge {
 			requestId: msg.requestId,
 			remainingMs
 		});
+	}
+
+	/** Never rejects: a refusal is relayed as ok:false with its reason. */
+	private async answerCallRequest(msg: HelperCallRequest): Promise<void> {
+		const reply = (ok: boolean, error?: string) =>
+			this.send({
+				source: PLAYER_SOURCE,
+				type: 'call:result',
+				requestId: msg.requestId,
+				ok,
+				...(error === undefined ? {} : { error })
+			});
+		try {
+			await call.request();
+			reply(true);
+		} catch (err) {
+			reply(false, err instanceof Error ? err.message : String(err));
+		}
 	}
 
 	/** Never rejects: a plugin failure is relayed as ok:false with its message. */

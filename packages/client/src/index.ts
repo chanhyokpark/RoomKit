@@ -9,8 +9,10 @@ export {
 export { testCodeKey, type CodeStorage } from './storage.js';
 export { CLIENT_VERSION } from './version.js';
 export type {
+  CallErrorReason,
   DeviceAssetEntry,
   DeviceAssetManifest,
+  DeviceCallState,
   HintError,
   HintShow,
   PlaybackProgress,

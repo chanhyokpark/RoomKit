@@ -1,3 +1,4 @@
+import { IceServerSchema } from '@roomkit/shared';
 import { z } from 'zod';
 
 const EnvSchema = z.object({
@@ -27,6 +28,28 @@ const EnvSchema = z.object({
    * hosted-website navigation. Defaults to http://localhost:{PORT}.
    */
   PUBLIC_SERVER_URL: z.url().optional(),
+  /**
+   * ICE servers for operator ↔ hintphone voice calls, as a JSON array of
+   * RTCIceServer objects (`[{"urls":"turn:...","username":"...","credential":"..."}]`).
+   * Unset = PeerJS defaults (Google STUN), which is enough on one LAN; add a
+   * TURN server when devices and operators sit behind different NATs.
+   */
+  CALL_ICE_SERVERS: z
+    .string()
+    .optional()
+    .transform((raw, ctx) => {
+      if (!raw) return null;
+      try {
+        return z.array(IceServerSchema).parse(JSON.parse(raw));
+      } catch {
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            'CALL_ICE_SERVERS must be a JSON array of RTCIceServer objects',
+        });
+        return z.NEVER;
+      }
+    }),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

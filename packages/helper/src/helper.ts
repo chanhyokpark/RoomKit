@@ -1,5 +1,8 @@
 import type {
   HapticsRequest,
+  HelperCallCancel,
+  HelperCallRequest,
+  HelperCallState,
   HelperHaptics,
   HelperHello,
   HelperHintNext,
@@ -38,6 +41,7 @@ const HELPER_SOURCE = 'roomkit-helper';
 const PLAYER_SOURCE = 'roomkit-player';
 const TIMER_TIMEOUT_MS = 10_000;
 const HAPTICS_TIMEOUT_MS = 10_000;
+const CALL_REQUEST_TIMEOUT_MS = 10_000;
 /** Event runs can be long (waits, videos) — the trigger wait is generous. */
 const TRIGGER_TIMEOUT_MS = 600_000;
 const HELLO_RETRY_MS = 800;
@@ -176,6 +180,34 @@ export interface HapticsApi {
   selectionFeedback(): Promise<void>;
 }
 
+/**
+ * The player's voice-call state (operator ↔ this device, audio only):
+ * - 'idle': no call.
+ * - 'requesting': `call.request()` succeeded; waiting for an operator.
+ * - 'connecting' / 'connected': a call is active — the player covers the
+ *   page with its call screen and mutes its own audio; mute yours too.
+ */
+export type CallState = HelperCallState;
+
+/**
+ * Voice calls with the operators. Only available when the page runs inside
+ * the Player (the Player owns the microphone and the call screen) in a
+ * production session.
+ */
+export interface CallApi {
+  /**
+   * Ask the operators for a call. Resolves once the server registered the
+   * request (`callState` becomes 'requesting'); the call itself starts when
+   * an operator accepts. Rejects with the refusal reason as the message:
+   * 'busy' (a call is already active), 'test_session', 'no_helper',
+   * 'device_offline', 'session_not_live', 'device_outdated', or
+   * 'call request timed out' when no player answers.
+   */
+  request(): Promise<void>;
+  /** Withdraw a pending request (no-op once an operator accepted). */
+  cancel(): void;
+}
+
 export interface RoomKitHelperEvents extends Record<string, unknown[]> {
   /**
    * Payload of a "send message to device" command, relayed by the player.
@@ -208,6 +240,8 @@ export interface RoomKitHelperEvents extends Record<string, unknown[]> {
    * screen should keep showing.
    */
   state: [StateValue];
+  /** The player's voice-call state changed (see {@link CallState}). */
+  call: [CallState];
 }
 
 /**
@@ -256,6 +290,23 @@ export class RoomKitHelper {
       timeout: ReturnType<typeof setTimeout>;
     }
   >();
+  /** Current voice-call state; 'idle' until the player posts one. */
+  private callStateValue: CallState = 'idle';
+  /** In-flight call requests, keyed by requestId. */
+  private readonly pendingCalls = new Map<
+    string,
+    {
+      resolve: () => void;
+      reject: (err: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
+  /** Voice calls with the operators (see {@link CallApi}). */
+  readonly call: CallApi = {
+    request: () => this.requestCall(),
+    cancel: () =>
+      this.post({ source: HELPER_SOURCE, type: 'call:cancel' } satisfies HelperCallCancel),
+  };
   /** The player device's haptics (see {@link HapticsApi}). */
   readonly haptics: HapticsApi = {
     vibrate: (duration) => this.requestHaptics({ kind: 'vibrate', duration }),
@@ -331,6 +382,11 @@ export class RoomKitHelper {
   /** The device's current durable state (`'default'` when none is active). */
   get state(): StateValue {
     return this.currentState;
+  }
+
+  /** The player's voice-call state ('idle' when there is no call). */
+  get callState(): CallState {
+    return this.callStateValue;
   }
 
   /**
@@ -471,6 +527,23 @@ export class RoomKitHelper {
     });
   }
 
+  private requestCall(): Promise<void> {
+    const id = requestId();
+    const msg: HelperCallRequest = {
+      source: HELPER_SOURCE,
+      type: 'call:request',
+      requestId: id,
+    };
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingCalls.delete(id);
+        reject(new Error('call request timed out'));
+      }, CALL_REQUEST_TIMEOUT_MS);
+      this.pendingCalls.set(id, { resolve, reject, timeout });
+      this.post(msg);
+    });
+  }
+
   private requestHaptics(request: HapticsRequest): Promise<void> {
     const id = requestId();
     const msg: HelperHaptics = {
@@ -539,6 +612,11 @@ export class RoomKitHelper {
       pending.reject(new Error('helper destroyed'));
     }
     this.pendingHaptics.clear();
+    for (const pending of this.pendingCalls.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('helper destroyed'));
+    }
+    this.pendingCalls.clear();
   }
 
   private post(
@@ -552,7 +630,9 @@ export class RoomKitHelper {
       | HelperVideoError
       | HelperMessageDone
       | HelperTestCallbackDone
-      | HelperHaptics,
+      | HelperHaptics
+      | HelperCallRequest
+      | HelperCallCancel,
   ): void {
     // '*': the player's (tauri) origin is unknowable from inside the iframe;
     // being embedded by the player is the trust anchor (see shared/helper.ts).
@@ -657,6 +737,34 @@ export class RoomKitHelper {
           pending.reject(
             new Error(typeof msg.error === 'string' ? msg.error : 'haptics failed'),
           );
+        return;
+      }
+      case 'call:result': {
+        if (typeof msg.requestId !== 'string') return;
+        const pending = this.pendingCalls.get(msg.requestId);
+        if (!pending) return;
+        this.pendingCalls.delete(msg.requestId);
+        clearTimeout(pending.timeout);
+        if (msg.ok === true) pending.resolve();
+        else
+          pending.reject(
+            new Error(typeof msg.error === 'string' ? msg.error : 'call request failed'),
+          );
+        return;
+      }
+      case 'call:state': {
+        const state = msg.state;
+        if (
+          state !== 'idle' &&
+          state !== 'requesting' &&
+          state !== 'connecting' &&
+          state !== 'connected'
+        )
+          return;
+        // Re-posted on every hello; only real changes fire.
+        if (this.callStateValue === state) return;
+        this.callStateValue = state;
+        this.emitter.emit('call', state);
         return;
       }
       case 'subtitle': {

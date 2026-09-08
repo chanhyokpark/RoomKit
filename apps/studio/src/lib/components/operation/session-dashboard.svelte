@@ -92,6 +92,13 @@
 		},
 		screenshotOf(deviceId) {
 			return data.screenshotFor(session.id, deviceId);
+		},
+		get call() {
+			return data.callFor(session.id);
+		},
+		get ownsCall() {
+			const call = data.callFor(session.id);
+			return call !== null && data.ownsCall(call);
 		}
 	};
 
@@ -117,14 +124,19 @@
 		runCommand: (command) => runSessionCommand(session.id, command),
 		pushHint: (input) => pushHint(session.id, input),
 		runTestCallback: (deviceId, name) => runTestCallback(session.id, deviceId, name),
-		getSummary: () => getSessionSummary(session.id)
+		getSummary: () => getSessionSummary(session.id),
+		startCall: (deviceId) => data.startCall(session.id, deviceId),
+		acceptCall: (callId) => data.acceptCall(session.id, callId),
+		declineCall: (callId) => data.declineCall(session.id, callId),
+		endCall: () => data.endCall(session.id)
 	};
 </script>
 
 {#if session.mode === 'test' && session.state !== 'ended'}
 	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
 		<span class="text-xs text-muted-foreground">
-			테스트 세션 — 이 컴퓨터에 Player 가 설치되어 있으면 앱 링크로 장치 창과 디버그 창을 열 수 있습니다.
+			테스트 세션 — 이 컴퓨터에 Player 가 설치되어 있으면 앱 링크로 장치 창과 디버그 창을 열 수
+			있습니다.
 		</span>
 		<PlayerLinkButton sessionId={session.id} />
 	</div>

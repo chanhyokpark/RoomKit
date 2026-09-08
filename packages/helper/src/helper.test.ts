@@ -587,6 +587,61 @@ describe('RoomKitHelper', () => {
     }
   });
 
+  it('call.request posts a schema-valid request and resolves/rejects on call:result', async () => {
+    const { helper, posted, inject } = env();
+    const ok = helper.call.request();
+    const req = HelperToPlayerSchema.parse(posted[1]) as { type: string; requestId: string };
+    expect(req.type).toBe('call:request');
+    inject({ source: 'roomkit-player', type: 'call:result', requestId: req.requestId, ok: true });
+    await expect(ok).resolves.toBeUndefined();
+
+    const refused = helper.call.request();
+    const req2 = HelperToPlayerSchema.parse(posted[2]) as { requestId: string };
+    inject({
+      source: 'roomkit-player',
+      type: 'call:result',
+      requestId: req2.requestId,
+      ok: false,
+      error: 'busy',
+    });
+    await expect(refused).rejects.toThrow('busy');
+
+    helper.call.cancel();
+    expect(HelperToPlayerSchema.parse(posted[3])).toEqual({
+      source: 'roomkit-helper',
+      type: 'call:cancel',
+    });
+  });
+
+  it('call.request times out and dies with destroy', async () => {
+    vi.useFakeTimers();
+    try {
+      const { helper } = env();
+      const timingOut = helper.call.request();
+      vi.advanceTimersByTime(10_000);
+      await expect(timingOut).rejects.toThrow('call request timed out');
+      const destroyed = helper.call.request();
+      helper.destroy();
+      await expect(destroyed).rejects.toThrow('helper destroyed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('tracks callState from call:state, emitting only real changes', () => {
+    const { helper, inject } = env();
+    const seen: string[] = [];
+    helper.on('call', (state) => seen.push(state));
+    expect(helper.callState).toBe('idle');
+    inject({ source: 'roomkit-player', type: 'call:state', state: 'requesting' });
+    inject({ source: 'roomkit-player', type: 'call:state', state: 'requesting' }); // hello re-post
+    inject({ source: 'roomkit-player', type: 'call:state', state: 'bogus' });
+    inject({ source: 'roomkit-player', type: 'call:state', state: 'connected' });
+    inject({ source: 'roomkit-player', type: 'call:state', state: 'idle' });
+    expect(seen).toEqual(['requesting', 'connected', 'idle']);
+    expect(helper.callState).toBe('idle');
+  });
+
   it('hello reports registered state names', () => {
     const { posted } = env({ states: ['idle', 'alarm'] });
     expect(HelperToPlayerSchema.parse(posted[0])).toMatchObject({

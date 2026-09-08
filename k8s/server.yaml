@@ -71,6 +71,9 @@ spec:
                   key: S3_SECRET_ACCESS_KEY
             - name: PUBLIC_SERVER_URL
               value: https://rk.dshs.app
+            # Optional STUN/TURN for voice calls (JSON array of RTCIceServer).
+            # - name: CALL_ICE_SERVERS
+            #   value: '[{"urls":"turn:turn.example.com:3478","username":"u","credential":"p"}]'
           resources:
             requests:
               cpu: 100m

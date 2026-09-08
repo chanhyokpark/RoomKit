@@ -24,7 +24,7 @@ There is no `/api/players` REST family. Connected launcher discovery is streamed
 
 Socket.io `/device` authenticates with device code, optional name, and client version. A code may match a production asset/lobby or a live test mapping.
 
-Server-to-client events include `welcome`, session state, command, dialogue progress, hint show/error, and hint-code state. Client-to-server events include acknowledgment, trigger, progress, hint submit/step, Helper version, session resync, and asset-manifest request.
+Server-to-client events include `welcome`, session state, command, dialogue progress, hint show/error, hint-code state, and `call:state` (voice call control, see below). Client-to-server events include acknowledgment, trigger, progress, hint submit/step, Helper version, session resync, asset-manifest request, and the call events `call:request` (ack), `call:cancel`, `call:status`.
 
 Command delivery is at-least-once. Client acknowledgment payload includes command ID and done/failed status. Client libraries remember seen and completed IDs to prevent duplicate side effects and repeat the prior acknowledgment.
 
@@ -32,13 +32,22 @@ Wire commands: `play` (bgm/sfx/dialogue/video; bgm and video may carry `offsetMs
 
 ## Admin and player namespaces
 
-The authenticated admin namespace streams session state, device presence, playback/website/state tracking (`session:media` carries `playing`, `websites` and `states`), logs, live runs, connected launchers, and operator notifications. Its consumers are Studio and the Player debug window. Device status includes the Helper-registered message, state and test-callback names (`helperMessages`, `helperStates`, `helperTestCallbacks`) relayed from the loaded page. Session controls themselves use the REST routes above.
+The authenticated admin namespace streams session state, device presence, playback/website/state tracking (`session:media` carries `playing`, `websites` and `states`), logs, live runs, connected launchers, operator notifications, and voice-call state (`call:state`). Its consumers are Studio and the Player debug window. Device status includes the Helper-registered message, state and test-callback names (`helperMessages`, `helperStates`, `helperTestCallbacks`) relayed from the loaded page. Session controls themselves use the REST routes above; voice calls are the one exception (below), because a call belongs to the admin socket that started it.
+
+## Voice calls
+
+An operator and a hintphone can talk over an audio-only PeerJS call. The server (`CallService`) keeps one call per session in memory and only sequences the signaling; media flows peer to peer through the PeerJS server mounted on the RoomKit server at `/peerjs` (websocket at `/peerjs/peerjs` — proxies must forward it like `/socket.io`). Calls require a production session and a device whose Player window has a Helper website loaded (`helper:info` seen) on a client ≥ 0.5.0; anything else is refused (`test_session`, `no_helper`, `device_outdated`, `device_offline`, `session_not_live`).
+
+- Admin socket events, each answered with a socket.io ack `CallActionAck` (`{ ok: true, call }` or `{ ok: false, reason }`): `call:config` → `{ iceServers }` (from `CALL_ICE_SERVERS`), `call:start { sessionId, deviceId, peerId }`, `call:accept { sessionId, callId, peerId }`, `call:decline { sessionId, callId }`, `call:end { sessionId }`. The operator opens its own PeerJS peer first and passes its id; the device then calls that peer. `call:end` is owner-only (`not_owner`); a second call while one exists is `busy`.
+- Admin broadcast `call:state { sessionId, call | null, endReason? }` on every change and in the connect dump. `call.adminSocketId` identifies the owner; its disconnect ends the call (`admin_disconnected`).
+- Device events: `call:request` (ack `{ ok, callId | reason }`) puts the session's call in `requested` until an operator accepts or declines, or the device sends `call:cancel { callId }`. On accept/start the device receives `call:state { status: 'connecting', callId, adminPeerId, devicePeerId, iceServers }`, registers as `devicePeerId`, calls `adminPeerId` with its microphone and reports `call:status { callId, status: 'connected' | 'failed', reason? }`. `call:state { status: 'ended', callId, reason }` tears it down. A call stuck in `connecting` for 30 s ends with `timeout`; a device going offline ends it with `device_offline`; session end with `session_ended`.
+- Every transition is logged with kind `call`.
 
 The player launcher namespace advertises a stable player ID/name and receives requests to open stage windows for test sessions. Do not confuse launcher player IDs with player asset IDs.
 
 ## Helper envelopes
 
-Helper-to-Player messages identify source `roomkit-helper` and include hello/claims, trigger, hint, timer, video completion/error, awaited-message completion, and `test:callback:done`. Hello also carries the page's registered message-handler, state and test-callback names, which Player relays server-side via the extended `helper:info`. Player-to-Helper messages identify `roomkit-player` and include mode, state (re-posted on every hello; null = default), message, hint, timer/trigger results, subtitle, hint-code, video play/stop (with `offsetMs` on replays), and `test:callback` requests driven by the `testCallback` wire command.
+Helper-to-Player messages identify source `roomkit-helper` and include hello/claims, trigger, hint, timer, video completion/error, awaited-message completion, `test:callback:done`, haptics, and the call envelopes `call:request` / `call:cancel`. Hello also carries the page's registered message-handler, state and test-callback names, which Player relays server-side via the extended `helper:info`. Player-to-Helper messages identify `roomkit-player` and include mode, state (re-posted on every hello; null = default), `call:state` (`idle | requesting | connecting | connected`, also re-posted on every hello), `call:result`, message, hint, timer/trigger results, subtitle, hint-code, video play/stop (with `offsetMs` on replays), haptics results, and `test:callback` requests driven by the `testCallback` wire command.
 
 Player validates shared Zod schemas and the source frame. Helper performs lightweight structural validation to keep its browser bundle small.
 

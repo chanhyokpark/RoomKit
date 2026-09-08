@@ -165,6 +165,25 @@ export const HelperHapticsSchema = z.object({
 });
 export type HelperHaptics = z.infer<typeof HelperHapticsSchema>;
 
+/**
+ * Ask the operators for a voice call; answered with a `PlayerCallResult`
+ * carrying the same `requestId` once the server accepted or refused the
+ * request (the call itself starts only when an operator accepts).
+ */
+export const HelperCallRequestSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('call:request'),
+  requestId: z.uuid(),
+});
+export type HelperCallRequest = z.infer<typeof HelperCallRequestSchema>;
+
+/** Withdraw the pending call request (no-op once an operator accepted). */
+export const HelperCallCancelSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('call:cancel'),
+});
+export type HelperCallCancel = z.infer<typeof HelperCallCancelSchema>;
+
 export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperHelloSchema,
   HelperTriggerSchema,
@@ -176,6 +195,8 @@ export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperMessageDoneSchema,
   HelperTestCallbackDoneSchema,
   HelperHapticsSchema,
+  HelperCallRequestSchema,
+  HelperCallCancelSchema,
 ]);
 export type HelperToPlayer = z.infer<typeof HelperToPlayerSchema>;
 
@@ -380,6 +401,32 @@ export const PlayerHapticsResultSchema = z.object({
 });
 export type PlayerHapticsResult = z.infer<typeof PlayerHapticsResultSchema>;
 
+/** Reply to a `HelperCallRequest`; `ok: false` carries the refusal reason. */
+export const PlayerCallResultSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('call:result'),
+  requestId: z.uuid(),
+  ok: z.boolean(),
+  /** `CallErrorReason` (or a local reason such as `test_session`). */
+  error: z.string().optional(),
+});
+export type PlayerCallResult = z.infer<typeof PlayerCallResultSchema>;
+
+export const HelperCallStateSchema = z.enum(['idle', 'requesting', 'connecting', 'connected']);
+export type HelperCallState = z.infer<typeof HelperCallStateSchema>;
+
+/**
+ * The player's voice-call state, posted on every change and in reply to
+ * every hello. Sites should mute their own audio while `connecting` or
+ * `connected` (the player mutes its own channels and covers the iframe).
+ */
+export const PlayerCallStateSchema = z.object({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('call:state'),
+  state: HelperCallStateSchema,
+});
+export type PlayerCallState = z.infer<typeof PlayerCallStateSchema>;
+
 export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerMessageSchema,
   PlayerHintShowSchema,
@@ -394,5 +441,7 @@ export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerModeSchema,
   PlayerTestCallbackSchema,
   PlayerHapticsResultSchema,
+  PlayerCallResultSchema,
+  PlayerCallStateSchema,
 ]);
 export type PlayerToHelper = z.infer<typeof PlayerToHelperSchema>;

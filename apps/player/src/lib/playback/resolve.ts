@@ -1,4 +1,5 @@
 import { cache } from '../cache/manager.svelte';
+import { registerAudio } from './mute';
 
 /**
  * Media source for a wire play command: the local cache when the file is
@@ -29,6 +30,7 @@ export function resolveSrc(fileKey: string, url: string): string {
 export function createAudio(fileKey: string, url: string): HTMLAudioElement {
 	const src = resolveSrc(fileKey, url);
 	const audio = new Audio(src);
+	registerAudio(audio); // call mute applies to every stage audio element
 	if (src === url) return audio;
 
 	// The cached load can fail through two signals — the element's 'error'

@@ -42,6 +42,8 @@ roomkit.trigger("keypad:correct", { digits: "0417" });
 
 메시지 처리는 `roomkit.on("message", ...)`으로 등록하고 `envelope.messageName`으로 분기해 주세요 — 페이지가 여러 개인 사이트도 페이지별로 필요한 핸들러만 등록하면 됩니다. `messages`·`states` 옵션은 이름 목록 선언일 뿐이며, 선언한 이름은 Player 디버그 창과 운영 화면의 장치 패널에 표시되어 바로 보내 볼 수 있습니다. `testCallbacks`에는 인자 없는 테스트용 함수를 등록해 주세요(테스트 세션 전용).
 
+`roomkit.call.request()`는 운영자에게 음성 통화를 요청합니다(힌트폰 페이지용). 요청이 등록되면 Player가 페이지 위에 "통화 요청 중" 화면과 취소 버튼을 띄우고, 운영자가 수락하면 통화가 시작됩니다 — 마이크와 통화 화면은 Player가 처리하므로 페이지는 `roomkit.callState`(`'idle' | 'requesting' | 'connecting' | 'connected'`)와 `on("call", ...)`만 보면 됩니다. 이미 통화 중이면 `busy`, 테스트 세션이면 `test_session`으로 거부되며 Player 밖에서는 10초 뒤 실패합니다. 운영자가 먼저 걸 수도 있으니 `'idle'`에서 바로 `'connecting'`이 되는 경우도 처리해 주세요. **통화 중(`connecting`/`connected`)에는 페이지가 직접 재생하는 소리를 꺼 주세요** — Player는 자기 채널만 음소거할 수 있습니다. 통화는 운영자만 끊을 수 있습니다.
+
 `getRemainingTime()`은 Player가 알고 있는 남은 시간을 가져옵니다. `roomkit.haptics`는 Player 기기의 진동 API입니다 — Tauri haptics 플러그인과 같은 이름·인자로 `vibrate(ms)`, `impactFeedback('light'|'medium'|'heavy'|'soft'|'rigid')`, `notificationFeedback('success'|'warning'|'error')`, `selectionFeedback()`을 제공하며, Android/iOS Player에서만 실제로 진동하고 데스크톱에서는 아무 일 없이 성공합니다(Player 밖에서는 10초 뒤 실패). 페이지를 제거할 때는 `destroy()`를 호출해 주세요. `triggerAndWait()`는 트리거가 시작한 모든 이벤트가 끝날 때까지 기다리지만 **권장하지 않습니다** — 게임 흐름은 서버 시퀀스가 주도하고, 사이트는 `trigger()`만 보낸 뒤 서버가 보내는 메시지로 다음 상태를 표시하는 편이 안전합니다.
 
 ## React·Svelte 래퍼 (권장)
@@ -75,6 +77,7 @@ Helper는 **앱 최상위 레이아웃에서 한 번만** 초기화해 주세요
 - 힌트: `rk.hint.data`(현재 단계), `rk.hint.submit/prev/next/showAnswer/dismiss()`, 사용량 `rk.hint.counts`. `<HintInput />`·`<HintRenderer hint={rk.hint} />`로 힌트폰도 이 래퍼로 만들 수 있습니다.
 - 콜백: Svelte는 `rk.onMessage(...)`/`rk.onState(...)`/`rk.onHintUpdate(...)`/`rk.on(...)`, React는 `useRoomKitMessage(...)`/`useRoomKitState(...)`/`useRoomKitEvent(...)` 훅으로 등록합니다. 이름 없이 핸들러만 넘기면 모든 메시지(상태)를 받습니다. `onState`/`useRoomKitState`에 이름을 주면 그 상태가 이미 활성화되어 있을 때 즉시 한 번 실행되고, `'default'`는 상태가 없을 때 실행됩니다.
 - 진동: `rk.haptics.vibrate(ms)` / `impactFeedback(style)` / `notificationFeedback(type)` / `selectionFeedback()` — 헬퍼의 `haptics`와 동일합니다(모바일 Player에서만 실제 진동).
+- 통화: `rk.call.request()` / `rk.call.cancel()`, 반응형 `rk.callState` — 헬퍼의 `call`과 동일합니다. 통화 중에는 페이지의 소리를 꺼 주세요.
 
 기존 `@roomkit/hintphone-react`/`@roomkit/hintphone-svelte`는 deprecated이며, Player 밖 독립 실행형 장치는 [`@roomkit/client`](./custom-devices.md)를 사용해 주세요. 실행 가능한 예제는 [`templates/web`](../../templates/web/README.md)(React)과 [`templates/web_svelte`](../../templates/web_svelte/README.md)(SvelteKit)입니다.
 

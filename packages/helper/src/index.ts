@@ -1,6 +1,8 @@
 export {
   DEFAULT_STATE,
   RoomKitHelper,
+  type CallApi,
+  type CallState,
   type GetRemainingTimeOptions,
   type HapticsApi,
   type HelperBridgeState,
@@ -15,6 +17,7 @@ export {
 export { HELPER_VERSION } from './version.js';
 export type {
   HapticsRequest,
+  HelperCallState,
   HelperRenderClaims,
   HintError,
   ImpactFeedbackStyle,

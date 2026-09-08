@@ -1,6 +1,7 @@
 import type {
 	AdjustTimerInput,
 	Asset,
+	CallInfo,
 	Command,
 	DeviceScreenshot,
 	DeviceStatus,
@@ -43,6 +44,10 @@ export interface SessionUiModel {
 	statusOf(deviceId: string): DeviceStatus | null;
 	/** Latest stage capture reported by the device's player window, if any. */
 	screenshotOf(deviceId: string): DeviceScreenshot | null;
+	/** The session's voice call (one at a time); absent = host without call support. */
+	readonly call?: CallInfo | null;
+	/** True when this host's admin socket owns the active call (may end it). */
+	readonly ownsCall?: boolean;
 }
 
 /** All mutations/fetches used by the dashboard, supplied by Studio or Player. */
@@ -61,4 +66,9 @@ export interface SessionUiActions {
 	pushHint(input: PushHintInput): Promise<void>;
 	runTestCallback(deviceId: string, name: string): Promise<{ ok: boolean }>;
 	getSummary(): Promise<SessionSummary>;
+	/** Voice calls — absent on hosts without call support (player debug window). */
+	startCall?(deviceId: string): Promise<void>;
+	acceptCall?(callId: string): Promise<void>;
+	declineCall?(callId: string): Promise<void>;
+	endCall?(): Promise<void>;
 }

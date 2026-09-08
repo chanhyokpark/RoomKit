@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import BellRingIcon from '@lucide/svelte/icons/bell-ring';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
@@ -8,9 +9,15 @@
 	const notifications = $derived(model.notifications);
 	const latest = $derived(notifications[0] ?? null);
 	let open = $state(false);
+	// Only a notification that arrives while this dashboard is open pops the
+	// dialog — re-opening a session must not replay its last notification.
+	let seen = untrack(() => latest);
 
 	$effect(() => {
-		if (latest) open = true;
+		if (latest && latest !== seen) {
+			seen = latest;
+			open = true;
+		}
 	});
 </script>
 

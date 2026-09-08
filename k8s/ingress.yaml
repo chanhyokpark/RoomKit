@@ -42,6 +42,14 @@ spec:
                 name: server
                 port:
                   number: 3000
+          # PeerJS signaling for operator ↔ hintphone voice calls (websocket)
+          - path: /peerjs
+            pathType: Prefix
+            backend:
+              service:
+                name: server
+                port:
+                  number: 3000
           # Path-style presigned S3 URLs: /roomkit/<key> → minio
           - path: /roomkit
             pathType: Prefix

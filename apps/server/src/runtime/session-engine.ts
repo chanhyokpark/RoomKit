@@ -2066,6 +2066,16 @@ export class SessionEngine {
     this.deps.transport().broadcastSessionMedia(this.sessionMedia());
   }
 
+  /** Append a session log entry from outside the engine (e.g. call events). */
+  appendLog(
+    level: 'info' | 'warn' | 'error',
+    kind: SessionLogEntry['kind'],
+    message: string,
+    data?: JsonValue,
+  ): Promise<void> {
+    return this.log(level, kind, message, data);
+  }
+
   private log(
     level: 'info' | 'warn' | 'error',
     kind: string,

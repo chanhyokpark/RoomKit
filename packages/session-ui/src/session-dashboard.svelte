@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SessionUiActions, SessionUiModel } from './types.js';
 	import { provideSessionUi } from './context.js';
+	import CallCard from './call-card.svelte';
 	import DevicesCard from './devices-card.svelte';
 	import EventsCard from './events-card.svelte';
 	import LogCard from './log-card.svelte';
@@ -18,6 +19,7 @@
 
 <div class="flex min-h-0 flex-1 flex-col gap-4 p-4">
 	<SessionControls />
+	<CallCard />
 	<NotificationsCard />
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 		{#if model.session?.state === 'ended'}<SummaryCard />{/if}

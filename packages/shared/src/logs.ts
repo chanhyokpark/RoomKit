@@ -14,6 +14,7 @@ export const LogKindSchema = z.enum([
   'eval',
   'device',
   'hint',
+  'call',
 ]);
 export type LogKind = z.infer<typeof LogKindSchema>;
 

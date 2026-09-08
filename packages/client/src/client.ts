@@ -1,6 +1,8 @@
 import { io, type Socket } from 'socket.io-client';
 import {
   AckSchema,
+  CallRequestAckSchema,
+  DeviceCallStateSchema,
   DEVICE_NAMESPACE,
   DeviceAssetManifestSchema,
   DeviceEvents,
@@ -12,6 +14,7 @@ import {
   WireCommandSchema,
   SessionStateSchema,
   type DeviceAssetManifest,
+  type DeviceCallState,
   type DeviceScreenshotReport,
   type HintError,
   type HintShow,
@@ -83,6 +86,8 @@ const FATAL_RETRY_DELAY_MS = 5000;
  * and lands in the lobby or the theme's next session.
  */
 const SERVER_DISCONNECT_RETRY_DELAY_MS = 1000;
+/** The server answers a call request immediately; this only covers a dead link. */
+const CALL_REQUEST_TIMEOUT_MS = 10_000;
 const RESYNC_TIMEOUT_MS = 10_000;
 /** Event runs can be long (waits, videos) — the wait timeout is generous. */
 const TRIGGER_WAIT_TIMEOUT_MS = 600_000;
@@ -147,6 +152,12 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    */
   hint: [HintShow];
   hintError: [HintError];
+  /**
+   * Player-internal: voice-call control. `connecting` = open a PeerJS peer
+   * as `devicePeerId` and call `adminPeerId` with the microphone; `ended` =
+   * tear the call down. Never sent to devices without a helper website.
+   */
+  callState: [DeviceCallState];
   /** Hint entry-code overlay: show (code set) or hide (code null). */
   hintCode: [WireHintCode];
   /**
@@ -338,6 +349,16 @@ export class RoomKitClient {
       this.emitter.emit('progress', parsed.data);
     });
 
+    socket.on(DeviceEvents.callState, (payload: unknown) => {
+      const parsed = DeviceCallStateSchema.safeParse(payload);
+      if (!parsed.success) {
+        console.warn('[roomkit] invalid call state dropped', payload, parsed.error);
+        return;
+      }
+      this.log('call state', parsed.data);
+      this.emitter.emit('callState', parsed.data);
+    });
+
     socket.on(DeviceEvents.hintShow, (payload: unknown) => {
       const parsed = HintShowSchema.safeParse(payload);
       if (!parsed.success) {
@@ -415,6 +436,54 @@ export class RoomKitClient {
   ): void {
     this.log('helper info', version, extras);
     this.socket?.emit(DeviceEvents.helperInfo, { version, ...extras });
+  }
+
+  /**
+   * Player-internal: ask the operators for a voice call. Resolves with the
+   * call id once the server registered the request (an operator still has
+   * to accept); rejects with an Error whose message is the refusal reason
+   * (`busy`, `test_session`, `no_helper`, ...), `not connected`, or
+   * `call request timed out`.
+   */
+  requestCall(timeoutMs = CALL_REQUEST_TIMEOUT_MS): Promise<{ callId: string }> {
+    const socket = this.socket;
+    if (!socket?.connected) return Promise.reject(new Error('not connected'));
+    this.log('call request');
+    return new Promise((resolve, reject) => {
+      socket
+        .timeout(timeoutMs)
+        .emit(DeviceEvents.callRequest, {}, (err: Error | null, ack: unknown) => {
+          if (err) return reject(new Error('call request timed out'));
+          const parsed = CallRequestAckSchema.safeParse(ack);
+          if (!parsed.success) return reject(new Error('invalid'));
+          if (!parsed.data.ok) return reject(new Error(parsed.data.reason));
+          resolve({ callId: parsed.data.callId });
+        });
+    });
+  }
+
+  /** Player-internal: withdraw a pending call request. */
+  cancelCall(callId: string): void {
+    this.log('call cancel', callId);
+    this.socket?.emit(DeviceEvents.callCancel, { callId });
+  }
+
+  /**
+   * Player-internal: report the media outcome of a connecting call. Buffered
+   * by socket.io while offline (the server ignores reports for calls that
+   * already ended).
+   */
+  reportCallStatus(
+    callId: string,
+    status: 'connected' | 'failed',
+    reason?: string,
+  ): void {
+    this.log('call status', status, callId, reason);
+    this.socket?.emit(DeviceEvents.callStatus, {
+      callId,
+      status,
+      ...(reason !== undefined ? { reason: reason.slice(0, 200) } : {}),
+    });
   }
 
   /**

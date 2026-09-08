@@ -1,5 +1,7 @@
 import { onDestroy } from 'svelte';
 import type {
+  CallApi,
+  CallState,
   GetRemainingTimeOptions,
   HapticsApi,
   HelperBridgeState,
@@ -97,6 +99,21 @@ class RoomKitHaptics implements HapticsApi {
   }
 }
 
+/** Voice-call facade over the (possibly not yet mounted) core. */
+class RoomKitCall implements CallApi {
+  constructor(private readonly ctx: RoomKitContextState) {}
+
+  request(): Promise<void> {
+    const api = this.ctx.core?.helper.call;
+    return api
+      ? api.request()
+      : Promise.reject(new Error('[roomkit] RoomKitSetup not mounted'));
+  }
+  cancel(): void {
+    this.ctx.core?.helper.call.cancel();
+  }
+}
+
 /**
  * Per-component RoomKit view returned by {@link getRoomKit}. Value getters
  * are rune-backed — read them in templates, `$derived` or `$effect` to react
@@ -109,11 +126,14 @@ export class RoomKit implements RoomKitApi {
   readonly hint: RoomKitHintApi;
   /** The player device's haptics (mirrors `@tauri-apps/plugin-haptics`). */
   readonly haptics: HapticsApi;
+  /** Voice calls with the operators (`request()` / `cancel()`). */
+  readonly call: CallApi;
   private readonly cleanups: (() => void)[] = [];
 
   constructor(private readonly ctx: RoomKitContextState) {
     this.hint = new RoomKitHint(ctx);
     this.haptics = new RoomKitHaptics(ctx);
+    this.call = new RoomKitCall(ctx);
   }
 
   get bridge(): HelperBridgeState {
@@ -142,6 +162,10 @@ export class RoomKit implements RoomKitApi {
   /** The device's durable state (`'default'` when none is active). */
   get state(): StateValue {
     return this.ctx.snapshot.state;
+  }
+  /** The player's voice-call state ('idle' when there is no call). */
+  get callState(): CallState {
+    return this.ctx.snapshot.callState;
   }
   /** Raw helper escape hatch; null until setup has mounted. */
   get helper(): RoomKitHelper | null {
@@ -178,7 +202,7 @@ export class RoomKit implements RoomKitApi {
   /**
    * Subscribe to a raw helper event ('message', 'hint', 'hintError',
    * 'subtitle', 'hintCode', 'videoPlay', 'videoStop', 'bridge', 'mode',
-   * 'state').
+   * 'state', 'call').
    * Returns an unsubscribe function; also removed by {@link destroy}.
    */
   on<K extends keyof RoomKitHelperEvents>(

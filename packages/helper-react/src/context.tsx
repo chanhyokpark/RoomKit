@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import type { HapticsApi } from '@roomkit/helper';
+import type { CallApi, HapticsApi } from '@roomkit/helper';
 import {
   Emitter,
   IDLE_ROOMKIT_SNAPSHOT,
@@ -97,6 +97,13 @@ function createHaptics(core: RoomKitCore | null): HapticsApi {
   };
 }
 
+/** Call facade that survives the core being null (rejects instead). */
+function createCall(core: RoomKitCore | null): CallApi {
+  const call = core?.helper.call;
+  if (!call) return { request: NOT_MOUNTED, cancel: () => {} };
+  return { request: () => call.request(), cancel: () => call.cancel() };
+}
+
 function createView(core: RoomKitCore | null, snapshot: RoomKitSnapshot): RoomKitApi {
   return {
     bridge: snapshot.bridge,
@@ -107,6 +114,7 @@ function createView(core: RoomKitCore | null, snapshot: RoomKitSnapshot): RoomKi
     hintCode: snapshot.hintCode,
     video: snapshot.video,
     state: snapshot.state,
+    callState: snapshot.callState,
     helper: core?.helper ?? null,
     hint: {
       data: snapshot.hint,
@@ -124,6 +132,7 @@ function createView(core: RoomKitCore | null, snapshot: RoomKitSnapshot): RoomKi
       resetCounts: () => core?.resetHintCounts(),
     },
     haptics: createHaptics(core),
+    call: createCall(core),
     trigger: (event, payload) => core?.trigger(event, payload),
     triggerAndWait: (event, payload, opts) =>
       core

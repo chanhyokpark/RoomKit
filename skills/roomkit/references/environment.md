@@ -76,10 +76,12 @@ The repository contains Docker and Kubernetes examples, not a hosted control pla
 - PostgreSQL with durable backups;
 - S3-compatible object storage and a configured bucket;
 - Server and Studio behind TLS;
-- WebSocket upgrade forwarding for Socket.io;
+- WebSocket upgrade forwarding for Socket.io (`/socket.io`) and the PeerJS signaling endpoint (`/peerjs`);
 - a private administrator password and restricted Studio access;
 - a server URL resolvable and reachable from every Player/custom device;
 - storage CORS/presigned URL behavior compatible with Player media downloads.
+
+The server's optional `CALL_ICE_SERVERS` (a JSON array of RTCIceServer objects) supplies STUN/TURN servers for operator ↔ hintphone voice calls; unset, PeerJS defaults to Google STUN, which is enough when operators and devices share a LAN. Add a TURN server when they sit behind different NATs.
 
 Studio reads `PUBLIC_API_URL` as a build-time public value. It reads optional `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` at runtime under adapter-node; these override the shared minimums used by operation-screen version warnings.
 

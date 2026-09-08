@@ -21,6 +21,8 @@ export {
 export {
   DEFAULT_STATE,
   RoomKitHelper,
+  type CallApi,
+  type CallState,
   type GetRemainingTimeOptions,
   type HapticsApi,
   type HapticsRequest,

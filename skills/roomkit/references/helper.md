@@ -121,6 +121,14 @@ Model the screen as a function of `state`, not of the messages received so far. 
 
 Each method posts a `haptics` request and resolves on the Player's `haptics:result`. It rejects with the plugin's error text when the call failed, after ten seconds when no Player answers (page opened outside Player), and with `helper destroyed` on `destroy()`. Feedback is real only on Android and iOS Player builds; desktop Player accepts every call as a no-op and resolves. Sites should treat haptics as an optional embellishment — never gate game flow on the promise.
 
+## Voice calls
+
+`helper.call` lets a hintphone page ask the operators for an audio call; the Player does the actual call (microphone, PeerJS, a black call screen covering the page) and the operator runs it from the operation dashboard. Only Player windows in production sessions can call — the server refuses everything else.
+
+- `call.request()` resolves once the server registered the request (`callState` becomes `'requesting'`; the Player shows "통화 요청 중" with a cancel button). The call starts when an operator accepts. It rejects with the refusal reason as the message: `busy` (a call is already active), `test_session`, `no_helper`, `device_offline`, `session_not_live`, `device_outdated`, or `call request timed out` when no Player answers.
+- `call.cancel()` withdraws a pending request; it is a no-op once an operator accepted.
+- `helper.callState` (`'idle' | 'requesting' | 'connecting' | 'connected'`) and the `call` event track the Player's state; the Player also posts it in reply to every hello. Operators can start a call without any request, so pages must handle `connecting` arriving from `idle`. **Mute the page's own audio while `connecting`/`connected`** — the Player mutes its own channels and hides the page behind the call screen, but cannot reach audio the page plays itself. Only the operator ends a call; the page gets `'idle'` afterwards.
+
 ## Test callbacks
 
 `testCallbacks` registers parameterless functions runnable from the Player debug window in test sessions only. Player sends `test:callback` with a request ID; Helper runs the callback, awaits a returned promise, and answers `test:callback:done` with ok/failed. The server times the invocation out after fifteen seconds. Use them for repeatable manual probes (reset local state, simulate a puzzle solve) without wiring temporary UI.
@@ -282,6 +290,13 @@ interface HapticsApi {
   selectionFeedback(): Promise<void>;
 }
 
+type CallState = 'idle' | 'requesting' | 'connecting' | 'connected';
+interface CallApi {
+  /** Rejects with the refusal reason ('busy', 'test_session', 'no_helper', ...) or 'call request timed out'. */
+  request(): Promise<void>;
+  cancel(): void; // no-op once an operator accepted
+}
+
 interface RoomKitHelperEvents {
   message: [Record<string, JsonValue>, PlayerMessage];
   hint: [HintShow];                   // reply to submitHint/requestHintStep, or an operator push
@@ -293,6 +308,7 @@ interface RoomKitHelperEvents {
   bridge: [HelperBridgeState];        // emitted on change
   mode: [SessionMode];                // emitted on change
   state: [StateValue];                // emitted on change only (replays/re-posts are deduped)
+  call: [CallState];                  // voice-call state changes (re-posts are deduped)
 }
 
 class RoomKitHelper {
@@ -304,6 +320,8 @@ class RoomKitHelper {
   /** Run handler when the named state (or 'default') becomes active — immediately if it already is. Returns unsubscribe. */
   onState(name: string, handler: StateHandler): () => void;
   readonly haptics: HapticsApi;           // the player device's haptics
+  readonly call: CallApi;                 // voice calls with the operators
+  get callState(): CallState;             // 'idle' until the player reports
   trigger(event: string, payload?: JsonValue): void;
   /** Not recommended (see General API). Rejects on timeout or bridge-less page. */
   triggerAndWait(event: string, payload?: JsonValue, options?: TriggerAndWaitOptions): Promise<void>;
@@ -315,7 +333,7 @@ class RoomKitHelper {
   videoError(commandId: string): void;   // delegated video failed (play fails over)
   on<K extends keyof RoomKitHelperEvents>(event: K, listener: (...args: RoomKitHelperEvents[K]) => void): this;
   off<K extends keyof RoomKitHelperEvents>(event: K, listener: (...args: RoomKitHelperEvents[K]) => void): this;
-  /** Terminal: removes listeners/lockdown, rejects pending trigger/haptics waits, resolves pending timer gets with null. */
+  /** Terminal: removes listeners/lockdown, rejects pending trigger/haptics/call waits, resolves pending timer gets with null. */
   destroy(): void;
 }
 
@@ -371,6 +389,8 @@ interface RoomKitApi {
   readonly helper: RoomKitHelper | null; // raw escape hatch; null before the provider/setup mounted
   readonly hint: RoomKitHintApi;
   readonly haptics: HapticsApi;          // player device haptics; rejects before mount
+  readonly callState: CallState;         // voice-call state; mute your own audio while connecting/connected
+  readonly call: CallApi;                // request()/cancel(); request rejects before mount
   trigger(event: string, payload?: JsonValue): void;
   /** Not recommended; rejects before mount. */
   triggerAndWait(event: string, payload?: JsonValue, options?: TriggerAndWaitOptions): Promise<void>;
@@ -383,7 +403,7 @@ interface RoomKitApi {
 /** Also exported (advanced; app code rarely needs them). */
 function isOutsidePlayer(bridge: HelperBridgeState): boolean;
 interface RoomKitSnapshot { /* immutable merged state behind RoomKitApi: bridge, sessionMode,
-  remainingMs, hintCounts, subtitle, hintCode, video, state + hint/error/pending/hasPrev/hasNext/
+  remainingMs, hintCounts, subtitle, hintCode, video, state, callState + hint/error/pending/hasPrev/hasNext/
   nextIsAnswer and connectionState ('connecting' | 'connected' | 'disconnected') */ }
 const IDLE_ROOMKIT_SNAPSHOT: RoomKitSnapshot; // served before mount / during SSR
 class RoomKitCore { /* owns helper + hint controller/counter; created by the provider/setup */ }

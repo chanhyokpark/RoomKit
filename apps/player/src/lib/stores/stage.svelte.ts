@@ -89,6 +89,8 @@ class StageStore {
 	videoFrame = $state<VideoFrame | null>(null);
 	/** Seek applied when the stage <video> loads (reconnect replay); 0 = start. */
 	videoOffsetMs = $state(0);
+	/** Voice call in progress: the stage <video> is muted. Owned by the call store, survives clear(). */
+	callMuted = $state(false);
 	subtitle = $state<Subtitle | null>(null);
 	/**
 	 * Durable display state, forwarded to the website (on change and on every

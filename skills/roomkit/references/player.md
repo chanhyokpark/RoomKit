@@ -32,6 +32,10 @@ A stage opens one `RoomKitClient` connection and constructs one playback engine.
 
 Helper claims suppress only the claimed default renderer. Claims reset on navigation and are restored by the new document's hello. Real delegated video must report end/error; fileless delegated video remains timed by Player.
 
+## Voice calls
+
+A stage window with a Helper website can hold an audio call with an operator (production sessions only). The server tells the window to connect (`call:state`); Player vibrates the device, mutes every playback channel and the stage video, covers the iframe with a black call screen (the website keeps running underneath and receives `call:state` so it can mute itself), captures the microphone and calls the operator's PeerJS peer through the RoomKit server's `/peerjs` endpoint. Only the operator ends a call. A website may ask for a call through the Helper (`call.request()`); the call screen then shows a cancel button until an operator accepts or declines. Microphone access needs `RECORD_AUDIO` on Android (prompted at first use) and the bundled `NSMicrophoneUsageDescription` on macOS; Windows builds are untested.
+
 ## Media cache
 
 In Tauri, every welcome triggers a role-scoped `fetchAssetManifest()` sync. Speaker devices cache all theme BGM/SFX/dialogue files; screen devices cache all video files. Immutable `fileKey` presence is the freshness check. Downloads are streaming, use atomic replacement, run with concurrency two, and unreferenced keys are pruned after reconciliation.

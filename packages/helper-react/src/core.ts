@@ -1,6 +1,8 @@
 import {
   DEFAULT_STATE,
   RoomKitHelper,
+  type CallApi,
+  type CallState,
   type GetRemainingTimeOptions,
   type HapticsApi,
   type HelperBridgeState,
@@ -67,6 +69,8 @@ export interface RoomKitSnapshot extends HintphoneSnapshot {
   video: VideoState;
   /** The device's durable state; `'default'` when none is active. */
   state: StateValue;
+  /** The player's voice-call state; 'idle' when there is no call. */
+  callState: CallState;
 }
 
 /** Snapshot served before a provider/setup has mounted (and during SSR). */
@@ -80,6 +84,7 @@ export const IDLE_ROOMKIT_SNAPSHOT: RoomKitSnapshot = {
   hintCode: null,
   video: null,
   state: DEFAULT_STATE,
+  callState: 'idle',
 };
 
 /** True when the page runs outside the player (no bridge to talk to). */
@@ -155,6 +160,12 @@ export interface RoomKitApi {
    * effects.
    */
   readonly state: StateValue;
+  /**
+   * The player's voice-call state ('idle' | 'requesting' | 'connecting' |
+   * 'connected'). Mute the page's own audio while connecting/connected —
+   * the player covers the page with its call screen and mutes its channels.
+   */
+  readonly callState: CallState;
   /** Raw helper escape hatch; null until the provider/setup has mounted. */
   readonly helper: RoomKitHelper | null;
   /** Hint navigation facade. */
@@ -166,6 +177,12 @@ export interface RoomKitApi {
    * player or before the provider/setup has mounted.
    */
   readonly haptics: HapticsApi;
+  /**
+   * Voice calls with the operators (`request()` / `cancel()`); production
+   * sessions inside the player only. Rejects before the provider/setup has
+   * mounted.
+   */
+  readonly call: CallApi;
   /** Report a game event through the player's device connection. */
   trigger(event: string, payload?: JsonValue): void;
   /**
@@ -245,6 +262,7 @@ const RELAY_EVENTS = [
   'bridge',
   'mode',
   'state',
+  'call',
 ] as const;
 
 const BRIDGE_TO_STATE: Record<HelperBridgeState, HintphoneConnectionState> = {
@@ -330,6 +348,7 @@ export class RoomKitCore {
   private hintCode: HintCodeState = null;
   private video: VideoState = null;
   private state: StateValue = DEFAULT_STATE;
+  private callState: CallState = 'idle';
   private current: RoomKitSnapshot;
 
   private readonly onBridge = (bridge: HelperBridgeState): void => {
@@ -363,6 +382,11 @@ export class RoomKitCore {
     this.publish();
   };
 
+  private readonly onCall = (state: CallState): void => {
+    this.callState = state;
+    this.publish();
+  };
+
   constructor(options: RoomKitOptions = {}, relay?: RoomKitRelay) {
     const { timerPollMs, ...helperOptions } = options;
     this.timerPollMs = timerPollMs ?? TIMER_POLL_MS;
@@ -380,7 +404,8 @@ export class RoomKitCore {
       .on('hintCode', this.onHintCode)
       .on('videoPlay', this.onVideoPlay)
       .on('videoStop', this.onVideoStop)
-      .on('state', this.onState);
+      .on('state', this.onState)
+      .on('call', this.onCall);
     this.cleanups.push(this.controller.subscribe(() => this.publish()));
     this.cleanups.push(this.counter.subscribe(() => this.publish()));
     if (relay) this.wireRelay(relay);
@@ -481,7 +506,8 @@ export class RoomKitCore {
       .off('hintCode', this.onHintCode)
       .off('videoPlay', this.onVideoPlay)
       .off('videoStop', this.onVideoStop)
-      .off('state', this.onState);
+      .off('state', this.onState)
+      .off('call', this.onCall);
     this.helper.destroy();
     this.subscribers.clear();
   }
@@ -497,6 +523,7 @@ export class RoomKitCore {
       hintCode: this.hintCode,
       video: this.video,
       state: this.state,
+      callState: this.callState,
     };
   }
 

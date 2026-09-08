@@ -4,7 +4,7 @@ import { useRoomKitContext } from './context.js';
 
 /**
  * Subscribe to a helper event ('message', 'hint', 'hintError', 'subtitle',
- * 'hintCode', 'videoPlay', 'videoStop', 'bridge', 'mode', 'state') for this
+ * 'hintCode', 'videoPlay', 'videoStop', 'bridge', 'mode', 'state', 'call') for this
  * component's lifetime. The handler is kept in a ref, so an inline closure is
  * fine. For awaited messages, a promise returned by a 'message' handler is
  * awaited before the command is acked.
