@@ -9,6 +9,7 @@ import {
   ADMIN_NAMESPACE,
   AdminAuthSchema,
   AdminEvents,
+  type DeviceScreenshot,
   type DeviceStatus,
   type PlayerStatus,
   type SessionLogEntry,
@@ -101,6 +102,9 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
         );
       }
     }
+    for (const screenshot of this.registry.latestScreenshots()) {
+      socket.emit(AdminEvents.deviceScreenshot, screenshot);
+    }
   }
 
   /**
@@ -128,6 +132,10 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection {
     this.server
       .to(ADMINS_ROOM)
       .emit(AdminEvents.deviceStatus, this.withVersions(status));
+  }
+
+  broadcastDeviceScreenshot(screenshot: DeviceScreenshot): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.deviceScreenshot, screenshot);
   }
 
   broadcastPlayerStatus(status: PlayerStatus): void {

@@ -2,6 +2,7 @@ import type {
 	AdjustTimerInput,
 	Asset,
 	Command,
+	DeviceScreenshot,
 	DeviceStatus,
 	PushHintInput,
 	RunningEvent,
@@ -39,6 +40,8 @@ export interface SessionUiModel {
 	readonly notifications: SessionNotification[];
 	readonly testDeviceCodes: TestDeviceCode[];
 	statusOf(deviceId: string): DeviceStatus | null;
+	/** Latest stage capture reported by the device's player window, if any. */
+	screenshotOf(deviceId: string): DeviceScreenshot | null;
 }
 
 /** All mutations/fetches used by the dashboard, supplied by Studio or Player. */

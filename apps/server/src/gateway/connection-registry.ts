@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { DeviceScreenshot } from '@roomkit/shared';
 import type { DefaultEventsMap, Socket } from 'socket.io';
 
 export interface AttachedDevice {
@@ -57,6 +58,8 @@ export class ConnectionRegistry {
   private readonly lobby = new Map<string, LobbyEntry>();
   /** `${sessionId}:${deviceId}` → detected component versions. */
   private readonly versions = new Map<string, DeviceVersions>();
+  /** `${sessionId}:${deviceId}` → latest stage capture (in-memory only). */
+  private readonly screenshots = new Map<string, DeviceScreenshot>();
 
   /** Returns true when this is the device's first live socket (went online). */
   add(sessionId: string, deviceId: string, socket: Socket): boolean {
@@ -75,6 +78,7 @@ export class ConnectionRegistry {
     if (set.size === 0) {
       this.sockets.delete(key);
       this.versions.delete(key);
+      this.screenshots.delete(key);
       return true;
     }
     return false;
@@ -92,6 +96,18 @@ export class ConnectionRegistry {
 
   versionsFor(sessionId: string, deviceId: string): DeviceVersions {
     return this.versions.get(`${sessionId}:${deviceId}`) ?? {};
+  }
+
+  /** Replace a device's latest stage capture (only while it is online). */
+  setScreenshot(screenshot: DeviceScreenshot): void {
+    const key = `${screenshot.sessionId}:${screenshot.deviceId}`;
+    if (!this.sockets.has(key)) return;
+    this.screenshots.set(key, screenshot);
+  }
+
+  /** Latest captures of online devices, for the /admin initial dump. */
+  latestScreenshots(): DeviceScreenshot[] {
+    return [...this.screenshots.values()];
   }
 
   isOnline(sessionId: string, deviceId: string): boolean {

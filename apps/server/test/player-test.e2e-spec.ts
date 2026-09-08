@@ -403,4 +403,47 @@ describe('Player test sessions (e2e)', () => {
       201,
     );
   });
+
+  it('relays device screenshots to admins and dumps the latest on connect', async () => {
+    const themeId = await createTheme();
+    const deviceId = await createDevice(themeId, 'shot-dev');
+    const code = nextTestCode();
+    const created = await auth(
+      request(server())
+        .post('/api/sessions')
+        .send({ themeId, mode: 'test', deviceCodes: [{ deviceId, code }] }),
+    ).expect(201);
+    const sessionId = created.body.id as string;
+
+    const admin = track(connectAdmin(url, token));
+    await waitForEvent(admin, 'connect');
+    const device = track(connectDevice(url, code));
+    await waitForEvent(device, 'welcome');
+
+    type Shot = {
+      sessionId: string;
+      deviceId: string;
+      image: string;
+      width: number;
+      height: number;
+      capturedAt: number;
+    };
+    const image = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+    const live = waitForEvent<Shot>(admin, 'device:screenshot');
+    // Malformed reports (not a data URL) are dropped, never relayed.
+    device.emit('device:screenshot', { image: 'nope', width: 1, height: 1 });
+    device.emit('device:screenshot', { image, width: 640, height: 360 });
+    const shot = await live;
+    expect(shot).toMatchObject({ sessionId, deviceId, image, width: 640 });
+    expect(typeof shot.capturedAt).toBe('number');
+
+    // A late admin gets the latest capture in its initial dump.
+    const lateAdmin = track(connectAdmin(url, token));
+    const dumped = await waitForEvent<Shot>(lateAdmin, 'device:screenshot');
+    expect(dumped).toMatchObject({ sessionId, deviceId, image });
+
+    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(
+      201,
+    );
+  });
 });

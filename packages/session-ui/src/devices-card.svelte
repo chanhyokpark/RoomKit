@@ -12,6 +12,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
@@ -33,6 +34,31 @@
 	let navigation = $state<Record<string, string>>({});
 	let messageForms = $state<Record<string, MessageForm>>({});
 	let callbackResults = $state<Record<string, 'running' | 'ok' | 'fail'>>({});
+	/** Device whose screenshot is shown enlarged; the image keeps updating live. */
+	let enlargedDeviceId = $state<string | null>(null);
+	let now = $state(Date.now());
+
+	// Players report every few seconds; the "n초 전" labels tick alongside.
+	$effect(() => {
+		const timer = setInterval(() => (now = Date.now()), 1000);
+		return () => clearInterval(timer);
+	});
+
+	/** A capture older than this is likely from a stalled or paused player. */
+	const STALE_AFTER_MS = 20_000;
+
+	function ago(capturedAt: number): string {
+		const seconds = Math.max(0, Math.round((now - capturedAt) / 1000));
+		if (seconds < 60) return `${seconds}초 전`;
+		return `${Math.floor(seconds / 60)}분 전`;
+	}
+
+	function deviceName(deviceId: string): string {
+		const device = allDevices.find((candidate) => candidate.id === deviceId);
+		return device ? device.data.displayName || device.name : deviceId;
+	}
+
+	const enlarged = $derived(enlargedDeviceId ? model.screenshotOf(enlargedDeviceId) : null);
 
 	const allDevices = $derived(assetsOf(model.assets, 'device'));
 	const websites = $derived(assetsOf(model.assets, 'website'));
@@ -190,6 +216,7 @@
 			{@const currentWebsite = websiteByDevice.get(device.id)}
 			{@const currentMedia = playingByDevice.get(device.id) ?? []}
 			{@const code = codeByDevice.get(device.id)}
+			{@const screenshot = model.screenshotOf(device.id)}
 			<div class="rounded-md border">
 				<button
 					type="button"
@@ -211,6 +238,34 @@
 						<ChevronRightIcon class="size-4 text-muted-foreground" />
 					{/if}
 				</button>
+
+				{#if screenshot}
+					{@const stale = now - screenshot.capturedAt > STALE_AFTER_MS}
+					<div class="border-t px-3 py-2">
+						<button
+							type="button"
+							class="relative block w-full overflow-hidden rounded-md bg-black ring-1 ring-foreground/10 transition-opacity hover:opacity-90"
+							aria-label="{device.data.displayName || device.name} 화면 확대"
+							onclick={() => (enlargedDeviceId = device.id)}
+						>
+							<img
+								src={screenshot.image}
+								alt="{device.data.displayName || device.name} 화면"
+								width={screenshot.width}
+								height={screenshot.height}
+								class={cn('mx-auto max-h-44 w-auto object-contain', stale && 'opacity-50')}
+							/>
+							<span
+								class={cn(
+									'absolute right-1.5 bottom-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white',
+									stale && 'bg-amber-600/80'
+								)}
+							>
+								{ago(screenshot.capturedAt)}
+							</span>
+						</button>
+					</div>
+				{/if}
 
 				{#if currentWebsite || currentMedia.length > 0}
 					<div class="flex flex-col gap-1.5 border-t px-3 py-2">
@@ -440,3 +495,32 @@
 		{/each}
 	</Card.Content>
 </Card.Root>
+
+<Dialog.Root
+	open={enlargedDeviceId !== null}
+	onOpenChange={(open) => {
+		if (!open) enlargedDeviceId = null;
+	}}
+>
+	<Dialog.Content class="sm:max-w-5xl">
+		<Dialog.Header>
+			<Dialog.Title>{enlargedDeviceId ? deviceName(enlargedDeviceId) : ''} 화면</Dialog.Title>
+			<Dialog.Description>
+				{#if enlarged}
+					{enlarged.width}×{enlarged.height} · {ago(enlarged.capturedAt)} 캡처 · 자동 갱신
+				{:else}
+					캡처된 화면이 없습니다.
+				{/if}
+			</Dialog.Description>
+		</Dialog.Header>
+		{#if enlarged}
+			<img
+				src={enlarged.image}
+				alt="{enlargedDeviceId ? deviceName(enlargedDeviceId) : ''} 화면"
+				width={enlarged.width}
+				height={enlarged.height}
+				class="max-h-[75vh] w-full rounded-md bg-black object-contain"
+			/>
+		{/if}
+	</Dialog.Content>
+</Dialog.Root>

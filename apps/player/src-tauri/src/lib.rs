@@ -1,5 +1,6 @@
 mod cache;
 mod media_server;
+mod screenshot;
 
 use tauri::Manager;
 
@@ -23,13 +24,15 @@ pub fn run() {
     // Vibration/haptic feedback relayed from helper sites (mobile only; the
     // desktop implementation is a no-op).
     .plugin(tauri_plugin_haptics::init())
+    .plugin(screenshot::init())
     .invoke_handler(tauri::generate_handler![
       cache::cache_download,
       cache::cache_list,
       cache::cache_prune,
       cache::cache_read,
       cache::cache_root,
-      media_server::media_server_port
+      media_server::media_server_port,
+      screenshot::capture_webview
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

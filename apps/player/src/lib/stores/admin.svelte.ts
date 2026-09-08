@@ -3,12 +3,14 @@ import { toast } from 'svelte-sonner';
 import {
 	ADMIN_NAMESPACE,
 	AdminEvents,
+	DeviceScreenshotSchema,
 	DeviceStatusSchema,
 	SessionLogEntrySchema,
 	SessionMediaSchema,
 	SessionNotificationSchema,
 	SessionRunsSchema,
 	SessionStateSchema,
+	type DeviceScreenshot,
 	type DeviceStatus,
 	type RunningEvent,
 	type SessionLogEntry,
@@ -34,6 +36,8 @@ class AdminStore {
 	runs = $state<RunningEvent[]>([]);
 	media = $state<SessionMedia | null>(null);
 	deviceStatus = $state<Record<string, DeviceStatus>>({});
+	/** deviceId → latest stage capture. */
+	deviceScreenshot = $state<Record<string, DeviceScreenshot>>({});
 	/** Newest first, capped. */
 	logs = $state<SessionLogEntry[]>([]);
 	notifications = $state<SessionNotification[]>([]);
@@ -92,6 +96,11 @@ class AdminStore {
 			const parsed = DeviceStatusSchema.safeParse(payload);
 			if (!parsed.success || parsed.data.sessionId !== this.#sessionId) return;
 			this.deviceStatus = { ...this.deviceStatus, [parsed.data.deviceId]: parsed.data };
+		});
+		socket.on(AdminEvents.deviceScreenshot, (payload: unknown) => {
+			const parsed = DeviceScreenshotSchema.safeParse(payload);
+			if (!parsed.success || parsed.data.sessionId !== this.#sessionId) return;
+			this.deviceScreenshot = { ...this.deviceScreenshot, [parsed.data.deviceId]: parsed.data };
 		});
 		socket.on(AdminEvents.log, (payload: unknown) => {
 			const parsed = SessionLogEntrySchema.safeParse(payload);

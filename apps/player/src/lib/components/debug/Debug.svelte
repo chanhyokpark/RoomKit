@@ -141,6 +141,9 @@
 		},
 		statusOf(deviceId) {
 			return admin.deviceStatus[deviceId] ?? null;
+		},
+		screenshotOf(deviceId) {
+			return admin.deviceScreenshot[deviceId] ?? null;
 		}
 	};
 

@@ -3,6 +3,7 @@
 	import { cache } from '../cache/manager.svelte';
 	import { PlaybackEngine } from '../playback/engine';
 	import { startKiosk } from '../kiosk';
+	import { startScreenshotReporter } from '../screenshot';
 	import { config } from '../stores/config.svelte';
 	import { connection } from '../stores/connection.svelte';
 	import { stage } from '../stores/stage.svelte';
@@ -33,6 +34,7 @@
 	);
 
 	let engine = $state<PlaybackEngine | null>(null);
+	let stopScreenshots: (() => void) | null = null;
 
 	/** Video surface placement; null frame = fullscreen. */
 	const videoFrameStyle = $derived(
@@ -58,10 +60,13 @@
 			// welcome may have raced ahead of init — sync() serializes itself.
 			if (connection.welcome) void cache.sync(client);
 		});
+		// Studio's device list shows a live thumbnail of this stage.
+		stopScreenshots = startScreenshotReporter(client, () => connection.status === 'connected');
 		if (device.kiosk) return startKiosk();
 	});
 
 	onDestroy(() => {
+		stopScreenshots?.();
 		engine?.resetAll();
 		connection.stop();
 	});

@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Tauri loads in-app plugins by class name and finds @Command methods via
+# reflection (see ScreenshotPlugin.kt).
+-keep @app.tauri.annotation.TauriPlugin class app.roomkit.player.** { *; }
+-keep @app.tauri.annotation.InvokeArg class app.roomkit.player.** { *; }

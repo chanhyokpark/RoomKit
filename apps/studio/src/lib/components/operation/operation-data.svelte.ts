@@ -8,6 +8,7 @@ import { PUBLIC_API_URL } from '$env/static/public';
 import {
 	ADMIN_NAMESPACE,
 	AdminEvents,
+	DeviceScreenshotSchema,
 	DeviceStatusSchema,
 	PlayerStatusSchema,
 	SessionLogEntrySchema,
@@ -16,6 +17,7 @@ import {
 	SessionRunsSchema,
 	SessionStateSchema,
 	type Asset,
+	type DeviceScreenshot,
 	type DeviceStatus,
 	type PlayerStatus,
 	type RunningEvent,
@@ -72,6 +74,8 @@ export class OperationData {
 	readonly live = new SvelteMap<string, LiveSnapshot>();
 	/** `${sessionId}:${deviceId}` → latest device:status (online + versions). */
 	readonly deviceStatus = new SvelteMap<string, DeviceStatus>();
+	/** `${sessionId}:${deviceId}` → latest stage capture (server keeps one per device). */
+	readonly deviceScreenshot = new SvelteMap<string, DeviceScreenshot>();
 	/** sessionId → in-flight event runs (server sends full snapshots). */
 	readonly runs = new SvelteMap<string, RunningEvent[]>();
 	/** sessionId → playing media/websites (server sends full snapshots). */
@@ -204,6 +208,9 @@ export class OperationData {
 		for (const key of this.deviceStatus.keys()) {
 			if (key.startsWith(`${sessionId}:`)) this.deviceStatus.delete(key);
 		}
+		for (const key of this.deviceScreenshot.keys()) {
+			if (key.startsWith(`${sessionId}:`)) this.deviceScreenshot.delete(key);
+		}
 		if (this.selectedSessionId === sessionId) this.select(null);
 		await this.refreshSessions();
 	}
@@ -248,6 +255,7 @@ export class OperationData {
 			// after connect — stale flags must not survive a reconnect.
 			this.live.clear();
 			this.deviceStatus.clear();
+			this.deviceScreenshot.clear();
 			this.runs.clear();
 			this.media.clear();
 			this.playersById.clear();
@@ -299,6 +307,12 @@ export class OperationData {
 				toast.warning(`장치 "${deviceName}" 연결이 끊어졌습니다.`);
 			}
 		});
+		this.#socket.on(AdminEvents.deviceScreenshot, (payload: unknown) => {
+			const parsed = DeviceScreenshotSchema.safeParse(payload);
+			if (!parsed.success) return;
+			const { sessionId, deviceId } = parsed.data;
+			this.deviceScreenshot.set(`${sessionId}:${deviceId}`, parsed.data);
+		});
 		this.#socket.on(AdminEvents.notification, (payload: unknown) => {
 			const parsed = SessionNotificationSchema.safeParse(payload);
 			if (!parsed.success) return;
@@ -331,6 +345,10 @@ export class OperationData {
 		const snapshot = this.live.get(sessionId);
 		if (snapshot) return snapshot.state.themeId === this.themeId;
 		return this.restSessions.some((row) => row.id === sessionId);
+	}
+
+	screenshotFor(sessionId: string, deviceId: string): DeviceScreenshot | null {
+		return this.deviceScreenshot.get(`${sessionId}:${deviceId}`) ?? null;
 	}
 
 	isDeviceOnline(sessionId: string, deviceId: string): boolean {

@@ -57,6 +57,12 @@ export const DeviceEvents = {
    * loaded in this device window (`HelperInfo`), sent on every helper hello.
    */
   helperInfo: 'helper:info',
+  /**
+   * C→S: the player reports a periodic capture of its stage webview
+   * (`DeviceScreenshotReport`). The server keeps only the latest per device
+   * and relays it to /admin as `device:screenshot`.
+   */
+  screenshot: 'device:screenshot',
 } as const;
 
 /** Events on the /admin namespace (studio). */
@@ -64,6 +70,8 @@ export const AdminEvents = {
   sessionState: 'session:state',
   log: 'log',
   deviceStatus: 'device:status',
+  /** Latest stage capture of a device (`DeviceScreenshot`), replaces the previous one. */
+  deviceScreenshot: 'device:screenshot',
   /** Live snapshot of a session's running event sequences. */
   sessionRuns: 'session:runs',
   /** Live snapshot of a session's playing media / device websites. */
@@ -392,3 +400,29 @@ export const DeviceStatusSchema = z.object({
   helperTestCallbacks: z.array(z.string()).nullable().optional(),
 });
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;
+
+/**
+ * Upper bound on a screenshot data URL — keeps a report well under socket.io's
+ * default 1 MB message limit. Players downscale to stay below it.
+ */
+export const SCREENSHOT_MAX_CHARS = 800_000;
+
+/** /device `device:screenshot` payload — a JPEG/PNG data URL of the stage webview. */
+export const DeviceScreenshotReportSchema = z.object({
+  image: z
+    .string()
+    .regex(/^data:image\/(jpeg|png|webp);base64,/)
+    .max(SCREENSHOT_MAX_CHARS),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+});
+export type DeviceScreenshotReport = z.infer<typeof DeviceScreenshotReportSchema>;
+
+/** /admin `device:screenshot` payload — the latest capture of one device. */
+export const DeviceScreenshotSchema = DeviceScreenshotReportSchema.extend({
+  sessionId: z.uuid(),
+  deviceId: z.uuid(),
+  /** Epoch ms when the server received the capture. */
+  capturedAt: z.number().int().nonnegative(),
+});
+export type DeviceScreenshot = z.infer<typeof DeviceScreenshotSchema>;

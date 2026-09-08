@@ -88,6 +88,9 @@
 		},
 		statusOf(deviceId) {
 			return data.deviceStatus.get(`${session.id}:${deviceId}`) ?? null;
+		},
+		screenshotOf(deviceId) {
+			return data.screenshotFor(session.id, deviceId);
 		}
 	};
 

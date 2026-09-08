@@ -15,6 +15,7 @@ import {
   DeviceAuthSchema,
   DeviceDataSchema,
   DeviceEvents,
+  DeviceScreenshotReportSchema,
   HelperInfoSchema,
   HintNextSchema,
   HintSubmitSchema,
@@ -340,6 +341,30 @@ export class DeviceGateway
       deviceName: attach.deviceName,
       online: this.registry.isOnline(attach.sessionId, attach.deviceId),
     });
+  }
+
+  /**
+   * Periodic stage capture from the player. Only the latest per device is
+   * kept (in memory) and relayed to /admin; oversized or malformed payloads
+   * are dropped silently.
+   */
+  @SubscribeMessage(DeviceEvents.screenshot)
+  onScreenshot(
+    @ConnectedSocket() socket: DeviceSocket,
+    @MessageBody() body: unknown,
+  ): void {
+    const attach = socket.data.attach;
+    if (!attach) return;
+    const parsed = DeviceScreenshotReportSchema.safeParse(body);
+    if (!parsed.success) return;
+    const screenshot = {
+      ...parsed.data,
+      sessionId: attach.sessionId,
+      deviceId: attach.deviceId,
+      capturedAt: Date.now(),
+    };
+    this.registry.setScreenshot(screenshot);
+    this.admin.broadcastDeviceScreenshot(screenshot);
   }
 
   @SubscribeMessage(DeviceEvents.progress)

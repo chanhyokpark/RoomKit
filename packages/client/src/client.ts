@@ -12,6 +12,7 @@ import {
   WireCommandSchema,
   SessionStateSchema,
   type DeviceAssetManifest,
+  type DeviceScreenshotReport,
   type HintError,
   type HintShow,
   type JsonValue,
@@ -401,6 +402,16 @@ export class RoomKitClient {
   ): void {
     this.log('helper info', version, extras);
     this.socket?.emit(DeviceEvents.helperInfo, { version, ...extras });
+  }
+
+  /**
+   * Player-internal: report a capture of this device window's stage
+   * (`DeviceScreenshotReport`, a downscaled data URL). The server keeps the
+   * latest per device and relays it to studio's device list. No-op offline.
+   */
+  reportScreenshot(report: DeviceScreenshotReport): void {
+    if (!this.socket?.connected) return;
+    this.socket.emit(DeviceEvents.screenshot, report);
   }
 
   /**
