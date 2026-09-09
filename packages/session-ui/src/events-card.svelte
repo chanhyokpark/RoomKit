@@ -104,7 +104,7 @@
 {#if view.simple}
 	<!-- Simple mode: only the events the theme author marked for operators, as buttons. -->
 	{#if quickEvents.length > 0}
-		<Card.Root class="md:col-span-2">
+		<Card.Root>
 			<Card.Header>
 				<Card.Title class="flex items-center gap-2"><ZapIcon />이벤트</Card.Title>
 			</Card.Header>

@@ -266,7 +266,7 @@
 
 {#if view.simple}
 	<!-- Simple mode: connection state only; nothing to expand or operate. -->
-	<Card.Root class="md:col-span-2">
+	<Card.Root>
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
 		</Card.Header>
