@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { PUBLIC_API_URL } from '$env/static/public';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import MonitorIcon from '@lucide/svelte/icons/monitor';
 	import { toast } from 'svelte-sonner';
-	import type { TestDeviceCode } from '@roomkit/shared';
+	import { playerTestLink, type TestDeviceCode } from '@roomkit/shared';
 	import { toastApiError } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -12,7 +14,6 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { createSession } from '$lib/api/sessions';
 	import { useOperationData } from './operation-data.svelte';
-	import PlayerLinkButton from './player-link-button.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -24,13 +25,18 @@
 		code: string;
 	}
 
-	let tab = $state<'player' | 'manual'>('player');
+	/**
+	 * `link`: mint codes here and hand the session to the Player app on this
+	 * computer via a `roomkit-player://` link (default). `player`: a connected
+	 * launcher opens the windows itself. `manual`: operator-typed codes.
+	 */
+	let tab = $state<'link' | 'player' | 'manual'>('link');
 	let selectedPlayerId = $state<string | null>(null);
 	let drafts = $state<CodeDraft[]>([]);
 	let busy = $state(false);
 	let createdId = $state<string | null>(null);
 	let createdCodes = $state<TestDeviceCode[]>([]);
-	let createdViaPlayer = $state(false);
+	let createdVia = $state<'link' | 'player' | 'manual'>('link');
 
 	// No 0/1/l/o — codes get read aloud and typed on devices.
 	const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -75,6 +81,7 @@
 		if (tab === 'player') {
 			return selectedPlayerId === null ? '플레이어를 선택하세요.' : null;
 		}
+		if (tab === 'link') return null;
 		if (trimmed.some((d) => d.code === '')) return '모든 장치에 코드를 입력하세요.';
 		if (new Set(trimmed.map((d) => d.code)).size !== trimmed.length) return '코드가 중복됩니다.';
 		return null;
@@ -95,8 +102,8 @@
 		untrack(() => {
 			createdId = null;
 			createdCodes = [];
-			createdViaPlayer = false;
-			tab = 'player';
+			createdVia = 'link';
+			tab = 'link';
 			selectedPlayerId = data.players[0]?.playerId ?? null;
 			const saved = loadSavedCodes();
 			drafts = data.devices.map((device) => ({
@@ -111,23 +118,34 @@
 		if (busy || validationError) return;
 		busy = true;
 		try {
-			const viaPlayer = tab === 'player';
+			const via = tab;
+			// The link tab reuses the saved per-device codes (or the suggested
+			// ones) so a tester's paired devices keep working across sessions.
+			const codes =
+				via === 'link'
+					? drafts.map((d) => ({ ...d, code: d.code.trim() || suggestCode() }))
+					: trimmed;
 			const session = await createSession(
-				viaPlayer
+				via === 'player'
 					? { themeId: data.themeId, mode: 'test', playerId: selectedPlayerId! }
 					: {
 							themeId: data.themeId,
 							mode: 'test',
-							deviceCodes: trimmed.map((d) => ({ deviceId: d.deviceId, code: d.code }))
+							deviceCodes: codes.map((d) => ({ deviceId: d.deviceId, code: d.code }))
 						}
 			);
 			createdId = session.id;
 			createdCodes = session.testDeviceCodes ?? [];
-			createdViaPlayer = viaPlayer;
-			if (!viaPlayer) saveCodes(trimmed);
+			createdVia = via;
+			if (via !== 'player') saveCodes(codes);
 			await data.refreshSessions();
 			data.select(session.id);
 			toast.success('테스트 세션을 만들었습니다.');
+			if (via === 'link') {
+				// Hand off to the Player app on this computer. The browser keeps
+				// this page; the OS routes the scheme to Player.
+				window.location.href = playerTestLink(PUBLIC_API_URL, session.id);
+			}
 		} catch (err) {
 			toastApiError(err, '테스트 세션 생성에 실패했습니다.');
 		} finally {
@@ -146,22 +164,21 @@
 		<Dialog.Header>
 			<Dialog.Title>테스트 세션 만들기</Dialog.Title>
 			<Dialog.Description>
-				연결된 플레이어에서 자동으로 시작하거나, 장치별 테스트 코드를 직접 입력하세요. 직접 입력한
-				세션은 앱 링크로 이 컴퓨터의 Player 에서 열 수 있습니다.
+				이 컴퓨터의 Player 앱에서 바로 열거나, 연결된 플레이어에서 자동으로 시작하거나, 장치별
+				테스트 코드를 직접 입력하세요.
 			</Dialog.Description>
 		</Dialog.Header>
 		{#if createdId}
-			{#if createdViaPlayer}
+			{#if createdVia === 'player'}
 				<p class="text-sm text-muted-foreground">
 					플레이어에서 디바이스 창이 자동으로 열렸습니다. 생성된 코드:
 				</p>
+			{:else if createdVia === 'link'}
+				<p class="text-sm text-muted-foreground">
+					Player 앱으로 세션을 넘겼습니다. 앱이 열리지 않으면 아래 코드를 장치에 직접 입력하세요.
+				</p>
 			{:else}
-				<div class="flex flex-wrap items-center justify-between gap-2">
-					<p class="text-sm text-muted-foreground">
-						코드를 장치에 입력하거나, 이 컴퓨터의 Player 앱에서 바로 여세요.
-					</p>
-					<PlayerLinkButton sessionId={createdId} />
-				</div>
+				<p class="text-sm text-muted-foreground">코드를 장치에 입력하세요.</p>
 			{/if}
 			<div class="flex flex-col gap-1.5">
 				{#each createdCodes as entry (entry.deviceId)}
@@ -185,9 +202,25 @@
 		{:else}
 			<Tabs.Root bind:value={tab}>
 				<Tabs.List class="w-full">
+					<Tabs.Trigger value="link" class="flex-1">Player 앱</Tabs.Trigger>
 					<Tabs.Trigger value="player" class="flex-1">연결된 플레이어</Tabs.Trigger>
 					<Tabs.Trigger value="manual" class="flex-1">직접 입력</Tabs.Trigger>
 				</Tabs.List>
+				<Tabs.Content value="link" class="flex flex-col gap-1.5 pt-2">
+					<p class="text-xs text-muted-foreground">
+						테스트 코드가 자동 발급되고, 이 컴퓨터에 설치된 Player 앱이 앱 링크로 열려 장치 창과
+						디버그 창을 띄웁니다. Player 는 <code class="font-mono">{PUBLIC_API_URL}</code> 서버에 연결합니다.
+					</p>
+					{#if drafts.length === 0}
+						<p class="py-4 text-center text-sm text-muted-foreground">
+							이 테마에 장치 애셋이 없습니다.
+						</p>
+					{:else}
+						<p class="text-xs text-muted-foreground">
+							장치 {drafts.length}개: {drafts.map((d) => d.label).join(', ')}
+						</p>
+					{/if}
+				</Tabs.Content>
 				<Tabs.Content value="player" class="flex flex-col gap-1.5 pt-2">
 					{#if data.players.length === 0}
 						<p class="py-4 text-center text-sm text-muted-foreground">
@@ -240,8 +273,8 @@
 			<Dialog.Footer>
 				<Button variant="outline" disabled={busy} onclick={() => (open = false)}>취소</Button>
 				<Button disabled={busy || validationError !== null} onclick={handleCreate}>
-					{#if busy}<Spinner />{/if}
-					만들기
+					{#if busy}<Spinner />{:else if tab === 'link'}<ExternalLinkIcon />{/if}
+					{tab === 'link' ? 'Player 앱에서 열기' : '만들기'}
 				</Button>
 			</Dialog.Footer>
 		{/if}

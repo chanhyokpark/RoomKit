@@ -199,7 +199,15 @@ export class CallService implements OnModuleDestroy {
     call.status = 'connected';
     call.connectedAt = Date.now();
     this.clearConnectTimer(call);
-    this.log(call, 'info', `Call with "${call.deviceName}" connected`);
+    // A device without microphone access still connects listen-only and
+    // says so in `reason`; keep that visible in the session log.
+    const listenOnly = report.reason === 'mic_denied';
+    this.log(
+      call,
+      'info',
+      `Call with "${call.deviceName}" connected${listenOnly ? ' (listen-only: microphone denied)' : ''}`,
+      listenOnly ? { reason: 'mic_denied' } : undefined,
+    );
     this.broadcast(sessionId);
   }
 

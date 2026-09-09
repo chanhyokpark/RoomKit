@@ -25,6 +25,9 @@
 					: 'animate-pulse bg-neutral-400'}"
 			></span>
 			<p class="text-3xl font-medium tracking-wide">{label}</p>
+			{#if call.micDenied}
+				<p class="text-base text-neutral-400">마이크 권한이 없어 운영자 음성만 들립니다</p>
+			{/if}
 		</div>
 		{#if call.state === 'requesting'}
 			<button

@@ -13,6 +13,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import logo from '../assets/logo.svg';
 	import { listenForAppLinks } from '../deep-link';
+	import { warmUpMicrophone } from '../mic';
 	import { auth } from '../stores/auth.svelte';
 	import { config } from '../stores/config.svelte';
 	import { launch } from '../stores/launch.svelte';
@@ -51,6 +52,9 @@
 	// auto-started test sessions; stored admin credentials log in silently.
 	onMount(() => {
 		player.connect();
+		// Raise the microphone permission prompt now (every platform), so an
+		// operator call later never has to prompt inside a kiosk stage window.
+		void warmUpMicrophone();
 		if (config.auth) {
 			void auth.relogin().then((ok) => {
 				if (ok) void testSetup.loadThemes();

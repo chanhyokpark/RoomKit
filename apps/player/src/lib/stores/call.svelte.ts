@@ -3,6 +3,7 @@ import type { DeviceCallState, HelperCallState } from '@roomkit/shared';
 import type { MediaConnection, Peer } from 'peerjs';
 import { runHaptics } from '../haptics';
 import { vlog } from '../log';
+import { silentAudioStream } from '../mic';
 import type { PlaybackEngine } from '../playback/engine';
 import { config } from './config.svelte';
 import { connection } from './connection.svelte';
@@ -14,8 +15,10 @@ const RING_VIBRATE_MS = 400;
  * Voice call with the operator for this stage window. The server sequences
  * the call (one per session, owned by an operator socket); this store does
  * the media: on `connecting` it opens a PeerJS peer as the server-assigned
- * id, captures the microphone and calls the operator's peer. The overlay
- * (CallOverlay) reads `state`; playback is muted for the call's duration.
+ * id, captures the microphone and calls the operator's peer. Without mic
+ * permission the call still goes through listen-only (a silent track stands
+ * in for the mic) so the operator can at least be heard; `micDenied` lets
+ * the overlay say so. Playback is muted for the call's duration.
  *
  * The site drives requests through the helper bridge (`request`/`cancel`);
  * a request is only ever withdrawn while pending — once an operator accepted,
@@ -26,12 +29,15 @@ class CallStore {
 	callId = $state<string | null>(null);
 	/** A cancel was sent; the button stays disabled until the server answers. */
 	cancelling = $state(false);
+	/** The current call runs listen-only because microphone access was refused. */
+	micDenied = $state(false);
 
 	private client: RoomKitClient | null = null;
 	private engine: PlaybackEngine | null = null;
 	private peer: Peer | null = null;
 	private conn: MediaConnection | null = null;
-	private mic: MediaStream | null = null;
+	/** Stops the mic tracks, or tears down the silent stand-in. */
+	private releaseMic: (() => void) | null = null;
 	private audio: HTMLAudioElement | null = null;
 	private readonly cleanups: (() => void)[] = [];
 
@@ -105,18 +111,32 @@ class CallStore {
 		const { callId } = payload;
 		const live = () => this.callId === callId && this.state !== 'idle';
 		let mic: MediaStream;
+		let releaseMic: () => void;
+		let micDenied = false;
 		try {
 			mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+			releaseMic = () => {
+				for (const track of mic.getTracks()) track.stop();
+			};
 		} catch (err) {
-			vlog('call', 'mic denied', err);
-			if (live()) this.fail('mic_denied');
-			return;
+			// No microphone (permission refused, or none attached): continue
+			// listen-only rather than dropping the call.
+			vlog('call', 'mic unavailable, continuing listen-only', err);
+			micDenied = true;
+			try {
+				({ stream: mic, release: releaseMic } = silentAudioStream());
+			} catch (audioErr) {
+				vlog('call', 'silent track failed', audioErr);
+				if (live()) this.fail('mic_denied');
+				return;
+			}
 		}
 		if (!live()) {
-			for (const track of mic.getTracks()) track.stop();
+			releaseMic();
 			return;
 		}
-		this.mic = mic;
+		this.releaseMic = releaseMic;
+		this.micDenied = micDenied;
 		let PeerCtor: typeof Peer;
 		try {
 			({ Peer: PeerCtor } = await import('peerjs'));
@@ -149,7 +169,7 @@ class CallStore {
 				void audio.play().catch((err) => vlog('call', 'remote audio play failed', err));
 				this.audio = audio;
 				this.state = 'connected';
-				this.client?.reportCallStatus(callId, 'connected');
+				this.client?.reportCallStatus(callId, 'connected', micDenied ? 'mic_denied' : undefined);
 			});
 			conn.on('close', () => {
 				if (live() && this.conn === conn) this.fail('peer_closed');
@@ -185,11 +205,11 @@ class CallStore {
 	private endLocally(): void {
 		const conn = this.conn;
 		const peer = this.peer;
-		const mic = this.mic;
+		const releaseMic = this.releaseMic;
 		const audio = this.audio;
 		this.conn = null;
 		this.peer = null;
-		this.mic = null;
+		this.releaseMic = null;
 		this.audio = null;
 		try {
 			conn?.close();
@@ -197,7 +217,7 @@ class CallStore {
 			// already closed
 		}
 		peer?.destroy();
-		if (mic) for (const track of mic.getTracks()) track.stop();
+		releaseMic?.();
 		if (audio) {
 			audio.pause();
 			audio.srcObject = null;
@@ -207,6 +227,7 @@ class CallStore {
 		this.state = 'idle';
 		this.callId = null;
 		this.cancelling = false;
+		this.micDenied = false;
 	}
 }
 

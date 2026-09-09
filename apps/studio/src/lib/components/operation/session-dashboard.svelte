@@ -24,7 +24,6 @@
 		triggerEvent
 	} from '$lib/api/sessions';
 	import { useOperationData, type SessionView } from './operation-data.svelte';
-	import PlayerLinkButton from './player-link-button.svelte';
 
 	let { session }: { session: SessionView } = $props();
 	const data = useOperationData();
@@ -134,13 +133,4 @@
 	};
 </script>
 
-{#if session.mode === 'test' && session.state !== 'ended'}
-	<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
-		<span class="text-xs text-muted-foreground">
-			테스트 세션 — 이 컴퓨터에 Player 가 설치되어 있으면 앱 링크로 장치 창과 디버그 창을 열 수
-			있습니다.
-		</span>
-		<PlayerLinkButton sessionId={session.id} />
-	</div>
-{/if}
 <SessionDashboard {model} {actions} />
