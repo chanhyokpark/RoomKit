@@ -61,6 +61,8 @@ export interface SessionUiActions {
 	restartPhase(): Promise<void>;
 	triggerEvent(eventId: string): Promise<void>;
 	abortRun(runId: string): Promise<void>;
+	/** Skip the current entry (e.g. a `wait`) of an in-flight run. */
+	skipRun(runId: string): Promise<void>;
 	resetDevices(): Promise<void>;
 	runCommand(command: Command): Promise<void>;
 	pushHint(input: PushHintInput): Promise<void>;

@@ -2,6 +2,8 @@
 	import ActivityIcon from '@lucide/svelte/icons/activity';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import PlayIcon from '@lucide/svelte/icons/play';
+	import SkipForwardIcon from '@lucide/svelte/icons/skip-forward';
 	import XIcon from '@lucide/svelte/icons/x';
 	import ZapIcon from '@lucide/svelte/icons/zap';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -11,41 +13,44 @@
 	import * as Card from '$lib/components/ui/card';
 	import * as Empty from '$lib/components/ui/empty';
 	import { cn } from '$lib/utils';
-	import { assetsOf, commandLabel } from './assets.js';
+	import { assetName, assetsOf, commandLabel } from './assets.js';
 	import { useSessionUi } from './context.js';
+	import type { EventAsset } from './types.js';
 
 	const { model, actions } = useSessionUi();
 	const expanded = new SvelteSet<string>();
 	const busyEvents = new SvelteSet<string>();
-	const aborting = new SvelteSet<string>();
+	const busyRuns = new SvelteSet<string>();
+	/** Events of phases other than the current one are noise most of the time. */
+	let showOtherPhases = $state(false);
 
 	const session = $derived(model.session);
 	const events = $derived(assetsOf(model.assets, 'event'));
 	const runs = $derived(model.runs);
-	const groups = $derived.by(() => {
-		const phaseId = session?.phaseId ?? null;
-		return [
-			{
-				label: '현재 페이즈',
-				items: events.filter(
-					(event) => event.data.phaseId !== null && event.data.phaseId === phaseId
-				),
-				active: true
-			},
-			{
-				label: '공통',
-				items: events.filter((event) => event.data.phaseId === null),
-				active: true
-			},
-			{
-				label: '다른 페이즈',
-				items: events.filter(
-					(event) => event.data.phaseId !== null && event.data.phaseId !== phaseId
-				),
-				active: false
-			}
-		].filter((group) => group.items.length > 0);
-	});
+	const canRun = $derived(!!session && session.state !== 'created' && session.state !== 'ended');
+
+	const currentPhaseEvents = $derived(
+		events.filter(
+			(event) => event.data.phaseId !== null && event.data.phaseId === (session?.phaseId ?? null)
+		)
+	);
+	const commonEvents = $derived(events.filter((event) => event.data.phaseId === null));
+	const otherPhaseEvents = $derived(
+		events.filter(
+			(event) => event.data.phaseId !== null && event.data.phaseId !== (session?.phaseId ?? null)
+		)
+	);
+	/** Events the theme author marked for operator use — offered as one-click buttons. */
+	const quickEvents = $derived(
+		[...currentPhaseEvents, ...commonEvents].filter((event) => event.data.manualTriggerable)
+	);
+	const groups = $derived(
+		[
+			{ label: '현재 페이즈', items: currentPhaseEvents },
+			{ label: '공통', items: commonEvents },
+			...(showOtherPhases ? [{ label: '다른 페이즈', items: otherPhaseEvents }] : [])
+		].filter((group) => group.items.length > 0)
+	);
 
 	function toggle(eventId: string): void {
 		if (expanded.has(eventId)) expanded.delete(eventId);
@@ -56,7 +61,7 @@
 		return runs.filter((run) => run.eventId === eventId);
 	}
 
-	function triggerLabel(event: (typeof events)[number]): string {
+	function triggerLabel(event: EventAsset): string {
 		if (event.data.triggerKind === 'manual') return '수동';
 		if (event.data.triggerKind === 'system') return event.data.triggerName ?? 'system';
 		return `트리거: ${event.data.triggerName ?? '?'}`;
@@ -74,16 +79,26 @@
 		}
 	}
 
-	async function abort(runId: string): Promise<void> {
-		if (aborting.has(runId)) return;
-		aborting.add(runId);
+	async function runAction(
+		runId: string,
+		action: () => Promise<void>,
+		failure: string
+	): Promise<void> {
+		if (busyRuns.has(runId)) return;
+		busyRuns.add(runId);
 		try {
-			await actions.abortRun(runId);
+			await action();
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : '실행을 중단하지 못했습니다.');
-			aborting.delete(runId);
+			toast.error(error instanceof Error ? error.message : failure);
+		} finally {
+			busyRuns.delete(runId);
 		}
 	}
+
+	const abort = (runId: string) =>
+		runAction(runId, () => actions.abortRun(runId), '실행을 중단하지 못했습니다.');
+	const skip = (runId: string) =>
+		runAction(runId, () => actions.skipRun(runId), '단계를 건너뛰지 못했습니다.');
 </script>
 
 <Card.Root class="md:col-span-2">
@@ -93,7 +108,10 @@
 			이벤트
 			{#if runs.length > 0}<Badge variant="secondary">{runs.length}개 실행 중</Badge>{/if}
 		</Card.Title>
-		<Card.Description>수동 이벤트를 실행하고 시퀀스 진행 상황을 확인합니다.</Card.Description>
+		<Card.Description>
+			이벤트를 실행하고 시퀀스 진행 상황을 확인합니다. 실행 중인 단계는 건너뛰거나 중단할 수
+			있습니다.
+		</Card.Description>
 	</Card.Header>
 	<Card.Content class="flex flex-col gap-4">
 		{#if runs.length > 0}
@@ -109,8 +127,19 @@
 							variant="ghost"
 							size="icon-sm"
 							class="ml-auto"
+							aria-label="현재 단계 건너뛰기"
+							title="현재 단계 건너뛰기 (대기 중인 단계를 즉시 끝냅니다)"
+							disabled={busyRuns.has(run.runId)}
+							onclick={() => skip(run.runId)}
+						>
+							<SkipForwardIcon />
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon-sm"
 							aria-label="이벤트 강제 종료"
-							disabled={aborting.has(run.runId)}
+							title="이벤트 강제 종료"
+							disabled={busyRuns.has(run.runId)}
 							onclick={() => abort(run.runId)}
 						>
 							<XIcon />
@@ -128,6 +157,23 @@
 				</Empty.Header>
 			</Empty.Root>
 		{:else}
+			{#if quickEvents.length > 0}
+				<div class="flex flex-col gap-1.5">
+					<p class="text-xs font-medium text-muted-foreground">빠른 실행</p>
+					<div class="flex flex-wrap gap-1.5">
+						{#each quickEvents as event (event.id)}
+							<Button
+								size="sm"
+								disabled={!canRun || busyEvents.has(event.id)}
+								onclick={() => trigger(event.id)}
+							>
+								<PlayIcon data-icon="inline-start" />{event.name}
+							</Button>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			{#each groups as group (group.label)}
 				<div class="flex flex-col gap-1.5">
 					<p class="text-xs font-medium text-muted-foreground">{group.label}</p>
@@ -147,17 +193,17 @@
 									<span class="truncate">{event.name}</span>
 								</button>
 								<Badge variant="secondary">{triggerLabel(event)}</Badge>
+								{#if group.label === '다른 페이즈'}
+									<Badge variant="outline">
+										{assetName(model.assets, event.data.phaseId) ?? '(삭제됨)'}
+									</Badge>
+								{/if}
 								{#if runsOf(event.id).length > 0}<Badge variant="outline">실행 중</Badge>{/if}
 								<Button
 									size="sm"
 									variant="outline"
 									class="ml-auto"
-									disabled={!group.active ||
-										!event.data.manualTriggerable ||
-										busyEvents.has(event.id) ||
-										!session ||
-										session.state === 'created' ||
-										session.state === 'ended'}
+									disabled={!canRun || busyEvents.has(event.id)}
 									onclick={() => trigger(event.id)}
 								>
 									실행
@@ -185,6 +231,22 @@
 					{/each}
 				</div>
 			{/each}
+
+			{#if otherPhaseEvents.length > 0}
+				<Button
+					variant="ghost"
+					size="sm"
+					class="self-start text-muted-foreground"
+					onclick={() => (showOtherPhases = !showOtherPhases)}
+				>
+					{#if showOtherPhases}
+						<ChevronDownIcon data-icon="inline-start" />다른 페이즈 이벤트 숨기기
+					{:else}
+						<ChevronRightIcon data-icon="inline-start" />다른 페이즈 이벤트 {otherPhaseEvents.length}개
+						보기
+					{/if}
+				</Button>
+			{/if}
 		{/if}
 	</Card.Content>
 </Card.Root>

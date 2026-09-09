@@ -160,6 +160,14 @@ export class SessionsController {
     this.runtime.abortRun(id, runId);
   }
 
+  /** Skip the current entry (e.g. a `wait`) of one in-flight event run. */
+  @Post(':id/runs/:runId/skip')
+  @HttpCode(204)
+  async skipRun(@Param('id') id: string, @Param('runId') runId: string) {
+    await this.sessionsService.get(id);
+    this.runtime.skipRun(id, runId);
+  }
+
   /** One-off operator command (operation console / media stop buttons). */
   @Post(':id/command')
   @HttpCode(204)

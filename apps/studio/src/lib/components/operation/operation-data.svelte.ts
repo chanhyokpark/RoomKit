@@ -431,7 +431,7 @@ export class OperationData {
 		this.#socket.on(AdminEvents.callState, (payload: unknown) => {
 			const parsed = AdminCallStateSchema.safeParse(payload);
 			if (!parsed.success) return;
-			const { sessionId, call, endReason } = parsed.data;
+			const { sessionId, call, endReason, endDetail } = parsed.data;
 			const previous = this.calls.get(sessionId) ?? null;
 			if (call) this.calls.set(sessionId, call);
 			else this.calls.delete(sessionId);
@@ -445,7 +445,9 @@ export class OperationData {
 				if (!mine) {
 					this.#closeCall();
 					const label = endReason && CALL_END_LABELS[endReason];
-					if (label) toast.warning(label);
+					// The device's own failure detail (mic_denied, peer_error:…) is
+					// the only clue an operator gets — keep it visible.
+					if (label) toast.warning(endDetail ? `${label} (${endDetail})` : label);
 				}
 			}
 		});

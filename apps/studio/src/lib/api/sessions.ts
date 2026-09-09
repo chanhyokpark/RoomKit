@@ -101,6 +101,11 @@ export function abortRun(id: string, runId: string): Promise<void> {
 	return api(`/sessions/${id}/runs/${runId}/abort`, { method: 'POST' });
 }
 
+/** Skip the current entry (e.g. a `wait`) of an in-flight event run. */
+export function skipRun(id: string, runId: string): Promise<void> {
+	return api(`/sessions/${id}/runs/${runId}/skip`, { method: 'POST' });
+}
+
 /**
  * One-off operator command (operation console / media stop buttons).
  * Fire-and-forget on the server — outcomes stream in via the session log.

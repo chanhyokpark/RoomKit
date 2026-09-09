@@ -736,7 +736,12 @@ describe('Runtime (e2e)', () => {
     const eventId = await createEvent(themeId, 'bgm-cycle', {
       sequence: [
         entry({ type: 'playBgm', bgmId, playerId, loop: true }),
-        entry({ type: 'adjustBgmVolume', playerId, value: 35, durationMs: 800 }),
+        entry({
+          type: 'adjustBgmVolume',
+          playerId,
+          value: 35,
+          durationMs: 800,
+        }),
         entry({ type: 'stopBgm', playerId, allPlayers: false }),
       ],
     });
@@ -1380,6 +1385,43 @@ describe('Runtime (e2e)', () => {
     await auth(
       request(server()).post(
         `/api/sessions/${sessionId}/runs/${randomUUID()}/abort`,
+      ),
+    ).expect(400);
+  });
+
+  it('admin skip ends the current wait and the sequence continues', async () => {
+    const themeId = await createTheme();
+    const eventId = await createEvent(themeId, 'waiter', {
+      sequence: [
+        entry({ type: 'wait', durationMs: 60_000 }),
+        entry({ type: 'notify', message: 'after wait' }),
+      ],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/trigger`, { eventId });
+    await waitFor(() => (transport.runs.at(-1)?.runs.length ?? 0) === 1);
+    const runId = transport.runs.at(-1)!.runs[0].runId;
+
+    await post(`/api/sessions/${sessionId}/runs/${runId}/skip`);
+    await waitFor(() => transport.runs.at(-1)?.runs.length === 0);
+    // the run finished normally (log writes trail the run snapshot), not aborted
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) =>
+        l.message.includes('"waiter" finished'),
+      ),
+    );
+    const logs = await getLogs(sessionId);
+    expect(
+      logs.some((l) => l.message.includes('"waiter" entry 1 skipped by admin')),
+    ).toBe(true);
+    expect(logs.some((l) => l.message.includes('"waiter" aborted'))).toBe(
+      false,
+    );
+
+    // unknown run id → 400
+    await auth(
+      request(server()).post(
+        `/api/sessions/${sessionId}/runs/${randomUUID()}/skip`,
       ),
     ).expect(400);
   });

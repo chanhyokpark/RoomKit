@@ -177,6 +177,7 @@
 		restartPhase: () => post('/phase/restart'),
 		triggerEvent: (eventId) => post('/trigger', { eventId }),
 		abortRun: (runId) => post(`/runs/${runId}/abort`),
+		skipRun: (runId) => post(`/runs/${runId}/skip`),
 		resetDevices: () => post('/reset-devices'),
 		runCommand: (command: Command) => post('/command', command),
 		pushHint: (input: PushHintInput) => post('/hint', input),

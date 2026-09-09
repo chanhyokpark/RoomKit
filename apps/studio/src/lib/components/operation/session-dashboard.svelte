@@ -18,6 +18,7 @@
 		resumeSession,
 		runSessionCommand,
 		runTestCallback,
+		skipRun,
 		startSession,
 		switchPhase,
 		triggerEvent
@@ -120,6 +121,7 @@
 		restartPhase: () => refresh(restartPhase(session.id)),
 		triggerEvent: (eventId) => triggerEvent(session.id, eventId),
 		abortRun: (runId) => abortRun(session.id, runId),
+		skipRun: (runId) => skipRun(session.id, runId),
 		resetDevices: () => resetDevices(session.id),
 		runCommand: (command) => runSessionCommand(session.id, command),
 		pushHint: (input) => pushHint(session.id, input),

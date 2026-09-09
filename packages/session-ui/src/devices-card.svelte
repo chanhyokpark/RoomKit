@@ -2,19 +2,22 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CopyIcon from '@lucide/svelte/icons/copy';
-	import PhoneIcon from '@lucide/svelte/icons/phone';
-	import PhoneOffIcon from '@lucide/svelte/icons/phone-off';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import RouterIcon from '@lucide/svelte/icons/router';
-	import SquareIcon from '@lucide/svelte/icons/square';
+	import XIcon from '@lucide/svelte/icons/x';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
-	import type { Command, JsonValue, MessageField, PlayChannel, PlayingMedia } from '@roomkit/shared';
+	import type {
+		Command,
+		JsonValue,
+		MessageField,
+		PlayChannel,
+		PlayingMedia
+	} from '@roomkit/shared';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
@@ -42,46 +45,6 @@
 	let messageForms = $state<Record<string, MessageForm>>({});
 	let stateForms = $state<Record<string, StateForm>>({});
 	let callbackResults = $state<Record<string, 'running' | 'ok' | 'fail'>>({});
-	/** Device whose screenshot is shown enlarged; the image keeps updating live. */
-	let enlargedDeviceId = $state<string | null>(null);
-	let now = $state(Date.now());
-
-	// Players report every few seconds; the "n초 전" labels tick alongside.
-	$effect(() => {
-		const timer = setInterval(() => (now = Date.now()), 1000);
-		return () => clearInterval(timer);
-	});
-
-	/** A capture older than this is likely from a stalled or paused player. */
-	const STALE_AFTER_MS = 20_000;
-
-	function ago(capturedAt: number): string {
-		const seconds = Math.max(0, Math.round((now - capturedAt) / 1000));
-		if (seconds < 60) return `${seconds}초 전`;
-		return `${Math.floor(seconds / 60)}분 전`;
-	}
-
-	function deviceName(deviceId: string): string {
-		const device = allDevices.find((candidate) => candidate.id === deviceId);
-		return device ? device.data.displayName || device.name : deviceId;
-	}
-
-	const enlarged = $derived(enlargedDeviceId ? model.screenshotOf(enlargedDeviceId) : null);
-
-	// Voice calls: hosts without call support (player debug window) and test
-	// sessions show no call controls at all.
-	const callsEnabled = $derived(
-		!!actions.startCall &&
-			model.session?.mode === 'production' &&
-			model.session.state !== 'ended'
-	);
-	const activeCall = $derived(model.call ?? null);
-	const callStatusLabels = { requested: '통화 요청', connecting: '연결 중', connected: '통화 중' };
-
-	function canCall(deviceId: string): boolean {
-		const status = model.statusOf(deviceId);
-		return !!status?.online && status.helperVersion !== undefined && !activeCall;
-	}
 
 	const allDevices = $derived(assetsOf(model.assets, 'device'));
 	const websites = $derived(assetsOf(model.assets, 'website'));
@@ -127,10 +90,26 @@
 		video: 'stopVideo'
 	};
 
-	function formFor(deviceId: string): MessageForm {
-		if (!messageForms[deviceId]) {
-			messageForms[deviceId] = { messageId: '', values: {}, wait: false };
+	/**
+	 * Per-device forms are created when a row is expanded (an event handler),
+	 * never from the template: writing state inside `{@const}` / `$derived`
+	 * is a Svelte `state_unsafe_mutation` error.
+	 */
+	function ensureForms(deviceId: string): void {
+		messageForms[deviceId] ??= { messageId: '', values: {}, wait: false };
+		stateForms[deviceId] ??= { stateId: '', values: {} };
+	}
+
+	function toggleExpanded(deviceId: string): void {
+		if (expanded.has(deviceId)) {
+			expanded.delete(deviceId);
+			return;
 		}
+		ensureForms(deviceId);
+		expanded.add(deviceId);
+	}
+
+	function formFor(deviceId: string): MessageForm {
 		return messageForms[deviceId];
 	}
 
@@ -141,7 +120,6 @@
 	}
 
 	function stateFormFor(deviceId: string): StateForm {
-		if (!stateForms[deviceId]) stateForms[deviceId] = { stateId: '', values: {} };
 		return stateForms[deviceId];
 	}
 
@@ -275,7 +253,11 @@
 						</Select.Content>
 					</Select.Root>
 				{:else}
-					<Input id="{prefix}-{field.key}" placeholder={field.type} bind:value={values[field.key]} />
+					<Input
+						id="{prefix}-{field.key}"
+						placeholder={field.type}
+						bind:value={values[field.key]}
+					/>
 				{/if}
 			</Field.Field>
 		{/each}
@@ -309,13 +291,11 @@
 			{@const currentState = stateByDevice.get(device.id)}
 			{@const currentMedia = playingByDevice.get(device.id) ?? []}
 			{@const code = codeByDevice.get(device.id)}
-			{@const screenshot = model.screenshotOf(device.id)}
 			<div class="rounded-md border">
 				<button
 					type="button"
 					class="flex w-full items-center gap-2 px-3 py-2 text-left"
-					onclick={() =>
-						expanded.has(device.id) ? expanded.delete(device.id) : expanded.add(device.id)}
+					onclick={() => toggleExpanded(device.id)}
 				>
 					<span class={cn('size-2 rounded-full', status?.online ? 'bg-primary' : 'bg-muted')}
 					></span>
@@ -331,95 +311,6 @@
 						<ChevronRightIcon class="size-4 text-muted-foreground" />
 					{/if}
 				</button>
-
-				{#if screenshot}
-					{@const stale = now - screenshot.capturedAt > STALE_AFTER_MS}
-					<div class="border-t px-3 py-2">
-						<button
-							type="button"
-							class="relative block w-full overflow-hidden rounded-md bg-black ring-1 ring-foreground/10 transition-opacity hover:opacity-90"
-							aria-label="{device.data.displayName || device.name} 화면 확대"
-							onclick={() => (enlargedDeviceId = device.id)}
-						>
-							<img
-								src={screenshot.image}
-								alt="{device.data.displayName || device.name} 화면"
-								width={screenshot.width}
-								height={screenshot.height}
-								class={cn('mx-auto max-h-44 w-auto object-contain', stale && 'opacity-50')}
-							/>
-							<span
-								class={cn(
-									'absolute right-1.5 bottom-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white',
-									stale && 'bg-amber-600/80'
-								)}
-							>
-								{ago(screenshot.capturedAt)}
-							</span>
-						</button>
-					</div>
-				{/if}
-
-				{#if callsEnabled}
-					<div class="flex items-center gap-2 border-t px-3 py-1.5 text-xs">
-						{#if activeCall?.deviceId === device.id}
-							<Badge variant={activeCall.status === 'connected' ? 'default' : 'secondary'}>
-								{callStatusLabels[activeCall.status]}
-							</Badge>
-							{#if activeCall.status === 'requested'}
-								<Button
-									size="sm"
-									class="ml-auto"
-									disabled={busyKeys.has(`call:${device.id}`) || !actions.acceptCall}
-									onclick={() => {
-										const callId = activeCall.callId;
-										void run(`call:${device.id}`, () => actions.acceptCall!(callId));
-									}}
-								>
-									<PhoneIcon data-icon="inline-start" />수락
-								</Button>
-								<Button
-									size="sm"
-									variant="outline"
-									disabled={busyKeys.has(`call:${device.id}`) || !actions.declineCall}
-									onclick={() => {
-										const callId = activeCall.callId;
-										void run(`call:${device.id}`, () => actions.declineCall!(callId));
-									}}
-								>
-									<PhoneOffIcon data-icon="inline-start" />거절
-								</Button>
-							{:else if model.ownsCall}
-								<Button
-									size="sm"
-									variant="destructive"
-									class="ml-auto"
-									disabled={busyKeys.has(`call:${device.id}`) || !actions.endCall}
-									onclick={() => run(`call:${device.id}`, () => actions.endCall!())}
-								>
-									<PhoneOffIcon data-icon="inline-start" />종료
-								</Button>
-							{:else}
-								<span class="ml-auto text-muted-foreground">다른 운영자가 통화 중</span>
-							{/if}
-						{:else}
-							<span class="text-muted-foreground">
-								{status?.helperVersion === undefined
-									? 'Helper 웹사이트에서만 통화할 수 있습니다.'
-									: '음성 통화'}
-							</span>
-							<Button
-								size="sm"
-								variant="outline"
-								class="ml-auto"
-								disabled={!canCall(device.id) || busyKeys.has(`call:${device.id}`)}
-								onclick={() => run(`call:${device.id}`, () => actions.startCall!(device.id))}
-							>
-								<PhoneIcon data-icon="inline-start" />통화
-							</Button>
-						{/if}
-					</div>
-				{/if}
 
 				{#if currentWebsite || currentState || currentMedia.length > 0}
 					<div class="flex flex-col gap-1.5 border-t px-3 py-2">
@@ -437,7 +328,7 @@
 									disabled={busyKeys.has(`state:${device.id}`) || model.session?.state === 'ended'}
 									onclick={() => clearDeviceState(device.id)}
 								>
-									<SquareIcon />
+									<XIcon />
 								</Button>
 							</div>
 						{/if}
@@ -462,7 +353,7 @@
 											})
 										)}
 								>
-									<SquareIcon />
+									<XIcon />
 								</Button>
 							</div>
 						{/if}
@@ -481,7 +372,7 @@
 										model.session?.state === 'ended'}
 									onclick={() => run(`stop:${entry.commandId}`, () => stopMedia(entry))}
 								>
-									<SquareIcon />
+									<XIcon />
 								</Button>
 							</div>
 						{/each}
@@ -631,7 +522,10 @@
 										<Select.Content>
 											<Select.Group>
 												{#each availableStates as state (state.id)}
-													<Select.Item value={state.id} label={state.data.displayName || state.name}>
+													<Select.Item
+														value={state.id}
+														label={state.data.displayName || state.name}
+													>
 														{state.data.displayName || state.name}{registeredStates.includes(
 															state.name
 														)
@@ -704,32 +598,3 @@
 		{/each}
 	</Card.Content>
 </Card.Root>
-
-<Dialog.Root
-	open={enlargedDeviceId !== null}
-	onOpenChange={(open) => {
-		if (!open) enlargedDeviceId = null;
-	}}
->
-	<Dialog.Content class="sm:max-w-5xl">
-		<Dialog.Header>
-			<Dialog.Title>{enlargedDeviceId ? deviceName(enlargedDeviceId) : ''} 화면</Dialog.Title>
-			<Dialog.Description>
-				{#if enlarged}
-					{enlarged.width}×{enlarged.height} · {ago(enlarged.capturedAt)} 캡처 · 자동 갱신
-				{:else}
-					캡처된 화면이 없습니다.
-				{/if}
-			</Dialog.Description>
-		</Dialog.Header>
-		{#if enlarged}
-			<img
-				src={enlarged.image}
-				alt="{enlargedDeviceId ? deviceName(enlargedDeviceId) : ''} 화면"
-				width={enlarged.width}
-				height={enlarged.height}
-				class="max-h-[75vh] w-full rounded-md bg-black object-contain"
-			/>
-		{/if}
-	</Dialog.Content>
-</Dialog.Root>

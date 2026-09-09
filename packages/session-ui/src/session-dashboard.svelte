@@ -6,6 +6,7 @@
 	import EventsCard from './events-card.svelte';
 	import LogCard from './log-card.svelte';
 	import NotificationsCard from './notifications-card.svelte';
+	import ScreensCard from './screens-card.svelte';
 	import SessionControls from './session-controls.svelte';
 	import SummaryCard from './summary-card.svelte';
 	import TimerPhaseCard from './timer-phase-card.svelte';
@@ -25,6 +26,7 @@
 		{#if model.session?.state === 'ended'}<SummaryCard />{/if}
 		<TimerPhaseCard />
 		<EventsCard />
+		<ScreensCard />
 		<DevicesCard />
 		<ToolsCard />
 		<LogCard />

@@ -144,6 +144,12 @@ export class SessionEngine {
   >();
   /** Runs killed by a phase restart; they die at the next command boundary. */
   private readonly abortedRunIds = new Set<string>();
+  /**
+   * Runs whose *current* entry the admin asked to skip: a pending ack or
+   * sleep it waits on resolves now and the sequence moves on. Cleared at the
+   * next entry boundary, so a skip only ever affects the entry it was aimed at.
+   */
+  private readonly skippedRunIds = new Set<string>();
   private readonly unacked = new Map<string, Map<string, WireCommand>>();
   /**
    * Playback the engine believes is in flight, keyed by the play wire's id.
@@ -664,13 +670,15 @@ export class SessionEngine {
     await Promise.all(runs);
   }
 
-  /** REST manual trigger; admission failures surface as errors to the admin. */
+  /**
+   * REST manual trigger; admission failures surface as errors to the admin.
+   * Any event may be run by hand — `manualTriggerable` only decides which
+   * ones the dashboard offers as quick buttons — and the phase guard is
+   * bypassed: the operator explicitly asked for this event, in this phase.
+   */
   async manualTrigger(eventId: string): Promise<void> {
     const event = await this.getEvent(eventId);
-    if (!event.data.manualTriggerable) {
-      throw new EngineStateError('Event is not manually triggerable');
-    }
-    const rejection = this.admit(event);
+    const rejection = this.admit(event, { bypassPhaseGuard: true });
     if (rejection) throw new EngineStateError(rejection);
     void this.log(
       'info',
@@ -798,6 +806,34 @@ export class SessionEngine {
       'event',
       `Event "${run.eventName}" terminated by admin`,
       { runId, eventId: run.eventId },
+    );
+  }
+  /**
+   * REST: skip the current entry of one in-flight run. A `wait` ends now, a
+   * `waitUntilEnd` playback/message stops being awaited (the media itself
+   * keeps playing), and the sequence continues with its next entry. No-op
+   * for an entry that is not waiting on anything.
+   */
+  skipRun(runId: string): void {
+    const run = this.activeRuns.get(runId);
+    if (!run) {
+      throw new EngineStateError('Run not found (already finished?)');
+    }
+    if (this.abortedRunIds.has(runId)) return;
+    this.skippedRunIds.add(runId);
+    for (const [commandId, pending] of this.pendingAcks) {
+      if (pending.runId === runId) {
+        this.pendingAcks.delete(commandId);
+        clearTimeout(pending.timeout);
+        pending.resolve('done');
+      }
+    }
+    this.emitter.emit('runsSkipped');
+    void this.log(
+      'info',
+      'event',
+      `Event "${run.eventName}" entry ${run.entryIndex + 1} skipped by admin`,
+      { runId, eventId: run.eventId, commandType: run.commandType },
     );
   }
 
@@ -1050,6 +1086,7 @@ export class SessionEngine {
       else this.runCounts.set(event.id, count);
       this.activeRuns.delete(run.runId);
       this.abortedRunIds.delete(run.runId);
+      this.skippedRunIds.delete(run.runId);
       this.broadcastRuns();
     }
   }
@@ -1064,6 +1101,8 @@ export class SessionEngine {
   ): Promise<void> {
     for (const [index, entry] of event.data.sequence.entries()) {
       if (this.abortedRunIds.has(run.runId)) throw new RunAbortedError();
+      // A skip aimed at the previous entry must not leak into this one.
+      this.skippedRunIds.delete(run.runId);
       run.entryIndex = index;
       run.commandType = entry.type;
       this.broadcastRuns();
@@ -1772,10 +1811,17 @@ export class SessionEngine {
         let out = wire;
         // In-flight playback (video, one-shot BGM): same id — a device still
         // playing it dedupes, a restarted one resumes at the elapsed offset.
-        if (wire.type === 'play' && wire.channel !== 'sfx' && wire.channel !== 'dialogue') {
+        if (
+          wire.type === 'play' &&
+          wire.channel !== 'sfx' &&
+          wire.channel !== 'dialogue'
+        ) {
           const media = this.playingMedia.get(id);
           if (media) {
-            out = { ...wire, offsetMs: Math.max(0, Date.now() - media.startedAt) };
+            out = {
+              ...wire,
+              offsetMs: Math.max(0, Date.now() - media.startedAt),
+            };
             perDevice.set(id, out);
           }
         }
@@ -1849,10 +1895,18 @@ export class SessionEngine {
       );
     } else if (droppedState) {
       // The device may have applied a since-cleared state: say so explicitly.
-      this.sendWire(deviceId, { id: randomUUID(), type: 'state', state: null }, 'state replay');
+      this.sendWire(
+        deviceId,
+        { id: randomUUID(), type: 'state', state: null },
+        'state replay',
+      );
     }
     if (hintCode) {
-      this.sendWire(deviceId, { ...hintCode, id: randomUUID() }, 'hintCode replay');
+      this.sendWire(
+        deviceId,
+        { ...hintCode, id: randomUUID() },
+        'hintCode replay',
+      );
     } else if (droppedHintCode) {
       this.sendWire(
         deviceId,
@@ -1875,7 +1929,9 @@ export class SessionEngine {
         },
         'bgm replay',
         (targetId, wire) =>
-          targetId === deviceId && wire.type === 'play' && wire.channel === 'bgm'
+          targetId === deviceId &&
+          wire.type === 'play' &&
+          wire.channel === 'bgm'
             ? { ...wire, offsetMs }
             : null,
       );
@@ -2138,8 +2194,9 @@ export class SessionEngine {
       if (runId !== undefined && this.abortedRunIds.has(runId)) {
         throw new RunAbortedError();
       }
+      if (runId !== undefined && this.skippedRunIds.has(runId)) return;
       const start = Date.now();
-      const outcome = await new Promise<'timeout' | 'pause' | 'end'>(
+      const outcome = await new Promise<'timeout' | 'pause' | 'end' | 'skip'>(
         (resolve) => {
           const timeout = setTimeout(() => {
             cleanup();
@@ -2160,18 +2217,26 @@ export class SessionEngine {
             cleanup();
             resolve('end');
           };
+          // The admin skipped this wait: end it now, the sequence moves on.
+          const onRunsSkipped = () => {
+            if (runId === undefined || !this.skippedRunIds.has(runId)) return;
+            cleanup();
+            resolve('skip');
+          };
           const cleanup = () => {
             clearTimeout(timeout);
             this.emitter.off('pause', onPause);
             this.emitter.off('end', onEnd);
             this.emitter.off('runsAborted', onRunsAborted);
+            this.emitter.off('runsSkipped', onRunsSkipped);
           };
           this.emitter.once('pause', onPause);
           this.emitter.once('end', onEnd);
           this.emitter.on('runsAborted', onRunsAborted);
+          this.emitter.on('runsSkipped', onRunsSkipped);
         },
       );
-      if (outcome === 'timeout') return;
+      if (outcome === 'timeout' || outcome === 'skip') return;
       if (outcome === 'end') throw new RunAbortedError();
       remaining -= Date.now() - start;
     }

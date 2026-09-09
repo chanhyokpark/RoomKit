@@ -49,7 +49,7 @@ A session persists its current phase, variables, once-event history, verdict, ti
 
 ## Event eligibility and concurrency
 
-An event runs only when it is common or belongs to the current phase. Device trigger names must match `triggerName`. Manual execution also requires `manualTriggerable`. System events use `session:start`, `phase:enter`, `phase:leave`, or `timer:expired`.
+An event fires from its trigger only when it is common or belongs to the current phase. Device trigger names must match `triggerName`. Operators can run any event by hand from the session dashboard; `manualTriggerable` marks the ones offered as quick-run buttons. System events use `session:start`, `phase:enter`, `phase:leave`, or `timer:expired`.
 
 The same event rejects re-entry while already running unless `allowReentry` is true. Other events can run concurrently. A `once` event records its first accepted execution for the session. Restarting a phase clears once history only for events in that phase, not common events.
 

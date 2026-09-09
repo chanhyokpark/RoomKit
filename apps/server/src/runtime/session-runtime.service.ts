@@ -169,6 +169,11 @@ export class SessionRuntimeService
     this.wrap(() => this.getEngine(sessionId).abortRun(runId));
   }
 
+  /** REST: skip the current entry of one in-flight event run. */
+  skipRun(sessionId: string, runId: string): void {
+    this.wrap(() => this.getEngine(sessionId).skipRun(runId));
+  }
+
   /** REST one-off operator command (operation console / media stop buttons). */
   runCommand(sessionId: string, cmd: Command): void {
     this.wrap(() => this.getEngine(sessionId).runAdminCommand(cmd));

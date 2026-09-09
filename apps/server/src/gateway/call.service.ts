@@ -192,7 +192,7 @@ export class CallService implements OnModuleDestroy {
       this.log(call, 'warn', `Call to "${call.deviceName}" failed`, {
         reason: report.reason ?? null,
       });
-      this.endCall(call, 'device_failed');
+      this.endCall(call, 'device_failed', { detail: report.reason });
       return;
     }
     if (call.status === 'connected') return;
@@ -290,7 +290,10 @@ export class CallService implements OnModuleDestroy {
   private endCall(
     call: ActiveCall,
     reason: CallEndReason,
-    { notifyDevice = true } = {},
+    {
+      notifyDevice = true,
+      detail,
+    }: { notifyDevice?: boolean; detail?: string } = {},
   ): void {
     if (this.calls.get(call.sessionId) !== call) return;
     this.clearConnectTimer(call);
@@ -299,7 +302,7 @@ export class CallService implements OnModuleDestroy {
     if (notifyDevice) {
       this.emitDevice(call, { status: 'ended', callId: call.callId, reason });
     }
-    this.broadcast(call.sessionId, reason);
+    this.broadcast(call.sessionId, reason, detail);
   }
 
   private sendConnecting(call: ActiveCall): void {
@@ -318,11 +321,16 @@ export class CallService implements OnModuleDestroy {
     }
   }
 
-  private broadcast(sessionId: string, endReason?: CallEndReason): void {
+  private broadcast(
+    sessionId: string,
+    endReason?: CallEndReason,
+    endDetail?: string,
+  ): void {
     const state: AdminCallState = {
       sessionId,
       call: this.callFor(sessionId),
       ...(endReason ? { endReason } : {}),
+      ...(endDetail ? { endDetail } : {}),
     };
     for (const listener of this.adminListeners) listener(state);
   }

@@ -18,6 +18,12 @@ export class CallController {
 	private conn: MediaConnection | null = null;
 	private audio: HTMLAudioElement | null = null;
 	private expectedPeerId: string | null = null;
+	/**
+	 * A call that arrived before `expect()`: the server tells the device to
+	 * connect before our start/accept ack lands, so a fast device can ring
+	 * first. Held until we learn which peer id to trust.
+	 */
+	private early: MediaConnection | null = null;
 
 	constructor(
 		private readonly socket: Socket,
@@ -75,10 +81,22 @@ export class CallController {
 	/** Only the device the server assigned may reach us; strays are dropped. */
 	expect(devicePeerId: string): void {
 		this.expectedPeerId = devicePeerId;
+		const early = this.early;
+		this.early = null;
+		if (early) this.onIncoming(early);
 	}
 
 	private onIncoming(conn: MediaConnection): void {
-		if (!this.mic || !this.expectedPeerId || conn.peer !== this.expectedPeerId) {
+		if (!this.mic) {
+			conn.close();
+			return;
+		}
+		if (!this.expectedPeerId) {
+			this.early?.close();
+			this.early = conn;
+			return;
+		}
+		if (conn.peer !== this.expectedPeerId) {
 			conn.close();
 			return;
 		}
@@ -97,14 +115,16 @@ export class CallController {
 	}
 
 	close(): void {
-		const { peer, mic, conn, audio } = this;
+		const { peer, mic, conn, audio, early } = this;
 		this.peer = null;
 		this.mic = null;
 		this.conn = null;
 		this.audio = null;
+		this.early = null;
 		this.expectedPeerId = null;
 		try {
 			conn?.close();
+			early?.close();
 		} catch {
 			// already closed
 		}

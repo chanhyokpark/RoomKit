@@ -8,10 +8,32 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Spinner } from '$lib/components/ui/spinner';
+	import { assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
 
 	const { model, actions } = useSessionUi();
 	const call = $derived(model.call ?? null);
+	// Calls only reach hint devices (the hintphone site runs the helper); test
+	// sessions and hosts without call support show no call controls at all.
+	const callsEnabled = $derived(
+		!!actions.startCall && model.session?.mode === 'production' && model.session.state !== 'ended'
+	);
+	const hintDevices = $derived(
+		assetsOf(model.assets, 'device').filter((device) => device.data.isHintDevice)
+	);
+
+	/** Why a hint device cannot be called right now; null = callable. */
+	function callBlocker(deviceId: string): string | null {
+		const status = model.statusOf(deviceId);
+		if (!status?.online) return '오프라인';
+		if (status.helperVersion === undefined) return 'Helper 미사용';
+		return null;
+	}
+
+	function start(deviceId: string): void {
+		if (!actions.startCall) return;
+		void run(() => actions.startCall!(deviceId));
+	}
 	const ownsCall = $derived(model.ownsCall ?? false);
 	let busy = $state(false);
 	let now = $state(Date.now());
@@ -78,6 +100,30 @@
 		void run(() => actions.endCall!());
 	}
 </script>
+
+{#if !call && callsEnabled && hintDevices.length > 0}
+	<div class="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
+		<PhoneIcon class="size-4 text-muted-foreground" />
+		<span class="text-muted-foreground">힌트 장치 음성 통화</span>
+		<div class="ml-auto flex flex-wrap items-center gap-2">
+			{#if busy}<Spinner />{/if}
+			{#each hintDevices as device (device.id)}
+				{@const blocker = callBlocker(device.id)}
+				<Button
+					size="sm"
+					variant="outline"
+					disabled={busy || blocker !== null}
+					title={blocker ?? `${device.data.displayName || device.name}에 통화 걸기`}
+					onclick={() => start(device.id)}
+				>
+					<PhoneIcon data-icon="inline-start" />
+					{device.data.displayName || device.name}
+					{#if blocker}<span class="text-muted-foreground">· {blocker}</span>{/if}
+				</Button>
+			{/each}
+		</div>
+	</div>
+{/if}
 
 {#if call}
 	<div

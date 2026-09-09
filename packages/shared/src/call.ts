@@ -73,6 +73,8 @@ export const AdminCallStateSchema = z.object({
   call: CallInfoSchema.nullable(),
   /** Set when `call` is null because a call just ended. */
   endReason: CallEndReasonSchema.optional(),
+  /** Free-form detail for `device_failed` (the device's own reason string). */
+  endDetail: z.string().optional(),
 });
 export type AdminCallState = z.infer<typeof AdminCallStateSchema>;
 
