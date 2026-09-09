@@ -12,7 +12,7 @@
 	import { assetName, assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
 
-	const { model, actions } = useSessionUi();
+	const { model, actions, view } = useSessionUi();
 	let now = $state(Date.now());
 	let busy = $state(false);
 	let targetPhaseId = $state('');
@@ -26,6 +26,9 @@
 	const targetPhase = $derived(phases.find((phase) => phase.id === targetPhaseId) ?? null);
 	const disabled = $derived(
 		busy || !session || session.state === 'created' || session.state === 'ended'
+	);
+	const currentPhaseName = $derived(
+		session?.phaseId ? (assetName(model.assets, session.phaseId) ?? '(삭제됨)') : '공통'
 	);
 
 	$effect(() => {
@@ -84,6 +87,9 @@
 			<p class="text-center font-mono text-4xl font-semibold tabular-nums">
 				{formatMs(remainingMs)}
 			</p>
+			{#if view.simple}
+				<p class="text-center text-xs text-muted-foreground">페이즈: {currentPhaseName}</p>
+			{/if}
 			<div class="flex flex-wrap items-center justify-center gap-1.5">
 				{#each [-5, -1, 1, 5] as minutes (minutes)}
 					<Button
@@ -119,47 +125,47 @@
 	</Card.Content>
 </Card.Root>
 
-<Card.Root>
-	<Card.Header>
-		<Card.Title class="flex items-center gap-2"><MilestoneIcon />페이즈</Card.Title>
-	</Card.Header>
-	<Card.Content class="flex flex-col gap-3">
-		<div class="flex items-center gap-2">
-			<p class="text-sm">
-				현재: <span class="font-medium">
-					{session?.phaseId ? (assetName(model.assets, session.phaseId) ?? '(삭제됨)') : '공통'}
-				</span>
-			</p>
-			<Button
-				size="sm"
-				variant="outline"
-				class="ml-auto"
-				disabled={disabled || !session?.phaseId}
-				onclick={() => run(actions.restartPhase)}
-			>
-				<RotateCcwIcon data-icon="inline-start" />재시작
-			</Button>
-		</div>
-		<div class="flex items-center gap-2">
-			<Select.Root type="single" bind:value={targetPhaseId}>
-				<Select.Trigger class="flex-1" {disabled}>
-					{targetPhase?.name ?? '페이즈 선택'}
-				</Select.Trigger>
-				<Select.Content>
-					<Select.Group>
-						{#each phases as phase (phase.id)}
-							<Select.Item value={phase.id} label={phase.name}>{phase.name}</Select.Item>
-						{/each}
-					</Select.Group>
-				</Select.Content>
-			</Select.Root>
-			<Button
-				size="sm"
-				disabled={disabled || !targetPhaseId || targetPhaseId === session?.phaseId}
-				onclick={() => run(() => actions.switchPhase(targetPhaseId))}
-			>
-				전환
-			</Button>
-		</div>
-	</Card.Content>
-</Card.Root>
+{#if !view.simple}
+	<Card.Root>
+		<Card.Header>
+			<Card.Title class="flex items-center gap-2"><MilestoneIcon />페이즈</Card.Title>
+		</Card.Header>
+		<Card.Content class="flex flex-col gap-3">
+			<div class="flex items-center gap-2">
+				<p class="text-sm">
+					현재: <span class="font-medium">{currentPhaseName}</span>
+				</p>
+				<Button
+					size="sm"
+					variant="outline"
+					class="ml-auto"
+					disabled={disabled || !session?.phaseId}
+					onclick={() => run(actions.restartPhase)}
+				>
+					<RotateCcwIcon data-icon="inline-start" />재시작
+				</Button>
+			</div>
+			<div class="flex items-center gap-2">
+				<Select.Root type="single" bind:value={targetPhaseId}>
+					<Select.Trigger class="flex-1" {disabled}>
+						{targetPhase?.name ?? '페이즈 선택'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Group>
+							{#each phases as phase (phase.id)}
+								<Select.Item value={phase.id} label={phase.name}>{phase.name}</Select.Item>
+							{/each}
+						</Select.Group>
+					</Select.Content>
+				</Select.Root>
+				<Button
+					size="sm"
+					disabled={disabled || !targetPhaseId || targetPhaseId === session?.phaseId}
+					onclick={() => run(() => actions.switchPhase(targetPhaseId))}
+				>
+					전환
+				</Button>
+			</div>
+		</Card.Content>
+	</Card.Root>
+{/if}

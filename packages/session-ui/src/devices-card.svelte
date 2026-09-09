@@ -26,7 +26,7 @@
 	import { useSessionUi } from './context.js';
 	import type { MessageAsset, StateAsset } from './types.js';
 
-	const { model, actions } = useSessionUi();
+	const { model, actions, view } = useSessionUi();
 	const expanded = new SvelteSet<string>();
 	const busyKeys = new SvelteSet<string>();
 
@@ -264,337 +264,364 @@
 	</Field.FieldGroup>
 {/snippet}
 
-<Card.Root class="md:col-span-2">
-	<Card.Header>
-		<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
-		<Card.Description>
-			연결, 웹사이트, 상태, Helper 등록 항목과 미디어를 한곳에서 확인하고 조작합니다.
-		</Card.Description>
-		<Card.Action>
-			<Button
-				size="sm"
-				variant="outline"
-				disabled={busyKeys.has('reset-all') || model.session?.state === 'ended'}
-				onclick={() => run('reset-all', actions.resetDevices, '모든 디바이스를 초기화했습니다.')}
-			>
-				<RotateCcwIcon data-icon="inline-start" />전체 초기화
-			</Button>
-		</Card.Action>
-	</Card.Header>
-	<Card.Content class="flex flex-col gap-2.5">
-		{#if devices.length === 0}
-			<p class="text-sm text-muted-foreground">이 세션에 디바이스가 없습니다.</p>
-		{/if}
-		{#each devices as device (device.id)}
-			{@const status = model.statusOf(device.id)}
-			{@const currentWebsite = websiteByDevice.get(device.id)}
-			{@const currentState = stateByDevice.get(device.id)}
-			{@const currentMedia = playingByDevice.get(device.id) ?? []}
-			{@const code = codeByDevice.get(device.id)}
-			<div class="rounded-md border">
-				<button
-					type="button"
-					class="flex w-full items-center gap-2 px-3 py-2 text-left"
-					onclick={() => toggleExpanded(device.id)}
-				>
+{#if view.simple}
+	<!-- Simple mode: connection state only; nothing to expand or operate. -->
+	<Card.Root class="md:col-span-2">
+		<Card.Header>
+			<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
+		</Card.Header>
+		<Card.Content class="flex flex-col gap-2">
+			{#if devices.length === 0}
+				<p class="text-sm text-muted-foreground">이 세션에 디바이스가 없습니다.</p>
+			{/if}
+			{#each devices as device (device.id)}
+				{@const status = model.statusOf(device.id)}
+				<div class="flex items-center gap-2 rounded-md border px-3 py-2">
 					<span class={cn('size-2 rounded-full', status?.online ? 'bg-primary' : 'bg-muted')}
 					></span>
 					<span class="truncate text-sm font-medium">{device.data.displayName || device.name}</span>
 					{#if device.data.isHintDevice}<Badge variant="secondary">힌트</Badge>{/if}
-					{#if code}<code class="font-mono text-xs text-muted-foreground">{code}</code>{/if}
 					<Badge variant={status?.online ? 'outline' : 'secondary'} class="ml-auto">
 						{status?.online ? '온라인' : '오프라인'}
 					</Badge>
-					{#if expanded.has(device.id)}
-						<ChevronDownIcon class="size-4 text-muted-foreground" />
-					{:else}
-						<ChevronRightIcon class="size-4 text-muted-foreground" />
-					{/if}
-				</button>
-
-				{#if currentWebsite || currentState || currentMedia.length > 0}
-					<div class="flex flex-col gap-1.5 border-t px-3 py-2">
-						{#if currentState}
-							<div class="flex items-center gap-2 text-xs">
-								<Badge variant="outline">상태</Badge>
-								<span class="min-w-0 truncate" title={JSON.stringify(currentState.values)}>
-									{assetName(model.assets, currentState.stateId) ?? currentState.stateName}
-								</span>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									class="ml-auto"
-									aria-label="상태 해제"
-									disabled={busyKeys.has(`state:${device.id}`) || model.session?.state === 'ended'}
-									onclick={() => clearDeviceState(device.id)}
-								>
-									<XIcon />
-								</Button>
-							</div>
+				</div>
+			{/each}
+		</Card.Content>
+	</Card.Root>
+{:else}
+	<Card.Root class="md:col-span-2">
+		<Card.Header>
+			<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
+			<Card.Description>
+				연결, 웹사이트, 상태, Helper 등록 항목과 미디어를 한곳에서 확인하고 조작합니다.
+			</Card.Description>
+			<Card.Action>
+				<Button
+					size="sm"
+					variant="outline"
+					disabled={busyKeys.has('reset-all') || model.session?.state === 'ended'}
+					onclick={() => run('reset-all', actions.resetDevices, '모든 디바이스를 초기화했습니다.')}
+				>
+					<RotateCcwIcon data-icon="inline-start" />전체 초기화
+				</Button>
+			</Card.Action>
+		</Card.Header>
+		<Card.Content class="flex flex-col gap-2.5">
+			{#if devices.length === 0}
+				<p class="text-sm text-muted-foreground">이 세션에 디바이스가 없습니다.</p>
+			{/if}
+			{#each devices as device (device.id)}
+				{@const status = model.statusOf(device.id)}
+				{@const currentWebsite = websiteByDevice.get(device.id)}
+				{@const currentState = stateByDevice.get(device.id)}
+				{@const currentMedia = playingByDevice.get(device.id) ?? []}
+				{@const code = codeByDevice.get(device.id)}
+				<div class="rounded-md border">
+					<button
+						type="button"
+						class="flex w-full items-center gap-2 px-3 py-2 text-left"
+						onclick={() => toggleExpanded(device.id)}
+					>
+						<span class={cn('size-2 rounded-full', status?.online ? 'bg-primary' : 'bg-muted')}
+						></span>
+						<span class="truncate text-sm font-medium"
+							>{device.data.displayName || device.name}</span
+						>
+						{#if device.data.isHintDevice}<Badge variant="secondary">힌트</Badge>{/if}
+						{#if code}<code class="font-mono text-xs text-muted-foreground">{code}</code>{/if}
+						<Badge variant={status?.online ? 'outline' : 'secondary'} class="ml-auto">
+							{status?.online ? '온라인' : '오프라인'}
+						</Badge>
+						{#if expanded.has(device.id)}
+							<ChevronDownIcon class="size-4 text-muted-foreground" />
+						{:else}
+							<ChevronRightIcon class="size-4 text-muted-foreground" />
 						{/if}
-						{#if currentWebsite}
-							<div class="flex items-center gap-2 text-xs">
-								<Badge variant="outline">웹사이트</Badge>
-								<span class="min-w-0 truncate" title={currentWebsite.url}>
-									{assetName(model.assets, currentWebsite.websiteId) ?? currentWebsite.url}
-								</span>
+					</button>
+
+					{#if currentWebsite || currentState || currentMedia.length > 0}
+						<div class="flex flex-col gap-1.5 border-t px-3 py-2">
+							{#if currentState}
+								<div class="flex items-center gap-2 text-xs">
+									<Badge variant="outline">상태</Badge>
+									<span class="min-w-0 truncate" title={JSON.stringify(currentState.values)}>
+										{assetName(model.assets, currentState.stateId) ?? currentState.stateName}
+									</span>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										class="ml-auto"
+										aria-label="상태 해제"
+										disabled={busyKeys.has(`state:${device.id}`) ||
+											model.session?.state === 'ended'}
+										onclick={() => clearDeviceState(device.id)}
+									>
+										<XIcon />
+									</Button>
+								</div>
+							{/if}
+							{#if currentWebsite}
+								<div class="flex items-center gap-2 text-xs">
+									<Badge variant="outline">웹사이트</Badge>
+									<span class="min-w-0 truncate" title={currentWebsite.url}>
+										{assetName(model.assets, currentWebsite.websiteId) ?? currentWebsite.url}
+									</span>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										class="ml-auto"
+										aria-label="웹사이트 종료"
+										disabled={busyKeys.has(`stop-site:${device.id}`) ||
+											model.session?.state === 'ended'}
+										onclick={() =>
+											run(`stop-site:${device.id}`, () =>
+												actions.runCommand({
+													type: 'resetDevice',
+													deviceId: device.id
+												})
+											)}
+									>
+										<XIcon />
+									</Button>
+								</div>
+							{/if}
+							{#each currentMedia as entry (entry.commandId)}
+								<div class="flex items-center gap-2 text-xs">
+									<Badge variant="outline">{channelLabels[entry.channel]}</Badge>
+									<span class="min-w-0 truncate">
+										{assetName(model.assets, entry.assetId) ?? entry.assetName}
+									</span>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										class="ml-auto"
+										aria-label="재생 정지"
+										disabled={busyKeys.has(`stop:${entry.commandId}`) ||
+											model.session?.state === 'ended'}
+										onclick={() => run(`stop:${entry.commandId}`, () => stopMedia(entry))}
+									>
+										<XIcon />
+									</Button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+
+					{#if expanded.has(device.id)}
+						{@const form = formFor(device.id)}
+						{@const stateForm = stateFormFor(device.id)}
+						{@const registeredStates = status?.helperStates ?? []}
+						{@const availableStates = statesFor(device.id)}
+						{@const registeredMessages = status?.helperMessages ?? []}
+						{@const callbacks = status?.helperTestCallbacks ?? []}
+						{@const availableMessages = messagesFor(device.id)}
+						<div class="flex flex-col gap-4 border-t px-3 py-3">
+							<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+								{#if code}
+									<span>접속 코드 <code class="text-foreground">{code}</code></span>
+									<Button variant="outline" size="sm" onclick={() => copyCode(code)}>
+										<CopyIcon data-icon="inline-start" />복사
+									</Button>
+								{/if}
+								{#if status?.clientVersion}<span>Client {status.clientVersion}</span>{/if}
+								{#if status?.helperVersion}<span>Helper {status.helperVersion}</span>{/if}
 								<Button
-									variant="ghost"
-									size="icon-sm"
+									variant="outline"
+									size="sm"
 									class="ml-auto"
-									aria-label="웹사이트 종료"
-									disabled={busyKeys.has(`stop-site:${device.id}`) ||
-										model.session?.state === 'ended'}
+									disabled={busyKeys.has(`reset:${device.id}`) || model.session?.state === 'ended'}
 									onclick={() =>
-										run(`stop-site:${device.id}`, () =>
+										run(`reset:${device.id}`, () =>
 											actions.runCommand({
 												type: 'resetDevice',
 												deviceId: device.id
 											})
 										)}
 								>
-									<XIcon />
+									<RotateCcwIcon data-icon="inline-start" />리셋
 								</Button>
 							</div>
-						{/if}
-						{#each currentMedia as entry (entry.commandId)}
-							<div class="flex items-center gap-2 text-xs">
-								<Badge variant="outline">{channelLabels[entry.channel]}</Badge>
-								<span class="min-w-0 truncate">
-									{assetName(model.assets, entry.assetId) ?? entry.assetName}
-								</span>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									class="ml-auto"
-									aria-label="재생 정지"
-									disabled={busyKeys.has(`stop:${entry.commandId}`) ||
-										model.session?.state === 'ended'}
-									onclick={() => run(`stop:${entry.commandId}`, () => stopMedia(entry))}
-								>
-									<XIcon />
-								</Button>
-							</div>
-						{/each}
-					</div>
-				{/if}
 
-				{#if expanded.has(device.id)}
-					{@const form = formFor(device.id)}
-					{@const stateForm = stateFormFor(device.id)}
-					{@const registeredStates = status?.helperStates ?? []}
-					{@const availableStates = statesFor(device.id)}
-					{@const registeredMessages = status?.helperMessages ?? []}
-					{@const callbacks = status?.helperTestCallbacks ?? []}
-					{@const availableMessages = messagesFor(device.id)}
-					<div class="flex flex-col gap-4 border-t px-3 py-3">
-						<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-							{#if code}
-								<span>접속 코드 <code class="text-foreground">{code}</code></span>
-								<Button variant="outline" size="sm" onclick={() => copyCode(code)}>
-									<CopyIcon data-icon="inline-start" />복사
-								</Button>
-							{/if}
-							{#if status?.clientVersion}<span>Client {status.clientVersion}</span>{/if}
-							{#if status?.helperVersion}<span>Helper {status.helperVersion}</span>{/if}
-							<Button
-								variant="outline"
-								size="sm"
-								class="ml-auto"
-								disabled={busyKeys.has(`reset:${device.id}`) || model.session?.state === 'ended'}
-								onclick={() =>
-									run(`reset:${device.id}`, () =>
-										actions.runCommand({
-											type: 'resetDevice',
-											deviceId: device.id
-										})
-									)}
-							>
-								<RotateCcwIcon data-icon="inline-start" />리셋
-							</Button>
-						</div>
-
-						<Field.FieldGroup>
-							<Field.Field>
-								<Field.FieldLabel for="navigate-{device.id}">웹사이트 이동</Field.FieldLabel>
-								<div class="flex items-center gap-2">
-									<Select.Root type="single" bind:value={navigation[device.id]}>
-										<Select.Trigger id="navigate-{device.id}" size="sm" class="flex-1">
-											{websites.find((site) => site.id === navigation[device.id])?.name ??
-												'웹사이트 선택'}
-										</Select.Trigger>
-										<Select.Content>
-											<Select.Group>
-												{#each websites as site (site.id)}
-													<Select.Item value={site.id} label={site.name}>{site.name}</Select.Item>
-												{/each}
-											</Select.Group>
-										</Select.Content>
-									</Select.Root>
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={!navigation[device.id]}
-										onclick={() =>
-											run(`navigate:${device.id}`, () =>
-												actions.runCommand({
-													type: 'navigate',
-													deviceId: device.id,
-													websiteId: navigation[device.id],
-													query: []
-												})
-											)}
-									>
-										이동
-									</Button>
-								</div>
-							</Field.Field>
-
-							<Field.Field>
-								<Field.FieldLabel for="message-{device.id}">Helper 메시지</Field.FieldLabel>
-								<div class="flex flex-wrap items-center gap-2">
-									<Select.Root type="single" bind:value={form.messageId}>
-										<Select.Trigger id="message-{device.id}" size="sm" class="min-w-48 flex-1">
-											{availableMessages.find((message) => message.id === form.messageId)?.data
-												.displayName ||
-												availableMessages.find((message) => message.id === form.messageId)?.name ||
-												'메시지 선택'}
-										</Select.Trigger>
-										<Select.Content>
-											<Select.Group>
-												{#each availableMessages as message (message.id)}
-													<Select.Item
-														value={message.id}
-														label={message.data.displayName || message.name}
-													>
-														{message.data.displayName || message.name}{registeredMessages.includes(
-															message.name
-														)
-															? ' ✓'
-															: ''}
-													</Select.Item>
-												{/each}
-											</Select.Group>
-										</Select.Content>
-									</Select.Root>
-									<Field.Field orientation="horizontal" class="w-auto">
-										<Checkbox id="wait-{device.id}" bind:checked={form.wait} />
-										<Field.FieldLabel for="wait-{device.id}">완료 대기</Field.FieldLabel>
-									</Field.Field>
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={!form.messageId || busyKeys.has(`message:${device.id}`)}
-										onclick={() => sendMessage(device.id)}
-									>
-										전송
-									</Button>
-								</div>
-								{#if form.messageId}
-									{@const selectedMessage = availableMessages.find(
-										(message) => message.id === form.messageId
-									)}
-									{#if selectedMessage}
-										{@render valueInputs(
-											form.values,
-											selectedMessage.data.fields,
-											`field-${device.id}`
-										)}
-									{/if}
-								{/if}
-								{#if registeredMessages.length > 0}
-									<Field.FieldDescription>
-										페이지 등록: {registeredMessages.join(', ')}
-									</Field.FieldDescription>
-								{/if}
-							</Field.Field>
-
-							<Field.Field>
-								<Field.FieldLabel for="state-{device.id}">상태 설정</Field.FieldLabel>
-								<div class="flex flex-wrap items-center gap-2">
-									<Select.Root type="single" bind:value={stateForm.stateId}>
-										<Select.Trigger id="state-{device.id}" size="sm" class="min-w-48 flex-1">
-											{availableStates.find((state) => state.id === stateForm.stateId)?.data
-												.displayName ||
-												availableStates.find((state) => state.id === stateForm.stateId)?.name ||
-												'상태 선택'}
-										</Select.Trigger>
-										<Select.Content>
-											<Select.Group>
-												{#each availableStates as state (state.id)}
-													<Select.Item
-														value={state.id}
-														label={state.data.displayName || state.name}
-													>
-														{state.data.displayName || state.name}{registeredStates.includes(
-															state.name
-														)
-															? ' ✓'
-															: ''}
-													</Select.Item>
-												{/each}
-											</Select.Group>
-										</Select.Content>
-									</Select.Root>
-									<Button
-										variant="outline"
-										size="sm"
-										disabled={!stateForm.stateId || busyKeys.has(`state:${device.id}`)}
-										onclick={() => setDeviceState(device.id)}
-									>
-										설정
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										disabled={!currentState || busyKeys.has(`state:${device.id}`)}
-										onclick={() => clearDeviceState(device.id)}
-									>
-										해제
-									</Button>
-								</div>
-								{#if stateForm.stateId}
-									{@const selectedState = availableStates.find(
-										(state) => state.id === stateForm.stateId
-									)}
-									{#if selectedState}
-										{@render valueInputs(
-											stateForm.values,
-											selectedState.data.fields,
-											`state-field-${device.id}`
-										)}
-									{/if}
-								{/if}
-								<Field.FieldDescription>
-									{#if registeredStates.length > 0}
-										페이지 등록: {registeredStates.join(', ')} ·
-									{/if}
-									상태는 장치가 다시 접속해도 유지됩니다. 일시적인 효과에는 메시지를 쓰세요.
-								</Field.FieldDescription>
-							</Field.Field>
-						</Field.FieldGroup>
-
-						{#if callbacks.length > 0}
-							<div class="flex flex-col gap-1.5">
-								<p class="text-xs font-medium text-muted-foreground">테스트 콜백</p>
-								<div class="flex flex-wrap gap-1.5">
-									{#each callbacks as name (name)}
-										{@const result = callbackResults[`${device.id}:${name}`]}
+							<Field.FieldGroup>
+								<Field.Field>
+									<Field.FieldLabel for="navigate-{device.id}">웹사이트 이동</Field.FieldLabel>
+									<div class="flex items-center gap-2">
+										<Select.Root type="single" bind:value={navigation[device.id]}>
+											<Select.Trigger id="navigate-{device.id}" size="sm" class="flex-1">
+												{websites.find((site) => site.id === navigation[device.id])?.name ??
+													'웹사이트 선택'}
+											</Select.Trigger>
+											<Select.Content>
+												<Select.Group>
+													{#each websites as site (site.id)}
+														<Select.Item value={site.id} label={site.name}>{site.name}</Select.Item>
+													{/each}
+												</Select.Group>
+											</Select.Content>
+										</Select.Root>
 										<Button
 											variant="outline"
 											size="sm"
-											disabled={result === 'running'}
-											onclick={() => callback(device.id, name)}
+											disabled={!navigation[device.id]}
+											onclick={() =>
+												run(`navigate:${device.id}`, () =>
+													actions.runCommand({
+														type: 'navigate',
+														deviceId: device.id,
+														websiteId: navigation[device.id],
+														query: []
+													})
+												)}
 										>
-											{name}{result === 'ok' ? ' ✓' : result === 'fail' ? ' ✕' : ''}
+											이동
 										</Button>
-									{/each}
+									</div>
+								</Field.Field>
+
+								<Field.Field>
+									<Field.FieldLabel for="message-{device.id}">Helper 메시지</Field.FieldLabel>
+									<div class="flex flex-wrap items-center gap-2">
+										<Select.Root type="single" bind:value={form.messageId}>
+											<Select.Trigger id="message-{device.id}" size="sm" class="min-w-48 flex-1">
+												{availableMessages.find((message) => message.id === form.messageId)?.data
+													.displayName ||
+													availableMessages.find((message) => message.id === form.messageId)
+														?.name ||
+													'메시지 선택'}
+											</Select.Trigger>
+											<Select.Content>
+												<Select.Group>
+													{#each availableMessages as message (message.id)}
+														<Select.Item
+															value={message.id}
+															label={message.data.displayName || message.name}
+														>
+															{message.data.displayName ||
+																message.name}{registeredMessages.includes(message.name) ? ' ✓' : ''}
+														</Select.Item>
+													{/each}
+												</Select.Group>
+											</Select.Content>
+										</Select.Root>
+										<Field.Field orientation="horizontal" class="w-auto">
+											<Checkbox id="wait-{device.id}" bind:checked={form.wait} />
+											<Field.FieldLabel for="wait-{device.id}">완료 대기</Field.FieldLabel>
+										</Field.Field>
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={!form.messageId || busyKeys.has(`message:${device.id}`)}
+											onclick={() => sendMessage(device.id)}
+										>
+											전송
+										</Button>
+									</div>
+									{#if form.messageId}
+										{@const selectedMessage = availableMessages.find(
+											(message) => message.id === form.messageId
+										)}
+										{#if selectedMessage}
+											{@render valueInputs(
+												form.values,
+												selectedMessage.data.fields,
+												`field-${device.id}`
+											)}
+										{/if}
+									{/if}
+									{#if registeredMessages.length > 0}
+										<Field.FieldDescription>
+											페이지 등록: {registeredMessages.join(', ')}
+										</Field.FieldDescription>
+									{/if}
+								</Field.Field>
+
+								<Field.Field>
+									<Field.FieldLabel for="state-{device.id}">상태 설정</Field.FieldLabel>
+									<div class="flex flex-wrap items-center gap-2">
+										<Select.Root type="single" bind:value={stateForm.stateId}>
+											<Select.Trigger id="state-{device.id}" size="sm" class="min-w-48 flex-1">
+												{availableStates.find((state) => state.id === stateForm.stateId)?.data
+													.displayName ||
+													availableStates.find((state) => state.id === stateForm.stateId)?.name ||
+													'상태 선택'}
+											</Select.Trigger>
+											<Select.Content>
+												<Select.Group>
+													{#each availableStates as state (state.id)}
+														<Select.Item
+															value={state.id}
+															label={state.data.displayName || state.name}
+														>
+															{state.data.displayName || state.name}{registeredStates.includes(
+																state.name
+															)
+																? ' ✓'
+																: ''}
+														</Select.Item>
+													{/each}
+												</Select.Group>
+											</Select.Content>
+										</Select.Root>
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={!stateForm.stateId || busyKeys.has(`state:${device.id}`)}
+											onclick={() => setDeviceState(device.id)}
+										>
+											설정
+										</Button>
+										<Button
+											variant="ghost"
+											size="sm"
+											disabled={!currentState || busyKeys.has(`state:${device.id}`)}
+											onclick={() => clearDeviceState(device.id)}
+										>
+											해제
+										</Button>
+									</div>
+									{#if stateForm.stateId}
+										{@const selectedState = availableStates.find(
+											(state) => state.id === stateForm.stateId
+										)}
+										{#if selectedState}
+											{@render valueInputs(
+												stateForm.values,
+												selectedState.data.fields,
+												`state-field-${device.id}`
+											)}
+										{/if}
+									{/if}
+									<Field.FieldDescription>
+										{#if registeredStates.length > 0}
+											페이지 등록: {registeredStates.join(', ')} ·
+										{/if}
+										상태는 장치가 다시 접속해도 유지됩니다. 일시적인 효과에는 메시지를 쓰세요.
+									</Field.FieldDescription>
+								</Field.Field>
+							</Field.FieldGroup>
+
+							{#if callbacks.length > 0}
+								<div class="flex flex-col gap-1.5">
+									<p class="text-xs font-medium text-muted-foreground">테스트 콜백</p>
+									<div class="flex flex-wrap gap-1.5">
+										{#each callbacks as name (name)}
+											{@const result = callbackResults[`${device.id}:${name}`]}
+											<Button
+												variant="outline"
+												size="sm"
+												disabled={result === 'running'}
+												onclick={() => callback(device.id, name)}
+											>
+												{name}{result === 'ok' ? ' ✓' : result === 'fail' ? ' ✕' : ''}
+											</Button>
+										{/each}
+									</div>
 								</div>
-							</div>
-						{/if}
-					</div>
-				{/if}
-			</div>
-		{/each}
-	</Card.Content>
-</Card.Root>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</Card.Content>
+	</Card.Root>
+{/if}

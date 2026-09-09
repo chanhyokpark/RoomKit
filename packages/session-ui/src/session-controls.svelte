@@ -14,7 +14,7 @@
 	import { assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
 
-	const { model, actions } = useSessionUi();
+	const { model, actions, view } = useSessionUi();
 	let busy = $state(false);
 	let startOpen = $state(false);
 	let endOpen = $state(false);
@@ -76,6 +76,18 @@
 		</Badge>
 	{/if}
 	<div class="ml-auto flex items-center gap-2">
+		<label
+			class="mr-1 flex items-center gap-1.5 text-xs text-muted-foreground"
+			title="세션이 정상 진행될 때 필요한 정보만 남깁니다."
+		>
+			<Switch
+				id="shared-session-simple-mode"
+				size="sm"
+				checked={view.simple}
+				onCheckedChange={(value) => view.setSimple(value)}
+			/>
+			<span>간단 모드</span>
+		</label>
 		{#if busy}<Spinner />{/if}
 		{#if session?.state === 'created'}
 			<Button size="sm" disabled={busy} onclick={() => (startOpen = true)}>

@@ -20,7 +20,7 @@
 		{ value: 'dialogue', label: '대사' }
 	];
 
-	const { model, actions } = useSessionUi();
+	const { model, actions, view } = useSessionUi();
 	let channel = $state<Channel>('bgm');
 	let mediaId = $state('');
 	let playerId = $state('');
@@ -115,83 +115,92 @@
 	}
 </script>
 
-<Card.Root>
-	<Card.Header>
-		<Card.Title class="flex items-center gap-2"><RadioIcon />미디어 테스트</Card.Title>
-		<Card.Description>플레이어 애셋으로 미디어를 직접 재생합니다.</Card.Description>
-	</Card.Header>
-	<Card.Content>
-		<Field.FieldGroup>
-			<Field.Field>
-				<Field.FieldLabel>재생 채널과 애셋</Field.FieldLabel>
-				<div class="flex flex-wrap items-center gap-2">
-					<Select.Root type="single" bind:value={channel} onValueChange={() => (mediaId = '')}>
-						<Select.Trigger size="sm">
-							{channels.find((option) => option.value === channel)?.label}
-						</Select.Trigger>
-						<Select.Content>
-							<Select.Group>
-								{#each channels as option (option.value)}
-									<Select.Item value={option.value} label={option.label}>{option.label}</Select.Item
-									>
-								{/each}
-							</Select.Group>
-						</Select.Content>
-					</Select.Root>
-					<Select.Root type="single" bind:value={mediaId}>
-						<Select.Trigger size="sm" class="min-w-40 flex-1">
-							{mediaOptions.find((asset) => asset.id === mediaId)?.name ?? '애셋 선택'}
-						</Select.Trigger>
-						<Select.Content>
-							<Select.Group>
-								{#each mediaOptions as asset (asset.id)}
-									<Select.Item value={asset.id} label={asset.name}>{asset.name}</Select.Item>
-								{/each}
-							</Select.Group>
-						</Select.Content>
-					</Select.Root>
-					<Select.Root type="single" bind:value={playerId}>
-						<Select.Trigger size="sm" class="min-w-36">
-							{players.find((player) => player.id === playerId)?.name ?? '플레이어 선택'}
-						</Select.Trigger>
-						<Select.Content>
-							<Select.Group>
-								{#each players as player (player.id)}
-									<Select.Item value={player.id} label={player.name}>{player.name}</Select.Item>
-								{/each}
-							</Select.Group>
-						</Select.Content>
-					</Select.Root>
+{#if !view.simple}
+	<Card.Root>
+		<Card.Header>
+			<Card.Title class="flex items-center gap-2"><RadioIcon />미디어 테스트</Card.Title>
+			<Card.Description>플레이어 애셋으로 미디어를 직접 재생합니다.</Card.Description>
+		</Card.Header>
+		<Card.Content>
+			<Field.FieldGroup>
+				<Field.Field>
+					<Field.FieldLabel>재생 채널과 애셋</Field.FieldLabel>
+					<div class="flex flex-wrap items-center gap-2">
+						<Select.Root type="single" bind:value={channel} onValueChange={() => (mediaId = '')}>
+							<Select.Trigger size="sm">
+								{channels.find((option) => option.value === channel)?.label}
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Group>
+									{#each channels as option (option.value)}
+										<Select.Item value={option.value} label={option.label}
+											>{option.label}</Select.Item
+										>
+									{/each}
+								</Select.Group>
+							</Select.Content>
+						</Select.Root>
+						<Select.Root type="single" bind:value={mediaId}>
+							<Select.Trigger size="sm" class="min-w-40 flex-1">
+								{mediaOptions.find((asset) => asset.id === mediaId)?.name ?? '애셋 선택'}
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Group>
+									{#each mediaOptions as asset (asset.id)}
+										<Select.Item value={asset.id} label={asset.name}>{asset.name}</Select.Item>
+									{/each}
+								</Select.Group>
+							</Select.Content>
+						</Select.Root>
+						<Select.Root type="single" bind:value={playerId}>
+							<Select.Trigger size="sm" class="min-w-36">
+								{players.find((player) => player.id === playerId)?.name ?? '플레이어 선택'}
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Group>
+									{#each players as player (player.id)}
+										<Select.Item value={player.id} label={player.name}>{player.name}</Select.Item>
+									{/each}
+								</Select.Group>
+							</Select.Content>
+						</Select.Root>
+					</div>
+				</Field.Field>
+				<div class="flex flex-wrap gap-2">
+					<Button
+						size="sm"
+						disabled={disabled || !mediaId || !playerId}
+						onclick={() => {
+							const command = playCommand();
+							if (command) void run(() => actions.runCommand(command), '재생 명령을 보냈습니다.');
+						}}
+					>
+						<PlayIcon data-icon="inline-start" />재생
+					</Button>
+					<Button
+						size="sm"
+						variant="outline"
+						{disabled}
+						onclick={() => run(() => actions.runCommand(stopCommand()), '정지 명령을 보냈습니다.')}
+					>
+						<SquareIcon data-icon="inline-start" />채널 전체 정지
+					</Button>
 				</div>
-			</Field.Field>
-			<div class="flex flex-wrap gap-2">
-				<Button
-					size="sm"
-					disabled={disabled || !mediaId || !playerId}
-					onclick={() => {
-						const command = playCommand();
-						if (command) void run(() => actions.runCommand(command), '재생 명령을 보냈습니다.');
-					}}
-				>
-					<PlayIcon data-icon="inline-start" />재생
-				</Button>
-				<Button
-					size="sm"
-					variant="outline"
-					{disabled}
-					onclick={() => run(() => actions.runCommand(stopCommand()), '정지 명령을 보냈습니다.')}
-				>
-					<SquareIcon data-icon="inline-start" />채널 전체 정지
-				</Button>
-			</div>
-		</Field.FieldGroup>
-	</Card.Content>
-</Card.Root>
+			</Field.FieldGroup>
+		</Card.Content>
+	</Card.Root>
+{/if}
 
 <Card.Root>
 	<Card.Header>
-		<Card.Title class="flex items-center gap-2"><LightbulbIcon />힌트 테스트</Card.Title>
-		<Card.Description>힌트 단계와 코드 오버레이를 직접 확인합니다.</Card.Description>
+		<Card.Title class="flex items-center gap-2">
+			<LightbulbIcon />{view.simple ? '힌트' : '힌트 테스트'}
+		</Card.Title>
+		{#if view.simple}
+			<Card.Description>힌트 단계를 힌트 장치로 직접 전송합니다.</Card.Description>
+		{:else}
+			<Card.Description>힌트 단계와 코드 오버레이를 직접 확인합니다.</Card.Description>
+		{/if}
 	</Card.Header>
 	<Card.Content>
 		<Field.FieldGroup>
@@ -239,57 +248,59 @@
 					</Button>
 				</div>
 			</Field.Field>
-			<Field.Field>
-				<Field.FieldLabel>코드 오버레이</Field.FieldLabel>
-				<div class="flex items-center gap-2">
-					<Select.Root type="single" bind:value={hintDeviceId}>
-						<Select.Trigger size="sm" class="min-w-40 flex-1">
-							{devices.find((device) => device.id === hintDeviceId)?.name ?? '디바이스 선택'}
-						</Select.Trigger>
-						<Select.Content>
-							<Select.Group>
-								{#each devices as device (device.id)}
-									<Select.Item value={device.id} label={device.name}>{device.name}</Select.Item>
-								{/each}
-							</Select.Group>
-						</Select.Content>
-					</Select.Root>
-					<Button
-						size="sm"
-						variant="outline"
-						disabled={disabled || !hintId || !hintDeviceId}
-						onclick={() =>
-							run(
-								() =>
-									actions.runCommand({
-										type: 'showHintCode',
-										hintId,
-										deviceId: hintDeviceId
-									}),
-								'힌트 코드를 표시했습니다.'
-							)}
-					>
-						표시
-					</Button>
-					<Button
-						size="sm"
-						variant="outline"
-						{disabled}
-						onclick={() =>
-							run(
-								() =>
-									actions.runCommand({
-										type: 'hideHintCode',
-										deviceId: null,
-										allDevices: true
-									}),
-								'힌트 코드를 숨겼습니다.'
-							)}
-					>
-						모두 숨김
-					</Button>
-				</div>
-			</Field.Field>
+			{#if !view.simple}
+				<Field.Field>
+					<Field.FieldLabel>코드 오버레이</Field.FieldLabel>
+					<div class="flex items-center gap-2">
+						<Select.Root type="single" bind:value={hintDeviceId}>
+							<Select.Trigger size="sm" class="min-w-40 flex-1">
+								{devices.find((device) => device.id === hintDeviceId)?.name ?? '디바이스 선택'}
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Group>
+									{#each devices as device (device.id)}
+										<Select.Item value={device.id} label={device.name}>{device.name}</Select.Item>
+									{/each}
+								</Select.Group>
+							</Select.Content>
+						</Select.Root>
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={disabled || !hintId || !hintDeviceId}
+							onclick={() =>
+								run(
+									() =>
+										actions.runCommand({
+											type: 'showHintCode',
+											hintId,
+											deviceId: hintDeviceId
+										}),
+									'힌트 코드를 표시했습니다.'
+								)}
+						>
+							표시
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							{disabled}
+							onclick={() =>
+								run(
+									() =>
+										actions.runCommand({
+											type: 'hideHintCode',
+											deviceId: null,
+											allDevices: true
+										}),
+									'힌트 코드를 숨겼습니다.'
+								)}
+						>
+							모두 숨김
+						</Button>
+					</div>
+				</Field.Field>
+			{/if}
 		</Field.FieldGroup>
 	</Card.Content>
 </Card.Root>
