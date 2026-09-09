@@ -122,7 +122,7 @@
 		</Card.Root>
 	{/if}
 {:else}
-	<Card.Root class="md:col-span-2">
+	<Card.Root class="md:col-span-full">
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2">
 				<ZapIcon />

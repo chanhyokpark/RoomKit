@@ -25,7 +25,8 @@
 	} from '$lib/api/sessions';
 	import { useOperationData, type SessionView } from './operation-data.svelte';
 
-	let { session }: { session: SessionView } = $props();
+	let { session, singleColumn = false }: { session: SessionView; singleColumn?: boolean } =
+		$props();
 	const data = useOperationData();
 	let codes = $state<TestDeviceCode[]>([]);
 
@@ -133,4 +134,4 @@
 	};
 </script>
 
-<SessionDashboard {model} {actions} />
+<SessionDashboard {model} {actions} {singleColumn} />

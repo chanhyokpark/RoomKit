@@ -12,7 +12,20 @@
 	import TimerPhaseCard from './timer-phase-card.svelte';
 	import ToolsCard from './tools-card.svelte';
 
-	let { model, actions }: { model: SessionUiModel; actions: SessionUiActions } = $props();
+	let {
+		model,
+		actions,
+		singleColumn = false
+	}: {
+		model: SessionUiModel;
+		actions: SessionUiActions;
+		/**
+		 * Force the card grid into one column regardless of the viewport breakpoint.
+		 * Hosts whose chrome (sidebars, list panes) eats horizontal space use this
+		 * when two columns would leave each card too narrow.
+		 */
+		singleColumn?: boolean;
+	} = $props();
 
 	/**
 	 * Simple mode is on by default for production sessions and remembered in
@@ -61,7 +74,7 @@
 	<NotificationsCard />
 	<!-- Desktop rows — simple: timer | events, screens, devices | hint.
 	     full: timer | phases, events, screens, devices | hint, log. -->
-	<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 {singleColumn ? '' : 'md:grid-cols-2'}">
 		{#if model.session?.state === 'ended'}<SummaryCard />{/if}
 		<TimerPhaseCard />
 		<EventsCard />

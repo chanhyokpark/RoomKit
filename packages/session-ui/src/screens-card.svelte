@@ -50,7 +50,7 @@
 </script>
 
 {#if screens.length > 0}
-	<Card.Root class="md:col-span-2">
+	<Card.Root class="md:col-span-full">
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2"><MonitorIcon />화면</Card.Title>
 			<Card.Description

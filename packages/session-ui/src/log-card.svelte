@@ -59,7 +59,7 @@
 	}
 </script>
 
-<Card.Root class="md:col-span-2">
+<Card.Root class="md:col-span-full">
 	<Card.Header>
 		<Card.Title class="flex items-center gap-2">
 			<ScrollTextIcon />로그와 명령 콘솔

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import MonitorPlayIcon from '@lucide/svelte/icons/monitor-play';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { useSidebar } from '$lib/components/ui/sidebar';
 	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 	import VersionWarningBanner from '$lib/components/version-warning-banner.svelte';
 	import { provideOperationData } from './operation-data.svelte';
@@ -19,6 +21,15 @@
 	const data = provideOperationData(themeId);
 
 	const isMobile = new IsMobile();
+
+	// The dashboard's two-column grid only fits once the app sidebar and the
+	// session list have taken their share of the viewport.
+	const sidebar = useSidebar();
+	const wideWithSidebar = new MediaQuery('min-width: 1024px');
+	const wideWithoutSidebar = new MediaQuery('min-width: 784px');
+	const singleColumn = $derived(
+		sidebar.open ? !wideWithSidebar.current : !wideWithoutSidebar.current
+	);
 
 	onDestroy(() => data.dispose());
 </script>
@@ -64,7 +75,7 @@
 						</div>
 					{/if}
 					{#key data.selected.id}
-						<SessionDashboard session={data.selected} />
+						<SessionDashboard session={data.selected} {singleColumn} />
 					{/key}
 				{:else if !data.loading}
 					<div class="flex flex-1 items-center justify-center p-8">

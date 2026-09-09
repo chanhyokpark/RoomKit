@@ -64,12 +64,14 @@
 		<Field.FieldGroup>
 			<Field.Field>
 				<Field.FieldLabel>힌트와 단계</Field.FieldLabel>
-				<div class="flex items-center gap-2">
+				<div class="flex flex-wrap items-center gap-2">
 					<Select.Root type="single" bind:value={hintId} onValueChange={() => (hintStep = '0')}>
-						<Select.Trigger size="sm" class="min-w-40 flex-1">
-							{selectedHint
-								? `${selectedHint.code ?? '코드 없음'} · ${selectedHint.name}`
-								: '힌트 선택'}
+						<Select.Trigger size="sm" class="min-w-0 flex-1 basis-40">
+							<span class="truncate">
+								{selectedHint
+									? `${selectedHint.code ?? '코드 없음'} · ${selectedHint.name}`
+									: '힌트 선택'}
+							</span>
 						</Select.Trigger>
 						<Select.Content>
 							<Select.Group>
@@ -109,10 +111,12 @@
 			{#if !view.simple}
 				<Field.Field>
 					<Field.FieldLabel>코드 오버레이</Field.FieldLabel>
-					<div class="flex items-center gap-2">
+					<div class="flex flex-wrap items-center gap-2">
 						<Select.Root type="single" bind:value={hintDeviceId}>
-							<Select.Trigger size="sm" class="min-w-40 flex-1">
-								{devices.find((device) => device.id === hintDeviceId)?.name ?? '디바이스 선택'}
+							<Select.Trigger size="sm" class="min-w-0 flex-1 basis-40">
+								<span class="truncate">
+									{devices.find((device) => device.id === hintDeviceId)?.name ?? '디바이스 선택'}
+								</span>
 							</Select.Trigger>
 							<Select.Content>
 								<Select.Group>
