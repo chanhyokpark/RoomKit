@@ -1682,19 +1682,39 @@ export class SessionEngine {
   }
 
   handleProgress(deviceId: string, progress: PlaybackProgress): void {
+    const relay = this.progressRelays.get(progress.commandId);
+    // Mirror the speaker's line into the /admin media view (and the screen
+    // half of a split player, which shares the same line position).
+    this.setPlayingLine(
+      [progress.commandId, relay?.toCommandId],
+      progress.lineIndex,
+    );
     if (progress.waiting) {
       // Speaker holds before a cue line; never relayed to the screen (its
       // subtitle stays on the previous line until the go-ahead).
       this.handleDialogueHold(deviceId, progress.commandId, progress.lineIndex);
       return;
     }
-    const relay = this.progressRelays.get(progress.commandId);
     if (!relay) return;
     this.deps.transport().sendProgress(this.id, relay.toDeviceId, {
       commandId: relay.toCommandId,
       lineIndex: progress.lineIndex,
       waiting: false,
     });
+  }
+
+  private setPlayingLine(
+    commandIds: Array<string | undefined>,
+    lineIndex: number,
+  ): void {
+    let changed = false;
+    for (const commandId of commandIds) {
+      const media = commandId ? this.playingMedia.get(commandId) : undefined;
+      if (!media || media.lineIndex === lineIndex) continue;
+      media.lineIndex = lineIndex;
+      changed = true;
+    }
+    if (changed) this.broadcastMedia();
   }
 
   private handleDialogueHold(
@@ -2063,6 +2083,7 @@ export class SessionEngine {
             wire.offsetMs !== undefined
               ? wire.offsetMs
               : 0),
+          lineIndex: null,
         });
         break;
       }

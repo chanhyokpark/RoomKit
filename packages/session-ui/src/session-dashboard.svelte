@@ -59,7 +59,8 @@
 	<SessionControls />
 	<CallCard />
 	<NotificationsCard />
-	<!-- Simple mode on desktop: timer | events, screens, devices | hint. -->
+	<!-- Desktop rows — simple: timer | events, screens, devices | hint.
+	     full: timer | phases, events, screens, devices | hint, log. -->
 	<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 		{#if model.session?.state === 'ended'}<SummaryCard />{/if}
 		<TimerPhaseCard />

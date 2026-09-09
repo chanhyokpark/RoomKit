@@ -10,6 +10,8 @@
 	import { cn } from '$lib/utils';
 	import { ConsoleError, parseConsole } from './console.js';
 	import { useSessionUi } from './context.js';
+	import { splitUuids } from './format.js';
+	import IdPopover from './id-popover.svelte';
 
 	const { model, actions } = useSessionUi();
 	const expanded = new SvelteSet<number>();
@@ -109,11 +111,11 @@
 						{/if}
 					</div>
 					{#if entry.data != null && expanded.has(entry.id)}
-						<pre class="mt-1 overflow-x-auto rounded bg-muted p-2 text-foreground">{JSON.stringify(
-								entry.data,
-								null,
-								2
-							)}</pre>
+						<!-- UUIDs in the payload open a popover resolving what they point at. -->
+						<pre
+							class="mt-1 overflow-x-auto rounded bg-muted p-2 text-foreground">{#each splitUuids(JSON.stringify(entry.data, null, 2)) as token, index (index)}{#if token.uuid}<IdPopover
+										id={token.text}
+									/>{:else}{token.text}{/if}{/each}</pre>
 					{/if}
 				</div>
 			{/each}

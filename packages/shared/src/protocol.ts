@@ -364,6 +364,11 @@ export const PlayingMediaSchema = z.object({
   loop: z.boolean().default(false),
   /** Epoch ms when the play wire was delivered. */
   startedAt: z.number().int().nonnegative(),
+  /**
+   * Dialogue only: 0-based index of the line the speaker last reported via
+   * `progress`; null until the first line starts (or for other channels).
+   */
+  lineIndex: z.number().int().nonnegative().nullable().default(null),
 });
 export type PlayingMedia = z.infer<typeof PlayingMediaSchema>;
 

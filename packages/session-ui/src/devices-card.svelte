@@ -2,59 +2,40 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import RouterIcon from '@lucide/svelte/icons/router';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
-	import type {
-		Command,
-		JsonValue,
-		MessageField,
-		PlayChannel,
-		PlayingMedia
-	} from '@roomkit/shared';
+	import type { Command, PlayChannel, PlayingMedia } from '@roomkit/shared';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Field from '$lib/components/ui/field';
-	import { Input } from '$lib/components/ui/input';
-	import * as Select from '$lib/components/ui/select';
 	import { cn } from '$lib/utils';
 	import { assetName, assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
-	import type { MessageAsset, StateAsset } from './types.js';
+	import { channelLabels, formatClock, formatDuration, stripHtml } from './format.js';
+	import InjectDialog from './inject-dialog.svelte';
 
 	const { model, actions, view } = useSessionUi();
-	const expanded = new SvelteSet<string>();
 	const busyKeys = new SvelteSet<string>();
-
-	interface MessageForm {
-		messageId: string;
-		values: Record<string, string>;
-		wait: boolean;
-	}
-
-	interface StateForm {
-		stateId: string;
-		values: Record<string, string>;
-	}
-
-	let navigation = $state<Record<string, string>>({});
-	let messageForms = $state<Record<string, MessageForm>>({});
-	let stateForms = $state<Record<string, StateForm>>({});
+	/** Active rows (state / website / playing media) whose details are unfolded. */
+	const unfolded = new SvelteSet<string>();
 	let callbackResults = $state<Record<string, 'running' | 'ok' | 'fail'>>({});
+	/** Device whose "+" (asset inject) dialog is open. */
+	let injectDeviceId = $state<string | null>(null);
+	let now = $state(Date.now());
 
 	const allDevices = $derived(assetsOf(model.assets, 'device'));
-	const websites = $derived(assetsOf(model.assets, 'website'));
-	const messages = $derived(assetsOf(model.assets, 'message'));
-	const states = $derived(assetsOf(model.assets, 'state'));
 	const codeDeviceIds = $derived(new Set(model.testDeviceCodes.map((entry) => entry.deviceId)));
 	const devices = $derived(
 		codeDeviceIds.size > 0
 			? allDevices.filter((device) => codeDeviceIds.has(device.id))
 			: allDevices
+	);
+	const injectDevice = $derived(
+		injectDeviceId ? (devices.find((device) => device.id === injectDeviceId) ?? null) : null
 	);
 	const codeByDevice = $derived(
 		new Map(model.testDeviceCodes.map((entry) => [entry.deviceId, entry.code]))
@@ -75,13 +56,14 @@
 		}
 		return result;
 	});
+	const ended = $derived(model.session?.state === 'ended');
 
-	const channelLabels: Record<PlayChannel, string> = {
-		bgm: 'BGM',
-		sfx: '효과음',
-		dialogue: '대사',
-		video: '비디오'
-	};
+	// Elapsed times only tick while some detail block is showing them.
+	$effect(() => {
+		if (unfolded.size === 0) return;
+		const timer = setInterval(() => (now = Date.now()), 1000);
+		return () => clearInterval(timer);
+	});
 
 	const stopTypes: Record<PlayChannel, Command['type']> = {
 		bgm: 'stopBgm',
@@ -90,69 +72,47 @@
 		video: 'stopVideo'
 	};
 
-	/**
-	 * Per-device forms are created when a row is expanded (an event handler),
-	 * never from the template: writing state inside `{@const}` / `$derived`
-	 * is a Svelte `state_unsafe_mutation` error.
-	 */
-	function ensureForms(deviceId: string): void {
-		messageForms[deviceId] ??= { messageId: '', values: {}, wait: false };
-		stateForms[deviceId] ??= { stateId: '', values: {} };
+	function toggleUnfolded(key: string): void {
+		if (unfolded.has(key)) unfolded.delete(key);
+		else unfolded.add(key);
 	}
 
-	function toggleExpanded(deviceId: string): void {
-		if (expanded.has(deviceId)) {
-			expanded.delete(deviceId);
-			return;
-		}
-		ensureForms(deviceId);
-		expanded.add(deviceId);
+	function dialogueOf(entry: PlayingMedia) {
+		const asset = model.assets.find((candidate) => candidate.id === entry.assetId);
+		return asset?.kind === 'dialogue' ? asset : null;
 	}
 
-	function formFor(deviceId: string): MessageForm {
-		return messageForms[deviceId];
-	}
-
-	function messagesFor(deviceId: string): MessageAsset[] {
-		const registered = model.statusOf(deviceId)?.helperMessages;
-		if (!registered || registered.length === 0) return messages;
-		return messages.filter((message) => registered.includes(message.name));
-	}
-
-	function stateFormFor(deviceId: string): StateForm {
-		return stateForms[deviceId];
-	}
-
-	function statesFor(deviceId: string): StateAsset[] {
-		const registered = model.statusOf(deviceId)?.helperStates;
-		if (!registered || registered.length === 0) return states;
-		return states.filter((state) => registered.includes(state.name));
-	}
-
-	/** Raw form strings → typed values per the field schema; null after a toast on bad JSON. */
-	function parseValues(
-		fields: MessageField[],
-		raw: Record<string, string>
-	): Record<string, JsonValue> | null {
-		const values: Record<string, JsonValue> = {};
-		for (const field of fields) {
-			const text = raw[field.key] ?? '';
-			if (text === '' && !field.required) continue;
-			try {
-				values[field.key] =
-					field.type === 'number'
-						? Number(text)
-						: field.type === 'boolean'
-							? text === 'true'
-							: field.type === 'json'
-								? (JSON.parse(text || 'null') as JsonValue)
-								: text;
-			} catch {
-				toast.error(`필드 "${field.label || field.key}"의 JSON이 올바르지 않습니다.`);
+	/** Known total length: placeholder media (simulated) or a fully placeholder dialogue. */
+	function durationOf(entry: PlayingMedia): number | null {
+		const asset = model.assets.find((candidate) => candidate.id === entry.assetId);
+		if (!asset) return null;
+		switch (asset.kind) {
+			case 'bgm':
+			case 'sfx':
+			case 'video':
+				return asset.data.fileKey === null ? asset.data.durationMs : null;
+			case 'dialogue':
+				return asset.data.lines.every((line) => line.fileKey === null)
+					? asset.data.lines.reduce((sum, line) => sum + line.durationMs, 0)
+					: null;
+			default:
 				return null;
-			}
 		}
-		return values;
+	}
+
+	function playtime(entry: PlayingMedia): string {
+		const elapsed = now - entry.startedAt;
+		const total = durationOf(entry);
+		if (entry.loop && total !== null) {
+			return `${formatDuration(elapsed % total)} / ${formatDuration(total)} (${Math.floor(elapsed / total) + 1}회차)`;
+		}
+		return total !== null
+			? `${formatDuration(Math.min(elapsed, total))} / ${formatDuration(total)}`
+			: formatDuration(elapsed);
+	}
+
+	function formatValue(value: unknown): string {
+		return typeof value === 'string' ? value : JSON.stringify(value);
 	}
 
 	async function run(key: string, action: () => Promise<void>, success?: string): Promise<void> {
@@ -177,37 +137,9 @@
 		}
 	}
 
-	function setDeviceState(deviceId: string): void {
-		const form = stateFormFor(deviceId);
-		const state = states.find((candidate) => candidate.id === form.stateId);
-		if (!state) return;
-		const values = parseValues(state.data.fields, form.values);
-		if (!values) return;
-		void run(`state:${deviceId}`, () =>
-			actions.runCommand({ type: 'setState', deviceId, stateId: state.id, values })
-		);
-	}
-
 	function clearDeviceState(deviceId: string): void {
 		void run(`state:${deviceId}`, () =>
 			actions.runCommand({ type: 'clearState', deviceId, allDevices: false })
-		);
-	}
-
-	function sendMessage(deviceId: string): void {
-		const form = formFor(deviceId);
-		const message = messages.find((candidate) => candidate.id === form.messageId);
-		if (!message) return;
-		const values = parseValues(message.data.fields, form.values);
-		if (!values) return;
-		void run(`message:${deviceId}`, () =>
-			actions.runCommand({
-				type: 'sendMessage',
-				deviceId,
-				messageId: message.id,
-				values,
-				waitUntilEnd: form.wait
-			})
 		);
 	}
 
@@ -233,35 +165,25 @@
 	}
 </script>
 
-{#snippet valueInputs(values: Record<string, string>, fields: MessageField[], prefix: string)}
-	<Field.FieldGroup class="gap-2">
-		{#each fields as field (field.key)}
-			<Field.Field orientation="horizontal">
-				<Field.FieldLabel for="{prefix}-{field.key}" class="w-32">
-					{field.label || field.key}{field.required ? ' *' : ''}
-				</Field.FieldLabel>
-				{#if field.type === 'boolean'}
-					<Select.Root type="single" bind:value={values[field.key]}>
-						<Select.Trigger id="{prefix}-{field.key}" size="sm" class="flex-1">
-							{values[field.key] || '선택 안 함'}
-						</Select.Trigger>
-						<Select.Content>
-							<Select.Group>
-								<Select.Item value="true" label="true">true</Select.Item>
-								<Select.Item value="false" label="false">false</Select.Item>
-							</Select.Group>
-						</Select.Content>
-					</Select.Root>
-				{:else}
-					<Input
-						id="{prefix}-{field.key}"
-						placeholder={field.type}
-						bind:value={values[field.key]}
-					/>
-				{/if}
-			</Field.Field>
-		{/each}
-	</Field.FieldGroup>
+{#snippet foldToggle(key: string, label: string)}
+	<button
+		type="button"
+		class="flex min-w-0 flex-1 items-center gap-2 text-left"
+		aria-expanded={unfolded.has(key)}
+		onclick={() => toggleUnfolded(key)}
+	>
+		{#if unfolded.has(key)}
+			<ChevronDownIcon class="size-3 shrink-0 text-muted-foreground" />
+		{:else}
+			<ChevronRightIcon class="size-3 shrink-0 text-muted-foreground" />
+		{/if}
+		<span class="min-w-0 truncate">{label}</span>
+	</button>
+{/snippet}
+
+{#snippet detail(label: string, value: string)}
+	<dt class="text-muted-foreground">{label}</dt>
+	<dd class="min-w-0 break-all">{value}</dd>
 {/snippet}
 
 {#if view.simple}
@@ -289,17 +211,17 @@
 		</Card.Content>
 	</Card.Root>
 {:else}
-	<Card.Root class="md:col-span-2">
+	<Card.Root>
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
 			<Card.Description>
-				연결, 웹사이트, 상태, Helper 등록 항목과 미디어를 한곳에서 확인하고 조작합니다.
+				연결과 현재 재생 항목을 확인하고, + 버튼으로 애셋을 주입합니다.
 			</Card.Description>
 			<Card.Action>
 				<Button
 					size="sm"
 					variant="outline"
-					disabled={busyKeys.has('reset-all') || model.session?.state === 'ended'}
+					disabled={busyKeys.has('reset-all') || ended}
 					onclick={() => run('reset-all', actions.resetDevices, '모든 디바이스를 초기화했습니다.')}
 				>
 					<RotateCcwIcon data-icon="inline-start" />전체 초기화
@@ -316,312 +238,247 @@
 				{@const currentState = stateByDevice.get(device.id)}
 				{@const currentMedia = playingByDevice.get(device.id) ?? []}
 				{@const code = codeByDevice.get(device.id)}
+				{@const callbacks = status?.helperTestCallbacks ?? []}
 				<div class="rounded-md border">
-					<button
-						type="button"
-						class="flex w-full items-center gap-2 px-3 py-2 text-left"
-						onclick={() => toggleExpanded(device.id)}
-					>
+					<div class="flex items-center gap-2 px-3 py-2">
 						<span class={cn('size-2 rounded-full', status?.online ? 'bg-primary' : 'bg-muted')}
 						></span>
 						<span class="truncate text-sm font-medium"
 							>{device.data.displayName || device.name}</span
 						>
 						{#if device.data.isHintDevice}<Badge variant="secondary">힌트</Badge>{/if}
-						{#if code}<code class="font-mono text-xs text-muted-foreground">{code}</code>{/if}
 						<Badge variant={status?.online ? 'outline' : 'secondary'} class="ml-auto">
 							{status?.online ? '온라인' : '오프라인'}
 						</Badge>
-						{#if expanded.has(device.id)}
-							<ChevronDownIcon class="size-4 text-muted-foreground" />
-						{:else}
-							<ChevronRightIcon class="size-4 text-muted-foreground" />
-						{/if}
-					</button>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							aria-label="디바이스 리셋"
+							title="디바이스 리셋"
+							disabled={busyKeys.has(`reset:${device.id}`) || ended}
+							onclick={() =>
+								run(`reset:${device.id}`, () =>
+									actions.runCommand({ type: 'resetDevice', deviceId: device.id })
+								)}
+						>
+							<RotateCcwIcon />
+						</Button>
+						<Button
+							variant="outline"
+							size="icon-sm"
+							aria-label="애셋 주입"
+							title="애셋 주입"
+							disabled={ended}
+							onclick={() => (injectDeviceId = device.id)}
+						>
+							<PlusIcon />
+						</Button>
+					</div>
+
+					{#if code || status?.clientVersion || status?.helperVersion}
+						<div
+							class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-1.5 text-xs text-muted-foreground"
+						>
+							{#if code}
+								<span class="flex items-center gap-1">
+									접속 코드 <code class="text-foreground">{code}</code>
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										aria-label="코드 복사"
+										onclick={() => copyCode(code)}
+									>
+										<CopyIcon />
+									</Button>
+								</span>
+							{/if}
+							{#if status?.clientVersion}<span>Client {status.clientVersion}</span>{/if}
+							{#if status?.helperVersion}<span>Helper {status.helperVersion}</span>{/if}
+						</div>
+					{/if}
 
 					{#if currentWebsite || currentState || currentMedia.length > 0}
 						<div class="flex flex-col gap-1.5 border-t px-3 py-2">
 							{#if currentState}
+								{@const key = `state:${device.id}`}
 								<div class="flex items-center gap-2 text-xs">
 									<Badge variant="outline">상태</Badge>
-									<span class="min-w-0 truncate" title={JSON.stringify(currentState.values)}>
-										{assetName(model.assets, currentState.stateId) ?? currentState.stateName}
-									</span>
+									{@render foldToggle(
+										key,
+										assetName(model.assets, currentState.stateId) ?? currentState.stateName
+									)}
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										class="ml-auto"
 										aria-label="상태 해제"
-										disabled={busyKeys.has(`state:${device.id}`) ||
-											model.session?.state === 'ended'}
+										disabled={busyKeys.has(`state:${device.id}`) || ended}
 										onclick={() => clearDeviceState(device.id)}
 									>
 										<XIcon />
 									</Button>
 								</div>
+								{#if unfolded.has(key)}
+									{@const entries = Object.entries(currentState.values)}
+									<dl
+										class="ml-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-muted/50 px-3 py-2 text-xs"
+									>
+										{@render detail('설정 시각', formatClock(currentState.startedAt))}
+										{@render detail('경과', formatDuration(now - currentState.startedAt))}
+										{#if entries.length === 0}
+											{@render detail('값', '없음')}
+										{/if}
+										{#each entries as [field, value] (field)}
+											{@render detail(field, formatValue(value))}
+										{/each}
+									</dl>
+								{/if}
 							{/if}
 							{#if currentWebsite}
+								{@const key = `site:${device.id}`}
 								<div class="flex items-center gap-2 text-xs">
 									<Badge variant="outline">웹사이트</Badge>
-									<span class="min-w-0 truncate" title={currentWebsite.url}>
-										{assetName(model.assets, currentWebsite.websiteId) ?? currentWebsite.url}
-									</span>
+									{@render foldToggle(
+										key,
+										assetName(model.assets, currentWebsite.websiteId) ?? currentWebsite.url
+									)}
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										class="ml-auto"
 										aria-label="웹사이트 종료"
-										disabled={busyKeys.has(`stop-site:${device.id}`) ||
-											model.session?.state === 'ended'}
+										disabled={busyKeys.has(`stop-site:${device.id}`) || ended}
 										onclick={() =>
 											run(`stop-site:${device.id}`, () =>
-												actions.runCommand({
-													type: 'resetDevice',
-													deviceId: device.id
-												})
+												actions.runCommand({ type: 'resetDevice', deviceId: device.id })
 											)}
 									>
 										<XIcon />
 									</Button>
 								</div>
+								{#if unfolded.has(key)}
+									<dl
+										class="ml-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-muted/50 px-3 py-2 text-xs"
+									>
+										{@render detail('URL', currentWebsite.url)}
+										{@render detail('이동 시각', formatClock(currentWebsite.startedAt))}
+										{@render detail('경과', formatDuration(now - currentWebsite.startedAt))}
+										{#if status?.helperMessages?.length}
+											{@render detail('등록 메시지', status.helperMessages.join(', '))}
+										{/if}
+										{#if status?.helperStates?.length}
+											{@render detail('등록 상태', status.helperStates.join(', '))}
+										{/if}
+									</dl>
+								{/if}
 							{/if}
 							{#each currentMedia as entry (entry.commandId)}
+								{@const key = `media:${entry.commandId}`}
+								{@const dialogue = entry.channel === 'dialogue' ? dialogueOf(entry) : null}
 								<div class="flex items-center gap-2 text-xs">
 									<Badge variant="outline">{channelLabels[entry.channel]}</Badge>
-									<span class="min-w-0 truncate">
-										{assetName(model.assets, entry.assetId) ?? entry.assetName}
-									</span>
+									{@render foldToggle(
+										key,
+										assetName(model.assets, entry.assetId) ?? entry.assetName
+									)}
+									{#if entry.loop}<Badge variant="secondary">반복</Badge>{/if}
+									{#if entry.channel === 'dialogue' && dialogue && entry.lineIndex !== null}
+										<span class="shrink-0 text-muted-foreground">
+											{entry.lineIndex + 1}/{dialogue.data.lines.length}
+										</span>
+									{/if}
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										class="ml-auto"
 										aria-label="재생 정지"
-										disabled={busyKeys.has(`stop:${entry.commandId}`) ||
-											model.session?.state === 'ended'}
+										disabled={busyKeys.has(`stop:${entry.commandId}`) || ended}
 										onclick={() => run(`stop:${entry.commandId}`, () => stopMedia(entry))}
 									>
 										<XIcon />
 									</Button>
 								</div>
+								{#if unfolded.has(key)}
+									<dl
+										class="ml-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-muted/50 px-3 py-2 text-xs"
+									>
+										{@render detail('재생 시간', playtime(entry))}
+										{@render detail('시작 시각', formatClock(entry.startedAt))}
+										{@render detail(
+											'플레이어',
+											assetName(model.assets, entry.playerId) ?? '(삭제됨)'
+										)}
+										{#if entry.channel === 'bgm'}
+											{@render detail('반복', entry.loop ? '켜짐' : '꺼짐')}
+										{/if}
+										{#if entry.channel === 'dialogue'}
+											{@render detail(
+												'현재 라인',
+												dialogue
+													? entry.lineIndex === null
+														? `시작 대기 (${dialogue.data.lines.length}줄)`
+														: `${entry.lineIndex + 1} / ${dialogue.data.lines.length}`
+													: entry.lineIndex === null
+														? '시작 대기'
+														: String(entry.lineIndex + 1)
+											)}
+											{#if dialogue && dialogue.data.lines.length > 0}
+												<ol
+													class="col-span-2 flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded border bg-background p-1.5"
+												>
+													{#each dialogue.data.lines as line, index (line.id)}
+														{@const active = index === entry.lineIndex}
+														<li
+															class={cn(
+																'flex items-center gap-2 rounded px-1.5 py-0.5',
+																active ? 'bg-muted font-medium' : 'text-muted-foreground'
+															)}
+														>
+															<span class="w-5 shrink-0 text-right font-mono">{index + 1}</span>
+															<span class="min-w-0 truncate">
+																{stripHtml(line.subtitleHtml) || '(자막 없음)'}
+															</span>
+															{#if active}<Badge variant="outline" class="ml-auto">재생 중</Badge
+																>{/if}
+														</li>
+													{/each}
+												</ol>
+											{/if}
+										{/if}
+										{@render detail('명령 ID', entry.commandId)}
+									</dl>
+								{/if}
 							{/each}
 						</div>
 					{/if}
 
-					{#if expanded.has(device.id)}
-						{@const form = formFor(device.id)}
-						{@const stateForm = stateFormFor(device.id)}
-						{@const registeredStates = status?.helperStates ?? []}
-						{@const availableStates = statesFor(device.id)}
-						{@const registeredMessages = status?.helperMessages ?? []}
-						{@const callbacks = status?.helperTestCallbacks ?? []}
-						{@const availableMessages = messagesFor(device.id)}
-						<div class="flex flex-col gap-4 border-t px-3 py-3">
-							<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-								{#if code}
-									<span>접속 코드 <code class="text-foreground">{code}</code></span>
-									<Button variant="outline" size="sm" onclick={() => copyCode(code)}>
-										<CopyIcon data-icon="inline-start" />복사
-									</Button>
-								{/if}
-								{#if status?.clientVersion}<span>Client {status.clientVersion}</span>{/if}
-								{#if status?.helperVersion}<span>Helper {status.helperVersion}</span>{/if}
+					{#if callbacks.length > 0}
+						<div class="flex flex-wrap items-center gap-1.5 border-t px-3 py-2">
+							<span class="mr-1 text-xs font-medium text-muted-foreground">테스트 콜백</span>
+							{#each callbacks as name (name)}
+								{@const result = callbackResults[`${device.id}:${name}`]}
 								<Button
 									variant="outline"
-									size="sm"
-									class="ml-auto"
-									disabled={busyKeys.has(`reset:${device.id}`) || model.session?.state === 'ended'}
-									onclick={() =>
-										run(`reset:${device.id}`, () =>
-											actions.runCommand({
-												type: 'resetDevice',
-												deviceId: device.id
-											})
-										)}
+									size="xs"
+									disabled={result === 'running'}
+									onclick={() => callback(device.id, name)}
 								>
-									<RotateCcwIcon data-icon="inline-start" />리셋
+									{name}{result === 'ok' ? ' ✓' : result === 'fail' ? ' ✕' : ''}
 								</Button>
-							</div>
-
-							<Field.FieldGroup>
-								<Field.Field>
-									<Field.FieldLabel for="navigate-{device.id}">웹사이트 이동</Field.FieldLabel>
-									<div class="flex items-center gap-2">
-										<Select.Root type="single" bind:value={navigation[device.id]}>
-											<Select.Trigger id="navigate-{device.id}" size="sm" class="flex-1">
-												{websites.find((site) => site.id === navigation[device.id])?.name ??
-													'웹사이트 선택'}
-											</Select.Trigger>
-											<Select.Content>
-												<Select.Group>
-													{#each websites as site (site.id)}
-														<Select.Item value={site.id} label={site.name}>{site.name}</Select.Item>
-													{/each}
-												</Select.Group>
-											</Select.Content>
-										</Select.Root>
-										<Button
-											variant="outline"
-											size="sm"
-											disabled={!navigation[device.id]}
-											onclick={() =>
-												run(`navigate:${device.id}`, () =>
-													actions.runCommand({
-														type: 'navigate',
-														deviceId: device.id,
-														websiteId: navigation[device.id],
-														query: []
-													})
-												)}
-										>
-											이동
-										</Button>
-									</div>
-								</Field.Field>
-
-								<Field.Field>
-									<Field.FieldLabel for="message-{device.id}">Helper 메시지</Field.FieldLabel>
-									<div class="flex flex-wrap items-center gap-2">
-										<Select.Root type="single" bind:value={form.messageId}>
-											<Select.Trigger id="message-{device.id}" size="sm" class="min-w-48 flex-1">
-												{availableMessages.find((message) => message.id === form.messageId)?.data
-													.displayName ||
-													availableMessages.find((message) => message.id === form.messageId)
-														?.name ||
-													'메시지 선택'}
-											</Select.Trigger>
-											<Select.Content>
-												<Select.Group>
-													{#each availableMessages as message (message.id)}
-														<Select.Item
-															value={message.id}
-															label={message.data.displayName || message.name}
-														>
-															{message.data.displayName ||
-																message.name}{registeredMessages.includes(message.name) ? ' ✓' : ''}
-														</Select.Item>
-													{/each}
-												</Select.Group>
-											</Select.Content>
-										</Select.Root>
-										<Field.Field orientation="horizontal" class="w-auto">
-											<Checkbox id="wait-{device.id}" bind:checked={form.wait} />
-											<Field.FieldLabel for="wait-{device.id}">완료 대기</Field.FieldLabel>
-										</Field.Field>
-										<Button
-											variant="outline"
-											size="sm"
-											disabled={!form.messageId || busyKeys.has(`message:${device.id}`)}
-											onclick={() => sendMessage(device.id)}
-										>
-											전송
-										</Button>
-									</div>
-									{#if form.messageId}
-										{@const selectedMessage = availableMessages.find(
-											(message) => message.id === form.messageId
-										)}
-										{#if selectedMessage}
-											{@render valueInputs(
-												form.values,
-												selectedMessage.data.fields,
-												`field-${device.id}`
-											)}
-										{/if}
-									{/if}
-									{#if registeredMessages.length > 0}
-										<Field.FieldDescription>
-											페이지 등록: {registeredMessages.join(', ')}
-										</Field.FieldDescription>
-									{/if}
-								</Field.Field>
-
-								<Field.Field>
-									<Field.FieldLabel for="state-{device.id}">상태 설정</Field.FieldLabel>
-									<div class="flex flex-wrap items-center gap-2">
-										<Select.Root type="single" bind:value={stateForm.stateId}>
-											<Select.Trigger id="state-{device.id}" size="sm" class="min-w-48 flex-1">
-												{availableStates.find((state) => state.id === stateForm.stateId)?.data
-													.displayName ||
-													availableStates.find((state) => state.id === stateForm.stateId)?.name ||
-													'상태 선택'}
-											</Select.Trigger>
-											<Select.Content>
-												<Select.Group>
-													{#each availableStates as state (state.id)}
-														<Select.Item
-															value={state.id}
-															label={state.data.displayName || state.name}
-														>
-															{state.data.displayName || state.name}{registeredStates.includes(
-																state.name
-															)
-																? ' ✓'
-																: ''}
-														</Select.Item>
-													{/each}
-												</Select.Group>
-											</Select.Content>
-										</Select.Root>
-										<Button
-											variant="outline"
-											size="sm"
-											disabled={!stateForm.stateId || busyKeys.has(`state:${device.id}`)}
-											onclick={() => setDeviceState(device.id)}
-										>
-											설정
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											disabled={!currentState || busyKeys.has(`state:${device.id}`)}
-											onclick={() => clearDeviceState(device.id)}
-										>
-											해제
-										</Button>
-									</div>
-									{#if stateForm.stateId}
-										{@const selectedState = availableStates.find(
-											(state) => state.id === stateForm.stateId
-										)}
-										{#if selectedState}
-											{@render valueInputs(
-												stateForm.values,
-												selectedState.data.fields,
-												`state-field-${device.id}`
-											)}
-										{/if}
-									{/if}
-									<Field.FieldDescription>
-										{#if registeredStates.length > 0}
-											페이지 등록: {registeredStates.join(', ')} ·
-										{/if}
-										상태는 장치가 다시 접속해도 유지됩니다. 일시적인 효과에는 메시지를 쓰세요.
-									</Field.FieldDescription>
-								</Field.Field>
-							</Field.FieldGroup>
-
-							{#if callbacks.length > 0}
-								<div class="flex flex-col gap-1.5">
-									<p class="text-xs font-medium text-muted-foreground">테스트 콜백</p>
-									<div class="flex flex-wrap gap-1.5">
-										{#each callbacks as name (name)}
-											{@const result = callbackResults[`${device.id}:${name}`]}
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={result === 'running'}
-												onclick={() => callback(device.id, name)}
-											>
-												{name}{result === 'ok' ? ' ✓' : result === 'fail' ? ' ✕' : ''}
-											</Button>
-										{/each}
-									</div>
-								</div>
-							{/if}
+							{/each}
 						</div>
 					{/if}
 				</div>
 			{/each}
 		</Card.Content>
 	</Card.Root>
+
+	{#if injectDevice}
+		<InjectDialog
+			device={injectDevice}
+			bind:open={
+				() => injectDeviceId !== null,
+				(value) => {
+					if (!value) injectDeviceId = null;
+				}
+			}
+		/>
+	{/if}
 {/if}

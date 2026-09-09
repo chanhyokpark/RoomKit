@@ -3,6 +3,7 @@
 	import { cache } from '../cache/manager.svelte';
 	import { PlaybackEngine } from '../playback/engine';
 	import { startKiosk } from '../kiosk';
+	import { keepScreenAwake } from '../wake-lock';
 	import { startScreenshotReporter } from '../screenshot';
 	import { config } from '../stores/config.svelte';
 	import { call } from '../stores/call.svelte';
@@ -37,6 +38,7 @@
 
 	let engine = $state<PlaybackEngine | null>(null);
 	let stopScreenshots: (() => void) | null = null;
+	let releaseWakeLock: (() => void) | null = null;
 
 	/** Video surface placement; null frame = fullscreen. */
 	const videoFrameStyle = $derived(
@@ -66,10 +68,13 @@
 		});
 		// Studio's device list shows a live thumbnail of this stage.
 		stopScreenshots = startScreenshotReporter(client, () => connection.status === 'connected');
+		// The screen stays on for as long as this stage window exists, connected or not.
+		releaseWakeLock = keepScreenAwake();
 		if (device.kiosk) return startKiosk();
 	});
 
 	onDestroy(() => {
+		releaseWakeLock?.();
 		stopScreenshots?.();
 		call.detach();
 		engine?.resetAll();
