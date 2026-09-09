@@ -54,6 +54,8 @@ For early logic tests, prefer placeholders over invented file keys. The server r
 
 Phase order determines the initial phase and authoring display. Event `phaseId: null` makes an event common. Use common events for behavior that must be available throughout the game, such as an emergency reset; avoid using common `once` events when operators expect phase restart to reset them.
 
+Only use manual flag if it's explicitly required for operator to manually run that event as it can't be automated; every event could be manually executed by operator on emergency anyway.
+
 Trigger names are application-level contracts. Keep them stable and namespaced (`keypad:correct`, `door:opened`) to reduce accidental matches. Device payload must be JSON. Manual and system triggers have null payload.
 
 Broken asset references do not invalidate the entire saved sequence. Runtime skips the broken command, writes a warning, and continues. Treat `rk sequence set`/`edit` warnings as authoring failures unless the missing asset is intentionally staged.
