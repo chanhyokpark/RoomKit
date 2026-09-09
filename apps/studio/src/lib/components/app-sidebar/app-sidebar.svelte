@@ -10,6 +10,7 @@
 	import logo from '$lib/assets/favicon.svg';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { themesStore } from '$lib/stores/themes.svelte';
+	import ModeToggle from './mode-toggle.svelte';
 	import ThemeSwitcher from './theme-switcher.svelte';
 
 	const activeThemeId = $derived(page.params.themeId ?? themesStore.themes[0]?.id);
@@ -106,6 +107,9 @@
 	</Sidebar.Content>
 	<Sidebar.Footer>
 		<Sidebar.Menu>
+			<Sidebar.MenuItem>
+				<ModeToggle />
+			</Sidebar.MenuItem>
 			<Sidebar.MenuItem>
 				<Sidebar.MenuButton onclick={handleLogout}>
 					<LogOutIcon />

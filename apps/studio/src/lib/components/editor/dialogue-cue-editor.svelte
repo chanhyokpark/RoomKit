@@ -234,7 +234,7 @@
 		{/each}
 	</div>
 {:else if entry.lineCues.some((cue) => cue.sequence.length > 0)}
-	<p class="mt-2 w-full text-xs text-amber-600">
+	<p class="mt-2 w-full text-xs text-amber-600 dark:text-amber-500">
 		라인 사이 커맨드가 있지만 대사가 선택되지 않아 실행되지 않습니다.
 	</p>
 {/if}

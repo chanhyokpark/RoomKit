@@ -120,7 +120,7 @@
 					{/if}
 					{#each result.created as item (item.assetId)}
 						<div class="flex items-center gap-2">
-							<CheckIcon class="size-4 shrink-0 text-green-600" />
+							<CheckIcon class="size-4 shrink-0 text-green-600 dark:text-green-500" />
 							<span class="truncate font-medium">{item.name}</span>
 							<span class="shrink-0 text-xs text-muted-foreground">
 								파일 {item.files.length}개
