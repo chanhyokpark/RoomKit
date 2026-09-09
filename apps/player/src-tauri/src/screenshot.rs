@@ -156,11 +156,11 @@ mod win {
       return Err((tx, "cannot allocate memory stream".into()));
     };
     let read_stream = stream.clone();
-    let handler = CapturePreviewCompletedHandler::create(Box::new(move |hr| {
-      let result = if hr.is_ok() {
-        read_all(&read_stream)
-      } else {
-        Err(format!("CapturePreview failed: {hr}"))
+    let handler = CapturePreviewCompletedHandler::create(Box::new(move |completed| {
+      // webview2-com hands the completion status over as a windows Result.
+      let result = match completed {
+        Ok(()) => read_all(&read_stream),
+        Err(e) => Err(format!("CapturePreview failed: {e}")),
       };
       let _ = tx.send(result);
       Ok(())
@@ -184,9 +184,7 @@ mod win {
     loop {
       let mut read = 0u32;
       let hr = unsafe { stream.Read(chunk.as_mut_ptr().cast(), chunk.len() as u32, Some(&mut read)) };
-      if hr.is_err() {
-        return Err(format!("stream read failed: {hr}"));
-      }
+      hr.ok().map_err(|e| format!("stream read failed: {e}"))?;
       if read == 0 {
         break;
       }
