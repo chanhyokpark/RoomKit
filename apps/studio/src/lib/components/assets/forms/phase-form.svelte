@@ -122,100 +122,106 @@
 <Field.Field>
 	<Field.FieldLabel>페이즈 시작 시 적용</Field.FieldLabel>
 	<Field.FieldDescription>
-		페이즈에 들어갈 때 장치 상태·웹사이트와 플레이어 BGM을 맞춥니다. 이미 같은 화면·BGM이면 다시
+		페이즈에 들어갈 때 장치별 상태·웹사이트와 플레이어 BGM을 맞춥니다. 이미 같은 화면·BGM이면 다시
 		시작하지 않고, 등록하지 않은(유지) 항목은 그대로 둡니다. 오프라인이었던 장치도 접속하면 이
 		설정을 받습니다.
 	</Field.FieldDescription>
 </Field.Field>
 
 <Field.Field>
-	<Field.FieldLabel>장치 상태</Field.FieldLabel>
+	<Field.FieldLabel>장치</Field.FieldLabel>
 	{#if devices.length === 0}
 		<p class="text-xs text-muted-foreground">장치 애셋이 없습니다.</p>
 	{/if}
 	<div class="flex flex-col gap-2">
 		{#each devices as device (device.id)}
-			{@const slot = stateSlot(device.id)}
-			<div class="flex flex-col gap-1.5 rounded-md border p-2">
-				<div class="flex items-center gap-2">
-					<span class="w-32 truncate text-sm">{assetDisplayName(device)}</span>
-					{@render modeSelect(
-						slot?.mode ?? 'keep',
-						(mode) => setStateMode(device.id, mode),
-						`${assetDisplayName(device)} 상태 모드`
-					)}
-					{#if slot?.mode === 'set'}
-						{@render assetSelect(
-							states,
-							slot.stateId,
-							(id) => {
-								slot.stateId = id;
-								slot.values = {};
-							},
-							'상태 선택'
-						)}
-					{/if}
-				</div>
-				{#if slot?.mode === 'set' && slot.stateId}
-					<FieldValuesEditor
-						fields={stateFields(slot.stateId)}
-						values={slot.values}
-						onchanged={() => {}}
-						emptyText="이 상태에는 입력할 필드가 없습니다."
-					/>
-				{/if}
-			</div>
-		{/each}
-	</div>
-</Field.Field>
+			{@const state = stateSlot(device.id)}
+			{@const website = websiteSlot(device.id)}
+			<div class="flex flex-col gap-2 rounded-md border p-2">
+				<span class="truncate text-sm font-medium">{assetDisplayName(device)}</span>
 
-<Field.Field>
-	<Field.FieldLabel>장치 웹사이트</Field.FieldLabel>
-	<div class="flex flex-col gap-2">
-		{#each devices as device (device.id)}
-			{@const slot = websiteSlot(device.id)}
-			<div class="flex flex-col gap-1.5 rounded-md border p-2">
-				<div class="flex items-center gap-2">
-					<span class="w-32 truncate text-sm">{assetDisplayName(device)}</span>
-					{@render modeSelect(
-						slot?.mode ?? 'keep',
-						(mode) => setWebsiteMode(device.id, mode),
-						`${assetDisplayName(device)} 웹사이트 모드`
-					)}
-					{#if slot?.mode === 'set'}
-						{@render assetSelect(websites, slot.websiteId, (id) => (slot.websiteId = id), '웹사이트 선택')}
+				<div class="flex flex-col gap-1.5">
+					<div class="flex items-center gap-2">
+						<span class="w-16 shrink-0 text-xs text-muted-foreground">상태</span>
+						{@render modeSelect(
+							state?.mode ?? 'keep',
+							(mode) => setStateMode(device.id, mode),
+							`${assetDisplayName(device)} 상태 모드`
+						)}
+					</div>
+					{#if state?.mode === 'set'}
+						<div class="flex items-center gap-2 pl-18">
+							{@render assetSelect(
+								states,
+								state.stateId,
+								(id) => {
+									state.stateId = id;
+									state.values = {};
+								},
+								'상태 선택'
+							)}
+						</div>
+						{#if state.stateId}
+							<div class="pl-18">
+								<FieldValuesEditor
+									fields={stateFields(state.stateId)}
+									values={state.values}
+									onchanged={() => {}}
+									emptyText="이 상태에는 입력할 필드가 없습니다."
+								/>
+							</div>
+						{/if}
 					{/if}
 				</div>
-				{#if slot?.mode === 'set'}
-					<div class="flex flex-col gap-1.5">
-						{#each slot.query as pair, i (i)}
-							<div class="flex items-center gap-1.5">
-								<Input class="flex-1 font-mono" placeholder="key" bind:value={pair.key} />
-								<Input
-									class="flex-1 font-mono"
-									placeholder="value ({'{{vars.x}}'} 지원)"
-									bind:value={pair.value}
-								/>
-								<Button
-									variant="ghost"
-									size="icon"
-									aria-label="쿼리 삭제"
-									onclick={() => (slot.query = slot.query.filter((_, idx) => idx !== i))}
-								>
-									<XIcon class="size-4" />
-								</Button>
-							</div>
-						{/each}
-						<Button
-							variant="outline"
-							size="sm"
-							class="self-start"
-							onclick={() => (slot.query = [...slot.query, { key: '', value: '' }])}
-						>
-							<PlusIcon class="size-4" /> 쿼리 파라미터 추가
-						</Button>
+
+				<div class="flex flex-col gap-1.5">
+					<div class="flex items-center gap-2">
+						<span class="w-16 shrink-0 text-xs text-muted-foreground">웹사이트</span>
+						{@render modeSelect(
+							website?.mode ?? 'keep',
+							(mode) => setWebsiteMode(device.id, mode),
+							`${assetDisplayName(device)} 웹사이트 모드`
+						)}
 					</div>
-				{/if}
+					{#if website?.mode === 'set'}
+						<div class="flex items-center gap-2 pl-18">
+							{@render assetSelect(
+								websites,
+								website.websiteId,
+								(id) => (website.websiteId = id),
+								'웹사이트 선택'
+							)}
+						</div>
+						<div class="flex flex-col gap-1.5 pl-18">
+							{#each website.query as pair, i (i)}
+								<div class="flex items-center gap-1.5">
+									<Input class="flex-1 font-mono" placeholder="key" bind:value={pair.key} />
+									<Input
+										class="flex-1 font-mono"
+										placeholder="value ({'{{vars.x}}'} 지원)"
+										bind:value={pair.value}
+									/>
+									<Button
+										variant="ghost"
+										size="icon"
+										aria-label="쿼리 삭제"
+										onclick={() => (website.query = website.query.filter((_, idx) => idx !== i))}
+									>
+										<XIcon class="size-4" />
+									</Button>
+								</div>
+							{/each}
+							<Button
+								variant="outline"
+								size="sm"
+								class="self-start"
+								onclick={() => (website.query = [...website.query, { key: '', value: '' }])}
+							>
+								<PlusIcon class="size-4" /> 쿼리 파라미터 추가
+							</Button>
+						</div>
+					{/if}
+				</div>
 			</div>
 		{/each}
 	</div>
@@ -229,17 +235,24 @@
 	<div class="flex flex-col gap-2">
 		{#each players as player (player.id)}
 			{@const slot = bgmSlot(player.id)}
-			<div class="flex items-center gap-2 rounded-md border p-2">
-				<span class="w-32 truncate text-sm">{assetDisplayName(player)}</span>
-				{@render modeSelect(
-					slot?.mode ?? 'keep',
-					(mode) => setBgmMode(player.id, mode),
-					`${assetDisplayName(player)} BGM 모드`
-				)}
-				{#if slot?.mode === 'set'}
-					{@render assetSelect(bgms, slot.bgmId, (id) => (slot.bgmId = id), 'BGM 선택')}
-					<span class="text-xs text-muted-foreground">반복 재생</span>
-				{/if}
+			<div class="flex flex-col gap-2 rounded-md border p-2">
+				<span class="truncate text-sm font-medium">{assetDisplayName(player)}</span>
+				<div class="flex flex-col gap-1.5">
+					<div class="flex items-center gap-2">
+						<span class="w-16 shrink-0 text-xs text-muted-foreground">BGM</span>
+						{@render modeSelect(
+							slot?.mode ?? 'keep',
+							(mode) => setBgmMode(player.id, mode),
+							`${assetDisplayName(player)} BGM 모드`
+						)}
+					</div>
+					{#if slot?.mode === 'set'}
+						<div class="flex items-center gap-2 pl-18">
+							{@render assetSelect(bgms, slot.bgmId, (id) => (slot.bgmId = id), 'BGM 선택')}
+							<span class="shrink-0 text-xs text-muted-foreground">반복 재생</span>
+						</div>
+					{/if}
+				</div>
 			</div>
 		{/each}
 	</div>
