@@ -121,11 +121,6 @@
 
 <Field.Field>
 	<Field.FieldLabel>페이즈 시작 시 적용</Field.FieldLabel>
-	<Field.FieldDescription>
-		페이즈에 들어갈 때 장치별 상태·웹사이트와 플레이어 BGM을 맞춥니다. 이미 같은 화면·BGM이면 다시
-		시작하지 않고, 등록하지 않은(유지) 항목은 그대로 둡니다. 오프라인이었던 장치도 접속하면 이
-		설정을 받습니다.
-	</Field.FieldDescription>
 </Field.Field>
 
 <Field.Field>
