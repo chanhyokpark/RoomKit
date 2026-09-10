@@ -6,6 +6,7 @@
 	import EventsCard from './events-card.svelte';
 	import LogCard from './log-card.svelte';
 	import NotificationsCard from './notifications-card.svelte';
+	import PlayersCard from './players-card.svelte';
 	import ScreensCard from './screens-card.svelte';
 	import SessionControls from './session-controls.svelte';
 	import SummaryCard from './summary-card.svelte';
@@ -73,13 +74,14 @@
 	<CallCard />
 	<NotificationsCard />
 	<!-- Desktop rows — simple: timer | events, screens, devices | hint.
-	     full: timer | phases, events, screens, devices | hint, log. -->
+	     full: timer | phases, events, screens, devices | players, hint, log. -->
 	<div class="grid grid-cols-1 gap-4 {singleColumn ? '' : 'md:grid-cols-2'}">
 		{#if model.session?.state === 'ended'}<SummaryCard />{/if}
 		<TimerPhaseCard />
 		<EventsCard />
 		<ScreensCard />
 		<DevicesCard />
+		<PlayersCard />
 		<ToolsCard />
 		{#if !simple}<LogCard />{/if}
 	</div>

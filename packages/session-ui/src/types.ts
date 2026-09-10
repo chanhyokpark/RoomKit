@@ -20,6 +20,7 @@ export type EventAsset = Extract<Asset, { kind: 'event' }>;
 export type HintAsset = Extract<Asset, { kind: 'hint' }>;
 export type MessageAsset = Extract<Asset, { kind: 'message' }>;
 export type PhaseAsset = Extract<Asset, { kind: 'phase' }>;
+export type PlayerAsset = Extract<Asset, { kind: 'player' }>;
 export type StateAsset = Extract<Asset, { kind: 'state' }>;
 
 /**

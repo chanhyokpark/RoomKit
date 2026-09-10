@@ -5,7 +5,6 @@
 	import { toast } from 'svelte-sonner';
 	import type { Command, JsonValue, MessageField } from '@roomkit/shared';
 	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
@@ -17,19 +16,15 @@
 
 	/**
 	 * "+" on a device row: pick an asset kind, the asset, its options, and
-	 * apply it to that device as a one-off admin command.
+	 * apply it to that device as a one-off admin command. Media (dialogue /
+	 * BGM / SFX / video) is addressed to a player instead — see play-dialog.
 	 */
 	let { device, open = $bindable(false) }: { device: DeviceAsset; open?: boolean } = $props();
 
 	const { model, actions } = useSessionUi();
 
-	type Kind = 'dialogue' | 'bgm' | 'sfx' | 'video' | 'website' | 'message' | 'state' | 'hintCode';
-	const MEDIA_KINDS = new Set<Kind>(['dialogue', 'bgm', 'sfx', 'video']);
+	type Kind = 'website' | 'message' | 'state' | 'hintCode';
 	const kindLabels: Record<Kind, string> = {
-		dialogue: '대사',
-		bgm: 'BGM',
-		sfx: '효과음',
-		video: '비디오',
 		website: '웹사이트',
 		message: '메시지',
 		state: '상태',
@@ -38,20 +33,11 @@
 
 	let kind = $state<Kind>('website');
 	let assetId = $state('');
-	let playerId = $state('');
-	let loop = $state(false);
 	let values = $state<Record<string, string>>({});
 	let query = $state<Array<{ key: string; value: string }>>([]);
 	let busy = $state(false);
 
 	const status = $derived(model.statusOf(device.id));
-	/** Players whose speaker or screen is this device — media plays through them. */
-	const players = $derived(
-		assetsOf(model.assets, 'player').filter(
-			(player) =>
-				player.data.speakerDeviceId === device.id || player.data.screenDeviceId === device.id
-		)
-	);
 	const registeredMessages = $derived(status?.helperMessages ?? []);
 	const registeredStates = $derived(status?.helperStates ?? []);
 
@@ -100,21 +86,12 @@
 					label: hint.code ? `${hint.code} · ${hint.name}` : hint.name,
 					registered: false
 				}));
-			default:
-				return assetsOf(model.assets, target).map((asset) => ({
-					id: asset.id,
-					label: asset.name,
-					registered: false
-				}));
 		}
 	}
 
 	/** Kinds this device can take right now, in menu order. */
 	const kinds = $derived(
-		(Object.keys(kindLabels) as Kind[]).filter((candidate) => {
-			if (MEDIA_KINDS.has(candidate) && players.length === 0) return false;
-			return optionsFor(candidate).length > 0;
-		})
+		(Object.keys(kindLabels) as Kind[]).filter((candidate) => optionsFor(candidate).length > 0)
 	);
 	const options = $derived(optionsFor(kind));
 	const selected = $derived(options.find((option) => option.id === assetId) ?? null);
@@ -128,16 +105,11 @@
 		}
 		return [];
 	});
-	const needsPlayer = $derived(MEDIA_KINDS.has(kind));
-	const canApply = $derived(
-		!busy && !!assetId && (!needsPlayer || !!playerId) && model.session?.state !== 'ended'
-	);
+	const canApply = $derived(!busy && !!assetId && model.session?.state !== 'ended');
 
 	function reset(): void {
 		kind = kinds[0] ?? 'website';
 		assetId = '';
-		playerId = players[0]?.id ?? '';
-		loop = false;
 		values = {};
 		query = [];
 	}
@@ -180,20 +152,6 @@
 	function command(): Command | null {
 		const deviceId = device.id;
 		switch (kind) {
-			case 'dialogue':
-				return {
-					type: 'playDialogue',
-					dialogueId: assetId,
-					playerId,
-					waitUntilEnd: false,
-					lineCues: []
-				};
-			case 'bgm':
-				return { type: 'playBgm', bgmId: assetId, playerId, loop, waitUntilEnd: false };
-			case 'sfx':
-				return { type: 'playSfx', sfxId: assetId, playerId, waitUntilEnd: false };
-			case 'video':
-				return { type: 'playVideo', videoId: assetId, playerId, waitUntilEnd: false };
 			case 'website':
 				return {
 					type: 'navigate',
@@ -272,36 +230,20 @@
 					<Field.FieldLabel for="inject-asset-{device.id}"
 						>2. {kindLabels[kind]} 선택</Field.FieldLabel
 					>
-					<div class="flex flex-wrap items-center gap-2">
-						<Select.Root type="single" bind:value={assetId} onValueChange={() => (values = {})}>
-							<Select.Trigger id="inject-asset-{device.id}" size="sm" class="min-w-48 flex-1">
-								{selected?.label ?? `${kindLabels[kind]} 선택`}
-							</Select.Trigger>
-							<Select.Content>
-								<Select.Group>
-									{#each options as option (option.id)}
-										<Select.Item value={option.id} label={option.label}>
-											{option.label}{option.registered ? ' ✓' : ''}
-										</Select.Item>
-									{/each}
-								</Select.Group>
-							</Select.Content>
-						</Select.Root>
-						{#if needsPlayer && players.length > 1}
-							<Select.Root type="single" bind:value={playerId}>
-								<Select.Trigger size="sm" class="min-w-36" aria-label="플레이어">
-									{players.find((player) => player.id === playerId)?.name ?? '플레이어 선택'}
-								</Select.Trigger>
-								<Select.Content>
-									<Select.Group>
-										{#each players as player (player.id)}
-											<Select.Item value={player.id} label={player.name}>{player.name}</Select.Item>
-										{/each}
-									</Select.Group>
-								</Select.Content>
-							</Select.Root>
-						{/if}
-					</div>
+					<Select.Root type="single" bind:value={assetId} onValueChange={() => (values = {})}>
+						<Select.Trigger id="inject-asset-{device.id}" size="sm" class="min-w-48">
+							{selected?.label ?? `${kindLabels[kind]} 선택`}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Group>
+								{#each options as option (option.id)}
+									<Select.Item value={option.id} label={option.label}>
+										{option.label}{option.registered ? ' ✓' : ''}
+									</Select.Item>
+								{/each}
+							</Select.Group>
+						</Select.Content>
+					</Select.Root>
 					{#if kind === 'message' && registeredMessages.length > 0}
 						<Field.FieldDescription
 							>페이지 등록: {registeredMessages.join(', ')}</Field.FieldDescription
@@ -310,20 +252,12 @@
 						<Field.FieldDescription
 							>페이지 등록: {registeredStates.join(', ')}</Field.FieldDescription
 						>
-					{:else if needsPlayer && players.length === 1}
-						<Field.FieldDescription>플레이어: {players[0].name}</Field.FieldDescription>
 					{/if}
 				</Field.Field>
 
-				{#if kind === 'bgm' || fields.length > 0 || kind === 'website' || kind === 'state'}
+				{#if fields.length > 0 || kind === 'website' || kind === 'state'}
 					<Field.Field>
 						<Field.FieldLabel>3. 옵션</Field.FieldLabel>
-						{#if kind === 'bgm'}
-							<Field.Field orientation="horizontal" class="w-auto">
-								<Checkbox id="inject-loop-{device.id}" bind:checked={loop} />
-								<Field.FieldLabel for="inject-loop-{device.id}">반복 재생</Field.FieldLabel>
-							</Field.Field>
-						{/if}
 						{#if fields.length > 0}
 							<Field.FieldGroup class="gap-2">
 								{#each fields as field (field.key)}

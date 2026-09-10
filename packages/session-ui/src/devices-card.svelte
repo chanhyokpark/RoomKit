@@ -8,19 +8,18 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
-	import type { Command, PlayChannel, PlayingMedia } from '@roomkit/shared';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { cn } from '$lib/utils';
 	import { assetName, assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
-	import { channelLabels, formatClock, formatDuration, stripHtml } from './format.js';
+	import { formatClock, formatDuration } from './format.js';
 	import InjectDialog from './inject-dialog.svelte';
 
 	const { model, actions, view } = useSessionUi();
 	const busyKeys = new SvelteSet<string>();
-	/** Active rows (state / website / playing media) whose details are unfolded. */
+	/** Active rows (state / website) whose details are unfolded. */
 	const unfolded = new SvelteSet<string>();
 	let callbackResults = $state<Record<string, 'running' | 'ok' | 'fail'>>({});
 	/** Device whose "+" (asset inject) dialog is open. */
@@ -47,15 +46,6 @@
 	const stateByDevice = $derived(
 		new Map((media?.states ?? []).map((entry) => [entry.deviceId, entry]))
 	);
-	const playingByDevice = $derived.by(() => {
-		const result = new Map<string, PlayingMedia[]>();
-		for (const entry of media?.playing ?? []) {
-			const playing = result.get(entry.deviceId);
-			if (playing) playing.push(entry);
-			else result.set(entry.deviceId, [entry]);
-		}
-		return result;
-	});
 	const ended = $derived(model.session?.state === 'ended');
 
 	// Elapsed times only tick while some detail block is showing them.
@@ -65,50 +55,9 @@
 		return () => clearInterval(timer);
 	});
 
-	const stopTypes: Record<PlayChannel, Command['type']> = {
-		bgm: 'stopBgm',
-		sfx: 'stopSfx',
-		dialogue: 'stopDialogue',
-		video: 'stopVideo'
-	};
-
 	function toggleUnfolded(key: string): void {
 		if (unfolded.has(key)) unfolded.delete(key);
 		else unfolded.add(key);
-	}
-
-	function dialogueOf(entry: PlayingMedia) {
-		const asset = model.assets.find((candidate) => candidate.id === entry.assetId);
-		return asset?.kind === 'dialogue' ? asset : null;
-	}
-
-	/** Known total length: placeholder media (simulated) or a fully placeholder dialogue. */
-	function durationOf(entry: PlayingMedia): number | null {
-		const asset = model.assets.find((candidate) => candidate.id === entry.assetId);
-		if (!asset) return null;
-		switch (asset.kind) {
-			case 'bgm':
-			case 'sfx':
-			case 'video':
-				return asset.data.fileKey === null ? asset.data.durationMs : null;
-			case 'dialogue':
-				return asset.data.lines.every((line) => line.fileKey === null)
-					? asset.data.lines.reduce((sum, line) => sum + line.durationMs, 0)
-					: null;
-			default:
-				return null;
-		}
-	}
-
-	function playtime(entry: PlayingMedia): string {
-		const elapsed = now - entry.startedAt;
-		const total = durationOf(entry);
-		if (entry.loop && total !== null) {
-			return `${formatDuration(elapsed % total)} / ${formatDuration(total)} (${Math.floor(elapsed / total) + 1}회차)`;
-		}
-		return total !== null
-			? `${formatDuration(Math.min(elapsed, total))} / ${formatDuration(total)}`
-			: formatDuration(elapsed);
 	}
 
 	function formatValue(value: unknown): string {
@@ -154,14 +103,6 @@
 			callbackResults[key] = 'fail';
 			toast.error(error instanceof Error ? error.message : '콜백 실행에 실패했습니다.');
 		}
-	}
-
-	function stopMedia(entry: PlayingMedia): Promise<void> {
-		return actions.runCommand({
-			type: stopTypes[entry.channel],
-			playerId: entry.playerId,
-			allPlayers: false
-		} as Command);
 	}
 </script>
 
@@ -215,7 +156,8 @@
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
 			<Card.Description>
-				연결과 현재 재생 항목을 확인하고, + 버튼으로 애셋을 주입합니다.
+				연결과 현재 웹사이트·상태를 확인하고, + 버튼으로 애셋을 주입합니다. 미디어 재생은 플레이어
+				카드에서 합니다.
 			</Card.Description>
 			<Card.Action>
 				<Button
@@ -236,7 +178,6 @@
 				{@const status = model.statusOf(device.id)}
 				{@const currentWebsite = websiteByDevice.get(device.id)}
 				{@const currentState = stateByDevice.get(device.id)}
-				{@const currentMedia = playingByDevice.get(device.id) ?? []}
 				{@const code = codeByDevice.get(device.id)}
 				{@const callbacks = status?.helperTestCallbacks ?? []}
 				<div class="rounded-md border">
@@ -297,7 +238,7 @@
 						</div>
 					{/if}
 
-					{#if currentWebsite || currentState || currentMedia.length > 0}
+					{#if currentWebsite || currentState}
 						<div class="flex flex-col gap-1.5 border-t px-3 py-2">
 							{#if currentState}
 								{@const key = `state:${device.id}`}
@@ -370,82 +311,6 @@
 									</dl>
 								{/if}
 							{/if}
-							{#each currentMedia as entry (entry.commandId)}
-								{@const key = `media:${entry.commandId}`}
-								{@const dialogue = entry.channel === 'dialogue' ? dialogueOf(entry) : null}
-								<div class="flex items-center gap-2 text-xs">
-									<Badge variant="outline">{channelLabels[entry.channel]}</Badge>
-									{@render foldToggle(
-										key,
-										assetName(model.assets, entry.assetId) ?? entry.assetName
-									)}
-									{#if entry.loop}<Badge variant="secondary">반복</Badge>{/if}
-									{#if entry.channel === 'dialogue' && dialogue && entry.lineIndex !== null}
-										<span class="shrink-0 text-muted-foreground">
-											{entry.lineIndex + 1}/{dialogue.data.lines.length}
-										</span>
-									{/if}
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										aria-label="재생 정지"
-										disabled={busyKeys.has(`stop:${entry.commandId}`) || ended}
-										onclick={() => run(`stop:${entry.commandId}`, () => stopMedia(entry))}
-									>
-										<XIcon />
-									</Button>
-								</div>
-								{#if unfolded.has(key)}
-									<dl
-										class="ml-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-muted/50 px-3 py-2 text-xs"
-									>
-										{@render detail('재생 시간', playtime(entry))}
-										{@render detail('시작 시각', formatClock(entry.startedAt))}
-										{@render detail(
-											'플레이어',
-											assetName(model.assets, entry.playerId) ?? '(삭제됨)'
-										)}
-										{#if entry.channel === 'bgm'}
-											{@render detail('반복', entry.loop ? '켜짐' : '꺼짐')}
-										{/if}
-										{#if entry.channel === 'dialogue'}
-											{@render detail(
-												'현재 라인',
-												dialogue
-													? entry.lineIndex === null
-														? `시작 대기 (${dialogue.data.lines.length}줄)`
-														: `${entry.lineIndex + 1} / ${dialogue.data.lines.length}`
-													: entry.lineIndex === null
-														? '시작 대기'
-														: String(entry.lineIndex + 1)
-											)}
-											{#if dialogue && dialogue.data.lines.length > 0}
-												<ol
-													class="col-span-2 flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded border bg-background p-1.5"
-												>
-													{#each dialogue.data.lines as line, index (line.id)}
-														{@const active = index === entry.lineIndex}
-														<li
-															class={cn(
-																'flex items-center gap-2 rounded px-1.5 py-0.5',
-																active ? 'bg-muted font-medium' : 'text-muted-foreground'
-															)}
-														>
-															<span class="w-5 shrink-0 text-right font-mono">{index + 1}</span>
-															<span class="min-w-0 truncate">
-																{stripHtml(line.subtitleHtml) || '(자막 없음)'}
-															</span>
-															{#if active}<Badge variant="outline" class="ml-auto">재생 중</Badge
-																>{/if}
-														</li>
-													{/each}
-												</ol>
-											{/if}
-										{/if}
-										{@render detail('명령 ID', entry.commandId)}
-									</dl>
-								{/if}
-							{/each}
 						</div>
 					{/if}
 
