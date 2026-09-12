@@ -33,6 +33,16 @@
 	let loginPassword = $state('');
 	/** Test tab: paste a session id (from `rk dev --no-open` or Studio) to open its windows. */
 	let openSessionId = $state('');
+	/**
+	 * Set when a device window was opened while the launcher itself is not
+	 * connected — almost always a wrong server URL, which the stage window
+	 * would only show as an endless "connecting" badge.
+	 */
+	let offlineOpenWarning = $state(false);
+
+	function warnIfOffline(): void {
+		offlineOpenWarning = player.status !== 'connected';
+	}
 
 	// Settings persist to disk but the launcher still opens on every start —
 	// the operator explicitly opens device windows from here.
@@ -71,6 +81,10 @@
 		};
 	});
 
+	$effect(() => {
+		if (player.status === 'connected') offlineOpenWarning = false;
+	});
+
 	// A pending link that only waits for a login is served right after one.
 	$effect(() => {
 		if (auth.loggedIn && launch.pending && !launch.pending.serverMismatch) void launch.resume();
@@ -95,6 +109,7 @@
 	);
 
 	function openAll() {
+		warnIfOffline();
 		for (const device of config.devices) {
 			if (device.deviceCode.trim()) void openDeviceWindow(device);
 		}
@@ -142,6 +157,20 @@
 </script>
 
 {#snippet prodTab()}
+	{#if offlineOpenWarning}
+		<Alert.Root variant="destructive">
+			<Alert.Title>서버에 연결되어 있지 않습니다</Alert.Title>
+			<Alert.Description class="flex flex-wrap items-center justify-between gap-2">
+				<span>
+					서버 URL(<code class="font-mono">{config.serverUrl}</code>)이 맞는지 확인하세요. 디바이스
+					창은 연결될 때까지 계속 재시도합니다.
+				</span>
+				<Button size="sm" variant="outline" onclick={() => (offlineOpenWarning = false)}>
+					닫기
+				</Button>
+			</Alert.Description>
+		</Alert.Root>
+	{/if}
 	{#if player.lastTestStart}
 		<Alert.Root>
 			<Alert.Description>
@@ -212,17 +241,17 @@
 							bind:checked={device.kiosk}
 							onCheckedChange={persist}
 						/>
-						<Label
-							for="device-kiosk-{device.id}"
-							class="text-xs font-normal text-muted-foreground"
-						>
+						<Label for="device-kiosk-{device.id}" class="text-xs font-normal text-muted-foreground">
 							키오스크
 						</Label>
 					</div>
 					<Button
 						class="ml-auto sm:ml-0"
 						disabled={!device.deviceCode.trim()}
-						onclick={() => void openDeviceWindow(device)}
+						onclick={() => {
+							warnIfOffline();
+							void openDeviceWindow(device);
+						}}
 					>
 						열기
 					</Button>
@@ -252,7 +281,12 @@
 			</p>
 			<div class="flex flex-col gap-2 sm:flex-row">
 				<Input class="sm:flex-1" placeholder="아이디" bind:value={loginId} />
-				<Input class="sm:flex-1" type="password" placeholder="비밀번호" bind:value={loginPassword} />
+				<Input
+					class="sm:flex-1"
+					type="password"
+					placeholder="비밀번호"
+					bind:value={loginPassword}
+				/>
 				<Button type="submit" disabled={auth.status === 'pending'}>로그인</Button>
 			</div>
 			{#if auth.error}
@@ -282,14 +316,19 @@
 					bind:value={openSessionId}
 					disabled={launch.status === 'opening'}
 				/>
-				<Button type="submit" variant="outline" disabled={!openSessionId.trim() || launch.status === 'opening'}>
+				<Button
+					type="submit"
+					variant="outline"
+					disabled={!openSessionId.trim() || launch.status === 'opening'}
+				>
 					{#if launch.status === 'opening'}<Spinner data-icon="inline-start" />{/if}
 					열기
 				</Button>
 			</div>
 			<p class="text-xs text-muted-foreground">
-				이미 만들어진 테스트 세션의 장치 창과 디버그 창을 엽니다. 앱 링크
-				(<code>roomkit-player://</code>)가 동작하지 않을 때 사용하세요.
+				이미 만들어진 테스트 세션의 장치 창과 디버그 창을 엽니다. 앱 링크 (<code
+					>roomkit-player://</code
+				>)가 동작하지 않을 때 사용하세요.
 			</p>
 			{#if launch.status === 'error' && !launch.pending}
 				<p class="text-xs text-destructive">{launch.error}</p>
@@ -422,8 +461,8 @@
 					{testSetup.starting ? '시작 중…' : '테스트 시작'}
 				</Button>
 				<p class="text-xs text-muted-foreground">
-					선택한 디바이스 창과 디버그 창이 열립니다. 세션 시작은 디버그 창에서 합니다. 모든
-					디바이스 창을 닫으면 세션은 잠시 후 자동 종료됩니다.
+					선택한 디바이스 창과 디버그 창이 열립니다. 세션 시작은 디버그 창에서 합니다. 모든 디바이스
+					창을 닫으면 세션은 잠시 후 자동 종료됩니다.
 				</p>
 			</section>
 		{/if}
@@ -477,8 +516,9 @@
 			<Alert.Description class="flex flex-col gap-2">
 				{#if launch.pending.serverMismatch}
 					<span>
-						링크가 다른 서버를 가리킵니다: <code class="font-mono">{launch.pending.link.server}</code>.
-						서버 URL을 바꾸고 계속할까요?
+						링크가 다른 서버를 가리킵니다: <code class="font-mono"
+							>{launch.pending.link.server}</code
+						>. 서버 URL을 바꾸고 계속할까요?
 					</span>
 					<div class="flex gap-2">
 						<Button size="sm" onclick={() => void launch.accept()}>서버 전환 후 열기</Button>

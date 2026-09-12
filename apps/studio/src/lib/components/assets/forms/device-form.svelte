@@ -38,17 +38,13 @@
 <Field.Field>
 	<Field.FieldLabel for="device-display-name">표시 이름</Field.FieldLabel>
 	<Input id="device-display-name" bind:value={displayName} placeholder="비워 두면 이름을 사용" />
-	<Field.FieldDescription>
-		운영 화면 등에 보여줄 이름입니다. 이름은 내부 식별용으로 유지됩니다.
-	</Field.FieldDescription>
+	<Field.FieldDescription>운영 화면에 보여줄 이름입니다.</Field.FieldDescription>
 </Field.Field>
 
 <Field.Field orientation="horizontal">
 	<Field.FieldContent>
 		<Field.FieldLabel for="device-hint">힌트 장치</Field.FieldLabel>
-		<Field.FieldDescription>
-			힌트 코드 입력 UI를 담당합니다. 힌트 전송도 이 장치로 갑니다.
-		</Field.FieldDescription>
+		<Field.FieldDescription>힌트 코드 입력과 힌트 전송을 담당합니다.</Field.FieldDescription>
 	</Field.FieldContent>
 	<Switch id="device-hint" bind:checked={isHintDevice} />
 </Field.Field>
@@ -73,16 +69,17 @@
 			{/each}
 		</Select.Content>
 	</Select.Root>
-	<Field.FieldDescription>
-		세션이 시작되면 이 장치가 자동으로 이동하는 웹사이트 애셋입니다. 세션 진행 중 접속한
-		장치도 표시 중인 웹사이트가 없으면 이 페이지로 이동합니다.
-	</Field.FieldDescription>
+	<Field.FieldDescription>세션 시작 시 자동으로 이동하는 웹사이트입니다.</Field.FieldDescription>
 	{#if startWebsiteId !== null}
 		<div class="flex flex-col gap-1.5">
 			{#each startQuery as pair, i (i)}
 				<div class="flex items-center gap-1.5">
 					<Input class="flex-1 font-mono" placeholder="key" bind:value={pair.key} />
-					<Input class="flex-1 font-mono" placeholder="value ({'{{vars.x}}'} 지원)" bind:value={pair.value} />
+					<Input
+						class="flex-1 font-mono"
+						placeholder="value ({'{{vars.x}}'} 지원)"
+						bind:value={pair.value}
+					/>
 					<Button
 						variant="ghost"
 						size="icon"
@@ -114,7 +111,5 @@
 		bind:value={hintCodeCss}
 		placeholder={'.rk-hint-code { font-size: 4rem; }'}
 	/>
-	<Field.FieldDescription>
-		힌트 코드 표시 명령으로 이 장치 화면(기본: 우상단)에 표시되는 코드의 스타일입니다.
-	</Field.FieldDescription>
+	<Field.FieldDescription>화면에 표시되는 힌트 코드의 스타일입니다.</Field.FieldDescription>
 </Field.Field>

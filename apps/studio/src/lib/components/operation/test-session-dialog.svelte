@@ -144,7 +144,7 @@
 			if (via === 'link') {
 				// Hand off to the Player app on this computer. The browser keeps
 				// this page; the OS routes the scheme to Player.
-				window.location.href = playerTestLink(PUBLIC_API_URL, session.id);
+				window.location.href = playerTestLink(PUBLIC_API_URL, session.id, { source: 'studio' });
 			}
 		} catch (err) {
 			toastApiError(err, '테스트 세션 생성에 실패했습니다.');

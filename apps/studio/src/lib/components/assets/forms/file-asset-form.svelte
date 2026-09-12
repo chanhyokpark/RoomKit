@@ -62,7 +62,5 @@
 			<Input id="asset-fade-out" type="number" min="0" step="500" bind:value={fadeOutMs} />
 		</Field.Field>
 	</div>
-	<Field.FieldDescription>
-		재생 시작 시 페이드 인, 정지·교체 시 페이드 아웃으로 적용됩니다. 0 = 페이드 없음.
-	</Field.FieldDescription>
+	<Field.FieldDescription>0 = 페이드 없음</Field.FieldDescription>
 {/if}

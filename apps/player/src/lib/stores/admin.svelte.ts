@@ -3,6 +3,7 @@ import { toast } from 'svelte-sonner';
 import {
 	ADMIN_NAMESPACE,
 	AdminEvents,
+	DeviceLogBatchSchema,
 	DeviceScreenshotSchema,
 	DeviceStatusSchema,
 	SessionLogEntrySchema,
@@ -10,6 +11,7 @@ import {
 	SessionNotificationSchema,
 	SessionRunsSchema,
 	SessionStateSchema,
+	type DeviceLogLine,
 	type DeviceScreenshot,
 	type DeviceStatus,
 	type RunningEvent,
@@ -38,6 +40,8 @@ class AdminStore {
 	deviceStatus = $state<Record<string, DeviceStatus>>({});
 	/** deviceId → latest stage capture. */
 	deviceScreenshot = $state<Record<string, DeviceScreenshot>>({});
+	/** deviceId → player log lines received live (capped). */
+	deviceLogs = $state<Record<string, DeviceLogLine[]>>({});
 	/** Newest first, capped. */
 	logs = $state<SessionLogEntry[]>([]);
 	notifications = $state<SessionNotification[]>([]);
@@ -101,6 +105,15 @@ class AdminStore {
 			const parsed = DeviceScreenshotSchema.safeParse(payload);
 			if (!parsed.success || parsed.data.sessionId !== this.#sessionId) return;
 			this.deviceScreenshot = { ...this.deviceScreenshot, [parsed.data.deviceId]: parsed.data };
+		});
+		socket.on(AdminEvents.deviceLogs, (payload: unknown) => {
+			const parsed = DeviceLogBatchSchema.safeParse(payload);
+			if (!parsed.success || parsed.data.sessionId !== this.#sessionId) return;
+			const { deviceId, lines } = parsed.data;
+			this.deviceLogs = {
+				...this.deviceLogs,
+				[deviceId]: [...(this.deviceLogs[deviceId] ?? []), ...lines].slice(-1000)
+			};
 		});
 		socket.on(AdminEvents.log, (payload: unknown) => {
 			const parsed = SessionLogEntrySchema.safeParse(payload);

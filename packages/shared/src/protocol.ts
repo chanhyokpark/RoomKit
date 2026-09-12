@@ -63,6 +63,13 @@ export const DeviceEvents = {
    * and relays it to /admin as `device:screenshot`.
    */
   screenshot: 'device:screenshot',
+  /**
+   * C→S: a batch of the player window's own log lines (`DeviceLogReport`):
+   * console output, socket trace, uncaught errors. Sent periodically and
+   * right after session end / reconnection. The server keeps a bounded
+   * per-device buffer and relays each batch to /admin as `device:logs`.
+   */
+  logs: 'device:logs',
   /** S→C: voice call control for this device (`DeviceCallState`). */
   callState: 'call:state',
   /** C→S: the site asked for a call; socket.io ack = `CallRequestAck`. */
@@ -80,6 +87,8 @@ export const AdminEvents = {
   deviceStatus: 'device:status',
   /** Latest stage capture of a device (`DeviceScreenshot`), replaces the previous one. */
   deviceScreenshot: 'device:screenshot',
+  /** A batch of player log lines from one device (`DeviceLogBatch`), appended. */
+  deviceLogs: 'device:logs',
   /** Live snapshot of a session's running event sequences. */
   sessionRuns: 'session:runs',
   /** Live snapshot of a session's playing media / device websites. */
@@ -469,3 +478,39 @@ export const DeviceScreenshotSchema = DeviceScreenshotReportSchema.extend({
   capturedAt: z.number().int().nonnegative(),
 });
 export type DeviceScreenshot = z.infer<typeof DeviceScreenshotSchema>;
+
+/** Lines per `device:logs` report; players batch and drop beyond this. */
+export const DEVICE_LOG_REPORT_MAX_LINES = 200;
+/** Server-side ring buffer per device (survives the device going offline). */
+export const DEVICE_LOG_BUFFER_LINES = 1000;
+
+export const DeviceLogLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
+export type DeviceLogLevel = z.infer<typeof DeviceLogLevelSchema>;
+
+/** One player log line as reported by the device (device clock). */
+export const DeviceLogLineInputSchema = z.object({
+  at: z.number().int().nonnegative(),
+  level: DeviceLogLevelSchema,
+  message: z.string().max(4000),
+});
+export type DeviceLogLineInput = z.infer<typeof DeviceLogLineInputSchema>;
+
+/** /device `device:logs` payload. */
+export const DeviceLogReportSchema = z.object({
+  lines: z.array(DeviceLogLineInputSchema).min(1).max(DEVICE_LOG_REPORT_MAX_LINES),
+});
+export type DeviceLogReport = z.infer<typeof DeviceLogReportSchema>;
+
+/** A stored line: `seq` is per session+device, monotonic, for merging live and backfill. */
+export const DeviceLogLineSchema = DeviceLogLineInputSchema.extend({
+  seq: z.number().int().nonnegative(),
+});
+export type DeviceLogLine = z.infer<typeof DeviceLogLineSchema>;
+
+/** /admin `device:logs` payload and the `GET /sessions/:id/devices/:deviceId/logs` body. */
+export const DeviceLogBatchSchema = z.object({
+  sessionId: z.uuid(),
+  deviceId: z.uuid(),
+  lines: z.array(DeviceLogLineSchema),
+});
+export type DeviceLogBatch = z.infer<typeof DeviceLogBatchSchema>;

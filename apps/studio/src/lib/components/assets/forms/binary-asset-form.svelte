@@ -39,14 +39,9 @@
 	{/if}
 	{#if publicUrl && linkActive}
 		<PublicMediaLink url={publicUrl} />
-		<Field.FieldDescription>
-			스튜디오에서 직접 사용하지 않는 애셋입니다. 웹사이트에서 위 URL로 참조할 수 있습니다.
-		</Field.FieldDescription>
+		<Field.FieldDescription>웹사이트에서 위 URL로 참조합니다.</Field.FieldDescription>
 	{:else}
-		<Field.FieldDescription>
-			스튜디오에서 직접 사용하지 않는 애셋입니다. 저장하면 웹사이트에서 참조할 수 있는 공개 URL이
-			생성됩니다.
-		</Field.FieldDescription>
+		<Field.FieldDescription>저장하면 웹사이트용 공개 URL이 생성됩니다.</Field.FieldDescription>
 	{/if}
 </Field.Field>
 
@@ -59,9 +54,8 @@
 			placeholder="16:9"
 			class="w-32 font-mono"
 		/>
-		<Field.FieldDescription>
-			파일이 없는 동안 공개 URL이 이 비율의 플레이스홀더 이미지를 제공합니다.
-		</Field.FieldDescription>
+		<Field.FieldDescription>파일이 없을 때 제공되는 플레이스홀더 비율입니다.</Field.FieldDescription
+		>
 		{#if ratioParts}
 			<div
 				class="flex w-full max-w-xs items-center justify-center rounded-md bg-muted text-sm text-muted-foreground"

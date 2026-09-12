@@ -3,6 +3,7 @@ import type {
 	Asset,
 	CallInfo,
 	Command,
+	DeviceLogLine,
 	DeviceScreenshot,
 	DeviceStatus,
 	PushHintInput,
@@ -45,6 +46,8 @@ export interface SessionUiModel {
 	statusOf(deviceId: string): DeviceStatus | null;
 	/** Latest stage capture reported by the device's player window, if any. */
 	screenshotOf(deviceId: string): DeviceScreenshot | null;
+	/** Player log lines of the device received live over /admin, oldest first. */
+	deviceLogsOf(deviceId: string): DeviceLogLine[];
 	/** The session's voice call (one at a time); absent = host without call support. */
 	readonly call?: CallInfo | null;
 	/** True when this host's admin socket owns the active call (may end it). */
@@ -68,6 +71,8 @@ export interface SessionUiActions {
 	runCommand(command: Command): Promise<void>;
 	pushHint(input: PushHintInput): Promise<void>;
 	runTestCallback(deviceId: string, name: string): Promise<{ ok: boolean }>;
+	/** Everything the server buffered of the device's player log (REST backfill). */
+	getDeviceLogs(deviceId: string): Promise<DeviceLogLine[]>;
 	getSummary(): Promise<SessionSummary>;
 	/** Voice calls — absent on hosts without call support (player debug window). */
 	startCall?(deviceId: string): Promise<void>;

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "RoomKit Player",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "identifier": "app.roomkit.player",
   "build": {
     "frontendDist": "../dist",
@@ -24,9 +24,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "$APPDATA/cache/**"
-        ]
+        "scope": ["$APPDATA/cache/**"]
       }
     }
   },
@@ -47,21 +45,15 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "roomkit-player"
-        ]
+        "schemes": ["roomkit-player"]
       },
       "mobile": [
         {
-          "scheme": [
-            "roomkit-player"
-          ],
+          "scheme": ["roomkit-player"],
           "host": "test"
         },
         {
-          "scheme": [
-            "roomkit-player"
-          ],
+          "scheme": ["roomkit-player"],
           "host": "launch"
         }
       ]

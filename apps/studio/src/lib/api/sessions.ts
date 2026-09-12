@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import {
+	DeviceLogBatchSchema,
 	SessionResponseSchema,
 	SessionSchema,
 	SessionSummarySchema,
+	type DeviceLogLine,
 	type AdjustTimerInput,
 	type Command,
 	type CreateSessionInput,
@@ -115,6 +117,12 @@ export function runSessionCommand(id: string, command: Command): Promise<void> {
 }
 
 /** Run a Helper callback registered by a website in a test device. */
+export function getDeviceLogs(id: string, deviceId: string): Promise<DeviceLogLine[]> {
+	return api<unknown>(`/sessions/${id}/devices/${deviceId}/logs`).then(
+		(body) => DeviceLogBatchSchema.parse(body).lines
+	);
+}
+
 export function runTestCallback(
 	id: string,
 	deviceId: string,

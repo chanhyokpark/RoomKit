@@ -215,8 +215,7 @@
 				<div class="flex items-center gap-2">
 					<TriangleAlertIcon class="size-3.5 shrink-0 text-amber-500" />
 					<span class="text-xs text-muted-foreground">
-						원래 위치한 라인이 없어져 실행되지 않는 커맨드입니다. 다른 라인 사이로 다시 추가하거나
-						삭제하세요.
+						라인이 없어져 실행되지 않습니다. 다시 배치하거나 삭제하세요.
 					</span>
 					<Button
 						variant="ghost"

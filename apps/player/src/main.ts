@@ -1,5 +1,6 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
+import { installGlobalLogging } from './lib/log';
 import { config } from './lib/stores/config.svelte';
 import { connection } from './lib/stores/connection.svelte';
 import './app.css';
@@ -13,5 +14,8 @@ window.addEventListener('contextmenu', (e) => {
 
 const target = document.getElementById('app')!;
 
-// Config first: both the launcher (edit) and stage windows (lookup) need it.
-void config.load().then(() => mount(App, { target }));
+// Log forwarding first so config/boot problems land in the log; then config,
+// which both the launcher (edit) and stage windows (lookup) need.
+void installGlobalLogging()
+	.then(() => config.load())
+	.then(() => mount(App, { target }));

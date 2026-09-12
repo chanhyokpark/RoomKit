@@ -9,6 +9,7 @@
 		abortRun,
 		adjustTimer,
 		endSession,
+		getDeviceLogs,
 		getSession,
 		getSessionSummary,
 		pauseSession,
@@ -94,6 +95,9 @@
 		screenshotOf(deviceId) {
 			return data.screenshotFor(session.id, deviceId);
 		},
+		deviceLogsOf(deviceId) {
+			return data.deviceLogsFor(session.id, deviceId);
+		},
 		get call() {
 			return data.callFor(session.id);
 		},
@@ -126,6 +130,7 @@
 		runCommand: (command) => runSessionCommand(session.id, command),
 		pushHint: (input) => pushHint(session.id, input),
 		runTestCallback: (deviceId, name) => runTestCallback(session.id, deviceId, name),
+		getDeviceLogs: (deviceId) => getDeviceLogs(session.id, deviceId),
 		getSummary: () => getSessionSummary(session.id),
 		startCall: (deviceId) => data.startCall(session.id, deviceId),
 		acceptCall: (callId) => data.acceptCall(session.id, callId),

@@ -54,11 +54,6 @@
 		<Card.Title class="flex items-center gap-2">
 			<LightbulbIcon />{view.simple ? '힌트' : '힌트 테스트'}
 		</Card.Title>
-		{#if view.simple}
-			<Card.Description>힌트 단계를 힌트 장치로 직접 전송합니다.</Card.Description>
-		{:else}
-			<Card.Description>힌트 단계와 코드 오버레이를 직접 확인합니다.</Card.Description>
-		{/if}
 	</Card.Header>
 	<Card.Content>
 		<Field.FieldGroup>

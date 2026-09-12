@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { cache } from '../cache/manager.svelte';
+	import { startDeviceLogUploader, stopDeviceLogUploader } from '../device-logs';
 	import { PlaybackEngine } from '../playback/engine';
 	import { startKiosk } from '../kiosk';
 	import { keepScreenAwake } from '../wake-lock';
 	import { startScreenshotReporter } from '../screenshot';
+	import { vlog } from '../log';
+	import { isTauri } from '../tauri';
 	import { config } from '../stores/config.svelte';
 	import { call } from '../stores/call.svelte';
 	import { connection } from '../stores/connection.svelte';
@@ -39,6 +42,28 @@
 	let engine = $state<PlaybackEngine | null>(null);
 	let stopScreenshots: (() => void) | null = null;
 	let releaseWakeLock: (() => void) | null = null;
+	let unlistenClose: (() => void) | null = null;
+	let tornDown = false;
+
+	/**
+	 * Disconnect the device socket and stop playback. Idempotent: runs from
+	 * the window's close request, `pagehide`, and component destroy. Closing
+	 * a Tauri window does not reliably tear its webview down at once (macOS
+	 * keeps it around), so without this the device stayed "online" until the
+	 * whole player quit.
+	 */
+	function teardown(): void {
+		if (tornDown) return;
+		tornDown = true;
+		vlog('stage', 'teardown');
+		releaseWakeLock?.();
+		stopScreenshots?.();
+		call.detach();
+		engine?.resetAll();
+		// Last upload rides the still-open socket; then disconnect.
+		stopDeviceLogUploader();
+		connection.stop();
+	}
 
 	/** Video surface placement; null frame = fullscreen. */
 	const videoFrameStyle = $derived(
@@ -57,6 +82,8 @@
 	onMount(() => {
 		if (!device) return;
 		const client = connection.start(config.serverUrl, device.deviceCode, device.label);
+		// Operators read this window's log in the session dashboard.
+		startDeviceLogUploader(client);
 		engine = new PlaybackEngine(client);
 		// Operator voice calls: overlay + mic + mute live for this window.
 		call.attach(client, engine);
@@ -70,15 +97,26 @@
 		stopScreenshots = startScreenshotReporter(client, () => connection.status === 'connected');
 		// The screen stays on for as long as this stage window exists, connected or not.
 		releaseWakeLock = keepScreenAwake();
+		window.addEventListener('pagehide', teardown);
+		if (isTauri()) {
+			void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
+				const current = getCurrentWindow();
+				unlistenClose = await current.onCloseRequested(async (event) => {
+					// Take over the close: disconnect first, then destroy the
+					// window outright so the webview goes with it.
+					event.preventDefault();
+					teardown();
+					await current.destroy().catch(() => current.close());
+				});
+			});
+		}
 		if (device.kiosk) return startKiosk();
 	});
 
 	onDestroy(() => {
-		releaseWakeLock?.();
-		stopScreenshots?.();
-		call.detach();
-		engine?.resetAll();
-		connection.stop();
+		window.removeEventListener('pagehide', teardown);
+		unlistenClose?.();
+		teardown();
 	});
 </script>
 

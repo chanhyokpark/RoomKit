@@ -65,9 +65,6 @@
 			<ScrollTextIcon />로그와 명령 콘솔
 			<Badge variant="secondary">{model.logs.length}</Badge>
 		</Card.Title>
-		<Card.Description
-			>서버 로그를 필터링하고 동일한 세션에 일회성 명령을 실행합니다.</Card.Description
-		>
 		<Card.Action>
 			<Select.Root type="single" bind:value={kindFilter}>
 				<Select.Trigger size="sm">{kindFilter || '전체'}</Select.Trigger>

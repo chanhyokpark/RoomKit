@@ -251,9 +251,6 @@
 	<Card.Root>
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2"><SpeakerIcon />플레이어</Card.Title>
-			<Card.Description>
-				재생 중인 대사·BGM·효과음·비디오를 확인하고, + 버튼으로 미디어를 재생합니다.
-			</Card.Description>
 		</Card.Header>
 		<Card.Content class="flex flex-col gap-2.5">
 			{#if players.length === 0 && orphaned.length === 0}

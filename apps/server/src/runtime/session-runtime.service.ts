@@ -28,6 +28,7 @@ import type {
 import { PrismaService } from '../prisma/prisma.service';
 import { LogsService } from '../logs/logs.service';
 import { CommandResolver } from './command-resolver';
+import { DeviceLogsService } from './device-logs.service';
 import { HintService } from './hint.service';
 import { EngineStateError, SessionEngine } from './session-engine';
 import { NOOP_TRANSPORT, type RuntimeTransport } from './runtime-transport';
@@ -62,6 +63,7 @@ export class SessionRuntimeService
     private readonly logs: LogsService,
     private readonly resolver: CommandResolver,
     private readonly hints: HintService,
+    private readonly deviceLogs: DeviceLogsService,
   ) {}
 
   /** Called by the gateway module once its namespaces are up. */
@@ -315,6 +317,7 @@ export class SessionRuntimeService
       onEnded: async (sessionId) => {
         this.engines.delete(sessionId);
         this.clearAutoEnd(sessionId);
+        this.deviceLogs.clearSession(sessionId);
         try {
           await this.prisma.sessionDeviceCode.deleteMany({
             where: { sessionId },

@@ -71,9 +71,7 @@
 	<Field.Field>
 		<Field.FieldLabel for="website-url">URL</Field.FieldLabel>
 		<Input id="website-url" type="url" bind:value={url} placeholder="https://example.com" />
-		<Field.FieldDescription>
-			플레이어 iframe에서 열리는 사이트는 helper 스크립트가 삽입되어 있어야 합니다.
-		</Field.FieldDescription>
+		<Field.FieldDescription>helper 스크립트가 삽입된 사이트여야 합니다.</Field.FieldDescription>
 	</Field.Field>
 {:else}
 	<Field.Field>
@@ -119,8 +117,7 @@
 			</Field.FieldDescription>
 		{/if}
 		<Field.FieldDescription>
-			루트에 index.html이 있어야 합니다. iframe에서 열리는 사이트는 helper 스크립트가 삽입되어
-			있어야 합니다.
+			루트에 index.html이 있고 helper 스크립트가 삽입되어야 합니다.
 		</Field.FieldDescription>
 		{#if siteUrl && sitePrefix}
 			<!-- eslint-disable svelte/no-navigation-without-resolve -- served site URL, not app navigation -->

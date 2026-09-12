@@ -57,13 +57,46 @@ pub fn run() {
           eprintln!("[deep-link] register failed: {e}");
         }
       }
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
+      // Every window's JS forwards its console/app logs here (see
+      // src/lib/log.ts): stdout in dev, and a rotating file in the app log
+      // dir for post-mortems. Operators read the same lines in the session
+      // dashboard — stage windows upload them over the device socket.
+      app.handle().plugin(
+        tauri_plugin_log::Builder::default()
+          .clear_targets()
+          .targets([
+            #[cfg(desktop)]
+            tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+            tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+              file_name: Some("player".into()),
+            }),
+          ])
+          .level(if cfg!(debug_assertions) {
+            log::LevelFilter::Debug
+          } else {
+            log::LevelFilter::Info
+          })
+          .max_file_size(4_000_000)
+          .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+          .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+          // JS lines already carry their window label; keep the Rust
+          // target only for records that come from native code.
+          .format(|out, message, record| {
+            const TIME_FORMAT: &[time::format_description::BorrowedFormatItem<'_>] =
+              time::macros::format_description!("[hour]:[minute]:[second].[subsecond digits:3]");
+            let target = record.target();
+            let time = tauri_plugin_log::TimezoneStrategy::UseLocal
+              .get_now()
+              .format(TIME_FORMAT)
+              .unwrap_or_default();
+            if target.starts_with("webview") {
+              out.finish(format_args!("{time} [{}] {message}", record.level()))
+            } else {
+              out.finish(format_args!("{time} [{}][{target}] {message}", record.level()))
+            }
+          })
+          .build(),
+      )?;
       // Best-effort: without the media server the player still works, it just
       // streams delegated video from presigned URLs instead of the cache.
       let port = cache::cache_base(app.handle())

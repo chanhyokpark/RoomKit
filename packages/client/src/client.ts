@@ -15,6 +15,7 @@ import {
   SessionStateSchema,
   type DeviceAssetManifest,
   type DeviceCallState,
+  type DeviceLogReport,
   type DeviceScreenshotReport,
   type HintError,
   type HintShow,
@@ -494,6 +495,18 @@ export class RoomKitClient {
   reportScreenshot(report: DeviceScreenshotReport): void {
     if (!this.socket?.connected) return;
     this.socket.emit(DeviceEvents.screenshot, report);
+  }
+
+  /**
+   * Player-internal: upload a batch of this window's own log lines
+   * (`DeviceLogReport`). The server buffers them per device and relays them
+   * to the operator dashboards. Returns false (nothing sent) while offline,
+   * so the caller keeps the batch for the next attempt.
+   */
+  reportLogs(report: DeviceLogReport): boolean {
+    if (!this.socket?.connected) return false;
+    this.socket.emit(DeviceEvents.logs, report);
+    return true;
   }
 
   /**

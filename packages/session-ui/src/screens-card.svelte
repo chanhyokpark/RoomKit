@@ -53,9 +53,6 @@
 	<Card.Root class="md:col-span-full">
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2"><MonitorIcon />화면</Card.Title>
-			<Card.Description
-				>플레이어 장치 창의 실시간 캡처입니다. 클릭하면 크게 봅니다.</Card.Description
-			>
 		</Card.Header>
 		<Card.Content class="flex flex-wrap gap-3">
 			{#each screens as { device, screenshot } (device.id)}

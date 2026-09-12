@@ -24,7 +24,7 @@ There is no `/api/players` REST family. Connected launcher discovery is streamed
 
 Socket.io `/device` authenticates with device code, optional name, and client version. A code may match a production asset/lobby or a live test mapping.
 
-Server-to-client events include `welcome`, session state, command, dialogue progress, hint show/error, hint-code state, and `call:state` (voice call control, see below). Client-to-server events include acknowledgment, trigger, progress, hint submit/step, Helper version, session resync, asset-manifest request, and the call events `call:request` (ack), `call:cancel`, `call:status`.
+Server-to-client events include `welcome`, session state, command, dialogue progress, hint show/error, hint-code state, and `call:state` (voice call control, see below). Client-to-server events include acknowledgment, trigger, progress, hint submit/step, Helper version, session resync, asset-manifest request, `device:logs` (a batch of the player window's own log lines, buffered per device and relayed to `/admin`), and the call events `call:request` (ack), `call:cancel`, `call:status`.
 
 Command delivery is at-least-once. Client acknowledgment payload includes command ID and done/failed status. Client libraries remember seen and completed IDs to prevent duplicate side effects and repeat the prior acknowledgment.
 

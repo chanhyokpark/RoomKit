@@ -44,7 +44,7 @@
 	{#if entry.type === 'resetDevice'}
 		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
 	{:else if entry.type === 'resetAllDevices'}
-		<p class="text-xs text-muted-foreground">테마의 모든 장치에 리셋 명령을 보냅니다.</p>
+		<p class="text-xs text-muted-foreground">모든 장치를 리셋합니다.</p>
 	{:else if entry.type === 'playDialogue'}
 		<AssetSelect kind="dialogue" label="대사" bind:id={entry.dialogueId} {onchanged} />
 		<AssetSelect kind="player" label="플레이어" bind:id={entry.playerId} {onchanged} />
@@ -113,7 +113,7 @@
 				끝날 때까지 대기
 			</label>
 		{/if}
-		<p class="w-full text-xs text-muted-foreground">페이드 인/아웃은 BGM 애셋 설정을 따릅니다.</p>
+		<p class="w-full text-xs text-muted-foreground">페이드는 BGM 애셋 설정을 따릅니다.</p>
 	{:else if entry.type === 'adjustBgmVolume'}
 		<AssetSelect kind="player" label="플레이어" bind:id={entry.playerId} {onchanged} />
 		<Field.Field class="w-32 gap-1">
@@ -251,8 +251,7 @@
 			</div>
 			{#if entry.query.length > 0}
 				<p class="text-xs text-muted-foreground">
-					URL에 쿼리 파라미터로 추가됩니다. 값에는 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환을 쓸
-					수 있습니다.
+					값에 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환 가능
 				</p>
 			{/if}
 		</div>
@@ -272,9 +271,7 @@
 		<div class="w-full">
 			<MessageValuesFields assetId={entry.messageId} values={entry.values} {onchanged} />
 			<p class="mt-1 text-xs text-muted-foreground">
-				값에는 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환을 쓸 수 있습니다. 값 전체가 하나의 치환이면
-				변수의 타입(숫자·불리언 등)이 그대로 전달됩니다. 메시지는 일시적인 효과·전환용입니다. 화면이
-				계속 유지해야 하는 표시는 "상태 설정"을 사용하세요.
+				일시적인 효과용. 값에 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환 가능
 			</p>
 		</div>
 	{:else if entry.type === 'setState'}
@@ -283,9 +280,7 @@
 		<div class="w-full">
 			<MessageValuesFields kind="state" assetId={entry.stateId} values={entry.values} {onchanged} />
 			<p class="mt-1 text-xs text-muted-foreground">
-				장치의 현재 상태를 바꿉니다(이전 상태를 대체). 서버가 세션 동안 기억하고 장치가 다시 접속하면
-				그대로 다시 보내므로, 같은 상태는 언제나 같은 화면이 됩니다. 값에는 {'{{vars.이름}}'} ·
-				{'{{payload.이름}}'} 치환을 쓸 수 있습니다.
+				재접속해도 유지되는 표시용. 값에 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환 가능
 			</p>
 		</div>
 	{:else if entry.type === 'clearState'}
@@ -306,9 +301,7 @@
 			/>
 			모든 장치
 		</label>
-		<p class="w-full text-xs text-muted-foreground">
-			상태를 지웁니다. 웹사이트는 'default' 상태를 받습니다.
-		</p>
+		<p class="w-full text-xs text-muted-foreground">웹사이트는 'default' 상태를 받습니다.</p>
 	{:else if entry.type === 'sendWebsiteRequest'}
 		<AssetSelect kind="website" label="웹사이트" bind:id={entry.websiteId} {onchanged} />
 		<div class="flex min-w-28 flex-col gap-1">
@@ -429,7 +422,7 @@
 				</Button>
 			</div>
 			<p class="text-xs text-muted-foreground">
-				경로, 본문, 헤더에는 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환을 쓸 수 있습니다.
+				경로·본문·헤더에 {'{{vars.이름}}'} · {'{{payload.이름}}'} 치환 가능
 			</p>
 		</div>
 	{:else if entry.type === 'switchPhase'}
@@ -521,9 +514,7 @@
 				</Select.Content>
 			</Select.Root>
 		</div>
-		<p class="w-full text-xs text-muted-foreground">
-			모든 장치를 리셋하고 판정을 운영 화면에 표시한 뒤 세션을 종료합니다.
-		</p>
+		<p class="w-full text-xs text-muted-foreground">모든 장치를 리셋하고 세션을 종료합니다.</p>
 	{:else if entry.type === 'notify'}
 		<div class="flex w-full flex-col gap-1">
 			<Input
@@ -551,18 +542,15 @@
 				}}
 			/>
 			<p class="text-xs text-muted-foreground">
-				ctx.vars(세션 변수) · ctx.payload(트리거 페이로드, 없으면 null) · ctx.phase(현재 페이즈) ·
-				ctx.trigger(이름) · ctx.log(메시지) · ctx.switchPhase(페이즈 이름) · ctx.notify(메시지) ·
-				ctx.adjustTimer(ms | 'pause' | 'resume') · ctx.endTheme('success' | 'fail') 사용 가능.
-				false를 반환하면 시퀀스가 중단되며, switchPhase 등의 동작은 스크립트 종료 후 호출 순서대로
-				실행됩니다.
+				ctx.vars · ctx.payload · ctx.phase · ctx.trigger · ctx.log() · ctx.switchPhase() ·
+				ctx.notify() · ctx.adjustTimer() · ctx.endTheme(). false 반환 시 시퀀스 중단
 			</p>
 		</div>
 	{:else if entry.type === 'showHintCode'}
 		<AssetSelect kind="hint" label="힌트" bind:id={entry.hintId} {onchanged} />
 		<AssetSelect kind="device" label="장치" bind:id={entry.deviceId} {onchanged} />
 		<p class="w-full text-xs text-muted-foreground">
-			장치 화면 우상단에 힌트 입력 코드를 표시합니다. 스타일은 장치 애셋의 힌트 코드 CSS를 따릅니다.
+			스타일은 장치 애셋의 힌트 코드 CSS를 따릅니다.
 		</p>
 	{:else if entry.type === 'hideHintCode'}
 		<AssetSelect

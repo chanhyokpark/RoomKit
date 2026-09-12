@@ -129,10 +129,6 @@
 				이벤트
 				{#if runs.length > 0}<Badge variant="secondary">{runs.length}개 실행 중</Badge>{/if}
 			</Card.Title>
-			<Card.Description>
-				이벤트를 실행하고 시퀀스 진행 상황을 확인합니다. 실행 중인 단계는 건너뛰거나 중단할 수
-				있습니다.
-			</Card.Description>
 		</Card.Header>
 		<Card.Content class="flex flex-col gap-4">
 			{#if runs.length > 0}

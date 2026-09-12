@@ -136,10 +136,9 @@
 <Field.Field orientation="horizontal">
 	<Field.FieldContent>
 		<Field.FieldLabel for="event-once">1회만 실행</Field.FieldLabel>
-		<Field.FieldDescription>
-			세션에서 한 번 실행되면 다시 실행되지 않습니다. 페이즈를 다시 시작하면 해당 페이즈 이벤트의
-			실행 기록이 초기화됩니다.
-		</Field.FieldDescription>
+		<Field.FieldDescription
+			>세션당 한 번만 실행됩니다 (페이즈 재시작 시 초기화).</Field.FieldDescription
+		>
 	</Field.FieldContent>
 	<Switch id="event-once" bind:checked={once} />
 </Field.Field>

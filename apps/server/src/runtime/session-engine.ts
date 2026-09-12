@@ -34,6 +34,12 @@ import {
   type Resolution,
 } from './command-resolver';
 import { CountdownTimer } from './countdown-timer';
+import {
+  describeCommand,
+  describeWire,
+  wireParams,
+  type NameLookup,
+} from './describe';
 import { runEval } from './eval-sandbox';
 import { HintService, type ResolvedHint } from './hint.service';
 import type { RuntimeTransport } from './runtime-transport';
@@ -42,6 +48,38 @@ import { performWebsiteRequest } from './website-request';
 export const ACK_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 export const TEST_CALLBACK_TIMEOUT_MS = 15 * 1000;
 export const CALL_EVENT_DEPTH_LIMIT = 8;
+
+/** Authoring command types — `sendWire` labels that need no source suffix. */
+const COMMAND_TYPE_LABELS: Partial<
+  Record<Command['type'] | 'testCallback', true>
+> = {
+  testCallback: true,
+  playDialogue: true,
+  stopDialogue: true,
+  playSfx: true,
+  stopSfx: true,
+  playVideo: true,
+  stopVideo: true,
+  playBgm: true,
+  stopBgm: true,
+  adjustBgmVolume: true,
+  resetDevice: true,
+  resetAllDevices: true,
+  navigate: true,
+  sendMessage: true,
+  setState: true,
+  clearState: true,
+  sendWebsiteRequest: true,
+  wait: true,
+  switchPhase: true,
+  callEvent: true,
+  endTheme: true,
+  adjustTimer: true,
+  eval: true,
+  notify: true,
+  showHintCode: true,
+  hideHintCode: true,
+};
 
 /** Thrown into runs when the session ends. */
 class RunAbortedError extends Error {
@@ -176,6 +214,14 @@ export class SessionEngine {
   private persistChain: Promise<void> = Promise.resolve();
   private logChain: Promise<void> = Promise.resolve();
 
+  /**
+   * id → asset name for log lines (devices, players, websites, …). Loaded
+   * once per engine and refreshed (throttled) whenever a lookup misses, so
+   * assets added mid-session are named on the next line.
+   */
+  private readonly assetNames = new Map<string, string>();
+  private assetNamesRefreshedAt = 0;
+
   constructor(
     row: Session,
     timeLimitMs: number | null,
@@ -199,7 +245,34 @@ export class SessionEngine {
         ? (row.urlOverrides as Record<string, string>)
         : {};
     this.emitter.setMaxListeners(0);
+    void this.refreshAssetNames();
   }
+
+  // ── asset names (for logs) ───────────────────────────────────────────────
+
+  private async refreshAssetNames(): Promise<void> {
+    const now = Date.now();
+    if (now - this.assetNamesRefreshedAt < 5000) return;
+    this.assetNamesRefreshedAt = now;
+    try {
+      const rows = await this.deps.prisma.asset.findMany({
+        where: { themeId: this.themeId },
+        select: { id: true, name: true },
+      });
+      for (const row of rows) this.assetNames.set(row.id, row.name);
+    } catch (err) {
+      console.error(`[session ${this.id}] failed to load asset names:`, err);
+    }
+  }
+
+  /** Name for a log line; a miss falls back to a short id and refreshes. */
+  private readonly nameOf: NameLookup = (id) => {
+    if (!id) return '(unset)';
+    const name = this.assetNames.get(id);
+    if (name !== undefined) return name;
+    void this.refreshAssetNames();
+    return id.slice(0, 8);
+  };
 
   // ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -269,7 +342,7 @@ export class SessionEngine {
           websiteId: startWebsite.websiteId,
           query: startWebsite.query,
         },
-        `Start website for device "${row.name}"`,
+        'start website',
       );
     }
   }
@@ -293,7 +366,12 @@ export class SessionEngine {
       });
     } catch (err) {
       if (err instanceof ResolutionError) {
-        void this.log('warn', 'command', `${label} skipped: ${err.message}`);
+        void this.log(
+          'warn',
+          'command',
+          `${label}: ${describeCommand(cmd, this.nameOf)} skipped: ${err.message}`,
+          { command: cmd },
+        );
         return;
       }
       throw err;
@@ -848,7 +926,12 @@ export class SessionEngine {
     if (this.state === 'ended') {
       throw new EngineStateError('Session has ended');
     }
-    void this.log('info', 'command', `Admin command: ${cmd.type}`);
+    void this.log(
+      'info',
+      'command',
+      `Admin command: ${describeCommand(cmd, this.nameOf)}`,
+      { command: cmd },
+    );
     const entry = { ...cmd, id: randomUUID() } as SequenceEntry;
     void (async () => {
       try {
@@ -858,7 +941,8 @@ export class SessionEngine {
           void this.log(
             'error',
             'command',
-            `Admin command ${cmd.type} failed: ${msg(err)}`,
+            `Admin command ${describeCommand(cmd, this.nameOf)} failed: ${msg(err)}`,
+            { command: cmd },
           );
         }
       }
@@ -1201,7 +1285,8 @@ export class SessionEngine {
         void this.log(
           'error',
           'command',
-          `${cmd.type} skipped: ${err.message}`,
+          `${describeCommand(cmd, this.nameOf)} skipped: ${err.message}`,
+          { command: cmd },
         );
         return;
       }
@@ -1262,13 +1347,15 @@ export class SessionEngine {
         void this.log(
           'warn',
           'command',
-          `${cmd.type} ack timed out (device ${deviceId})`,
+          `${describeCommand(cmd, this.nameOf)} ack timed out on device "${this.nameOf(deviceId)}"`,
+          { deviceId, commandId },
         );
       } else if (status === 'failed') {
         void this.log(
           'warn',
           'command',
-          `${cmd.type} reported failed by device ${deviceId}`,
+          `${describeCommand(cmd, this.nameOf)} reported failed by device "${this.nameOf(deviceId)}"`,
+          { deviceId, commandId },
         );
       }
     }
@@ -1293,9 +1380,12 @@ export class SessionEngine {
     void this.log(
       'info',
       'command',
-      `sendWebsiteRequest sent: ${request.method} ${request.url}`,
+      `Website request to "${request.websiteName}" sent: ${request.method} ${request.url}`,
       {
         websiteId: request.websiteId,
+        websiteName: request.websiteName,
+        method: request.method,
+        url: request.url,
       },
     );
     const result = await performWebsiteRequest(request, controller.signal);
@@ -1306,9 +1396,10 @@ export class SessionEngine {
       void this.log(
         'info',
         'command',
-        `sendWebsiteRequest completed: HTTP ${result.statusCode}`,
+        `Website request to "${request.websiteName}" completed: HTTP ${result.statusCode}`,
         {
           websiteId: request.websiteId,
+          websiteName: request.websiteName,
           url: request.url,
         },
       );
@@ -1317,10 +1408,16 @@ export class SessionEngine {
         'error' in result
           ? result.error
           : `HTTP ${result.statusCode}${result.statusText ? ` ${result.statusText}` : ''}`;
-      void this.log('warn', 'command', `sendWebsiteRequest failed: ${detail}`, {
-        websiteId: request.websiteId,
-        url: request.url,
-      });
+      void this.log(
+        'warn',
+        'command',
+        `Website request to "${request.websiteName}" failed: ${detail}`,
+        {
+          websiteId: request.websiteId,
+          websiteName: request.websiteName,
+          url: request.url,
+        },
+      );
     }
   }
 
@@ -1333,6 +1430,21 @@ export class SessionEngine {
     // offline device receives them when it connects (see replayDevice).
     const remembered = this.trackDeclarative(deviceId, wire);
     const online = this.deps.transport().sendCommand(this.id, deviceId, wire);
+    // `label` is the authoring command type for sequence/admin commands;
+    // anything else (phase slots, replays, start websites) is a source worth
+    // showing, since the wire alone does not say why it was sent.
+    const deviceName = this.nameOf(deviceId);
+    const source = label in COMMAND_TYPE_LABELS ? null : label;
+    const head = `${describeWire(wire, this.nameOf)} → "${deviceName}"`;
+    const tail = source ? ` (${source})` : '';
+    const data: Record<string, JsonValue> = {
+      deviceId,
+      deviceName,
+      commandId: wire.id,
+      wireType: wire.type,
+      source: label,
+      params: wireParams(wire),
+    };
     if (online) {
       let perDevice = this.unacked.get(deviceId);
       if (!perDevice)
@@ -1342,24 +1454,21 @@ export class SessionEngine {
         );
       perDevice.set(wire.id, wire);
       this.trackWire(deviceId, wire);
-      void this.log('info', 'command', `${label} sent to device`, {
-        deviceId,
-        commandId: wire.id,
-        wireType: wire.type,
-      });
+      void this.log('info', 'command', `${head}${tail}`, data);
     } else if (remembered) {
       void this.log(
         'info',
         'command',
-        `${label} remembered for offline device (applied on connect)`,
-        { deviceId, commandId: wire.id, wireType: wire.type },
+        `${head}${tail} — device offline, applied on connect`,
+        data,
       );
     } else {
-      void this.log('warn', 'command', `${label} failed: device offline`, {
-        deviceId,
-        commandId: wire.id,
-        wireType: wire.type,
-      });
+      void this.log(
+        'warn',
+        'command',
+        `${head}${tail} failed: device offline`,
+        data,
+      );
     }
     return online;
   }
@@ -1963,6 +2072,7 @@ export class SessionEngine {
     deviceName: string,
     online: boolean,
   ): void {
+    this.assetNames.set(deviceId, deviceName);
     void this.log(
       'info',
       'device',

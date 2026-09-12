@@ -10,6 +10,7 @@ import {
 	AdminCallStateSchema,
 	AdminEvents,
 	CallActionAckSchema,
+	DeviceLogBatchSchema,
 	DeviceScreenshotSchema,
 	DeviceStatusSchema,
 	PlayerStatusSchema,
@@ -22,6 +23,7 @@ import {
 	type CallEndReason,
 	type CallErrorReason,
 	type CallInfo,
+	type DeviceLogLine,
 	type DeviceScreenshot,
 	type DeviceStatus,
 	type PlayerStatus,
@@ -107,6 +109,8 @@ export class OperationData {
 	readonly deviceStatus = new SvelteMap<string, DeviceStatus>();
 	/** `${sessionId}:${deviceId}` → latest stage capture (server keeps one per device). */
 	readonly deviceScreenshot = new SvelteMap<string, DeviceScreenshot>();
+	/** `${sessionId}:${deviceId}` → player log lines received live (capped). */
+	readonly deviceLogs = new SvelteMap<string, DeviceLogLine[]>();
 	/** sessionId → in-flight event runs (server sends full snapshots). */
 	readonly runs = new SvelteMap<string, RunningEvent[]>();
 	/** sessionId → playing media/websites (server sends full snapshots). */
@@ -248,6 +252,9 @@ export class OperationData {
 		for (const key of this.deviceScreenshot.keys()) {
 			if (key.startsWith(`${sessionId}:`)) this.deviceScreenshot.delete(key);
 		}
+		for (const key of this.deviceLogs.keys()) {
+			if (key.startsWith(`${sessionId}:`)) this.deviceLogs.delete(key);
+		}
 		this.calls.delete(sessionId);
 		if (this.selectedSessionId === sessionId) this.select(null);
 		await this.refreshSessions();
@@ -368,6 +375,7 @@ export class OperationData {
 			this.live.clear();
 			this.deviceStatus.clear();
 			this.deviceScreenshot.clear();
+			this.deviceLogs.clear();
 			this.runs.clear();
 			this.media.clear();
 			this.playersById.clear();
@@ -428,6 +436,13 @@ export class OperationData {
 			const { sessionId, deviceId } = parsed.data;
 			this.deviceScreenshot.set(`${sessionId}:${deviceId}`, parsed.data);
 		});
+		this.#socket.on(AdminEvents.deviceLogs, (payload: unknown) => {
+			const parsed = DeviceLogBatchSchema.safeParse(payload);
+			if (!parsed.success) return;
+			const { sessionId, deviceId, lines } = parsed.data;
+			const key = `${sessionId}:${deviceId}`;
+			this.deviceLogs.set(key, [...(this.deviceLogs.get(key) ?? []), ...lines].slice(-1000));
+		});
 		this.#socket.on(AdminEvents.callState, (payload: unknown) => {
 			const parsed = AdminCallStateSchema.safeParse(payload);
 			if (!parsed.success) return;
@@ -487,6 +502,10 @@ export class OperationData {
 
 	screenshotFor(sessionId: string, deviceId: string): DeviceScreenshot | null {
 		return this.deviceScreenshot.get(`${sessionId}:${deviceId}`) ?? null;
+	}
+
+	deviceLogsFor(sessionId: string, deviceId: string): DeviceLogLine[] {
+		return this.deviceLogs.get(`${sessionId}:${deviceId}`) ?? [];
 	}
 
 	isDeviceOnline(sessionId: string, deviceId: string): boolean {

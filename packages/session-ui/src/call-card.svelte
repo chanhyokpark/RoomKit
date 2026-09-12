@@ -7,6 +7,7 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import * as Select from '$lib/components/ui/select';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import { assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
@@ -21,8 +22,22 @@
 	const hintDevices = $derived(
 		assetsOf(model.assets, 'device').filter((device) => device.data.isHintDevice)
 	);
+	// Any other device running the helper can take a call too (a kiosk screen
+	// with a speaker, say) — offered behind a dropdown so the hint phones stay
+	// one click away.
+	const otherDevices = $derived(
+		assetsOf(model.assets, 'device').filter((device) => !device.data.isHintDevice)
+	);
+	let otherDeviceId = $state('');
+	const otherDevice = $derived(
+		otherDevices.find((device) => device.id === otherDeviceId) ?? null
+	);
 
-	/** Why a hint device cannot be called right now; null = callable. */
+	function deviceLabel(device: { name: string; data: { displayName: string } }): string {
+		return device.data.displayName || device.name;
+	}
+
+	/** Why a device cannot be called right now; null = callable. */
 	function callBlocker(deviceId: string): string | null {
 		const status = model.statusOf(deviceId);
 		if (!status?.online) return '오프라인';
@@ -101,10 +116,10 @@
 	}
 </script>
 
-{#if !call && callsEnabled && hintDevices.length > 0}
+{#if !call && callsEnabled && (hintDevices.length > 0 || otherDevices.length > 0)}
 	<div class="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
 		<PhoneIcon class="size-4 text-muted-foreground" />
-		<span class="text-muted-foreground">힌트 장치 음성 통화</span>
+		<span class="text-muted-foreground">음성 통화</span>
 		<div class="ml-auto flex flex-wrap items-center gap-2">
 			{#if busy}<Spinner />{/if}
 			{#each hintDevices as device (device.id)}
@@ -113,14 +128,45 @@
 					size="sm"
 					variant="outline"
 					disabled={busy || blocker !== null}
-					title={blocker ?? `${device.data.displayName || device.name}에 통화 걸기`}
+					title={blocker ?? `${deviceLabel(device)}에 통화 걸기`}
 					onclick={() => start(device.id)}
 				>
 					<PhoneIcon data-icon="inline-start" />
-					{device.data.displayName || device.name}
+					{deviceLabel(device)}
 					{#if blocker}<span class="text-muted-foreground">· {blocker}</span>{/if}
 				</Button>
 			{/each}
+			{#if otherDevices.length > 0}
+				{@const otherBlocker = otherDevice ? callBlocker(otherDevice.id) : null}
+				<div class="flex items-center gap-1">
+					<Select.Root type="single" bind:value={otherDeviceId}>
+						<Select.Trigger size="sm" class="min-w-36" aria-label="통화할 다른 장치">
+							<span class="truncate">
+								{otherDevice ? deviceLabel(otherDevice) : '다른 장치…'}
+							</span>
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Group>
+								{#each otherDevices as device (device.id)}
+									{@const blocker = callBlocker(device.id)}
+									<Select.Item value={device.id} label={deviceLabel(device)}>
+										{deviceLabel(device)}{blocker ? ` · ${blocker}` : ''}
+									</Select.Item>
+								{/each}
+							</Select.Group>
+						</Select.Content>
+					</Select.Root>
+					<Button
+						size="sm"
+						variant="outline"
+						disabled={busy || !otherDevice || otherBlocker !== null}
+						title={otherBlocker ?? (otherDevice ? `${deviceLabel(otherDevice)}에 통화 걸기` : '장치 선택')}
+						onclick={() => otherDevice && start(otherDevice.id)}
+					>
+						<PhoneIcon data-icon="inline-start" />통화
+					</Button>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

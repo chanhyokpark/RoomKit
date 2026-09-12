@@ -19,6 +19,8 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.3", features = ["protocol-asset"] }
 tauri-plugin-log = "2"
+# Timestamp formatting for the log plugin's custom line format (see lib.rs).
+time = { version = "0.3", features = ["formatting", "macros"] }
 tauri-plugin-store = "2"
 tauri-plugin-os = "2"
 # Streaming cache downloads (rustls: no system openssl dependency).

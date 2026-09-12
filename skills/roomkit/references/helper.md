@@ -131,7 +131,7 @@ Each method posts a `haptics` request and resolves on the Player's `haptics:resu
 
 ## Test callbacks
 
-`testCallbacks` registers parameterless functions runnable from the Player debug window in test sessions only. Player sends `test:callback` with a request ID; Helper runs the callback, awaits a returned promise, and answers `test:callback:done` with ok/failed. The server times the invocation out after fifteen seconds. Use them for repeatable manual probes (reset local state, simulate a puzzle solve) without wiring temporary UI.
+`testCallbacks` registers parameterless functions runnable from the device row's "+" dialog (Player debug window or Studio dashboard) in test sessions only. Player sends `test:callback` with a request ID; Helper runs the callback, awaits a returned promise, and answers `test:callback:done` with ok/failed. The server times the invocation out after fifteen seconds. Use them for repeatable manual probes (reset local state, simulate a puzzle solve) without wiring temporary UI.
 
 ## Render claims
 

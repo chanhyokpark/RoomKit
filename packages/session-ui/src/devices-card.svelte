@@ -5,6 +5,7 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import RouterIcon from '@lucide/svelte/icons/router';
+	import ScrollTextIcon from '@lucide/svelte/icons/scroll-text';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
@@ -15,15 +16,17 @@
 	import { assetName, assetsOf } from './assets.js';
 	import { useSessionUi } from './context.js';
 	import { formatClock, formatDuration } from './format.js';
+	import DeviceLogDialog from './device-log-dialog.svelte';
 	import InjectDialog from './inject-dialog.svelte';
 
 	const { model, actions, view } = useSessionUi();
 	const busyKeys = new SvelteSet<string>();
 	/** Active rows (state / website) whose details are unfolded. */
 	const unfolded = new SvelteSet<string>();
-	let callbackResults = $state<Record<string, 'running' | 'ok' | 'fail'>>({});
 	/** Device whose "+" (asset inject) dialog is open. */
 	let injectDeviceId = $state<string | null>(null);
+	/** Device whose player-log dialog is open. */
+	let logDeviceId = $state<string | null>(null);
 	let now = $state(Date.now());
 
 	const allDevices = $derived(assetsOf(model.assets, 'device'));
@@ -36,6 +39,13 @@
 	const injectDevice = $derived(
 		injectDeviceId ? (devices.find((device) => device.id === injectDeviceId) ?? null) : null
 	);
+	const logDevice = $derived(
+		logDeviceId ? (devices.find((device) => device.id === logDeviceId) ?? null) : null
+	);
+
+	function errorCount(deviceId: string): number {
+		return model.deviceLogsOf(deviceId).filter((line) => line.level === 'error').length;
+	}
 	const codeByDevice = $derived(
 		new Map(model.testDeviceCodes.map((entry) => [entry.deviceId, entry.code]))
 	);
@@ -91,19 +101,6 @@
 			actions.runCommand({ type: 'clearState', deviceId, allDevices: false })
 		);
 	}
-
-	async function callback(deviceId: string, name: string): Promise<void> {
-		const key = `${deviceId}:${name}`;
-		callbackResults[key] = 'running';
-		try {
-			const result = await actions.runTestCallback(deviceId, name);
-			callbackResults[key] = result.ok ? 'ok' : 'fail';
-			if (!result.ok) toast.error(`콜백 "${name}" 실행에 실패했습니다.`);
-		} catch (error) {
-			callbackResults[key] = 'fail';
-			toast.error(error instanceof Error ? error.message : '콜백 실행에 실패했습니다.');
-		}
-	}
 </script>
 
 {#snippet foldToggle(key: string, label: string)}
@@ -155,10 +152,6 @@
 	<Card.Root>
 		<Card.Header>
 			<Card.Title class="flex items-center gap-2"><RouterIcon />디바이스</Card.Title>
-			<Card.Description>
-				연결과 현재 웹사이트·상태를 확인하고, + 버튼으로 애셋을 주입합니다. 미디어 재생은 플레이어
-				카드에서 합니다.
-			</Card.Description>
 			<Card.Action>
 				<Button
 					size="sm"
@@ -179,7 +172,7 @@
 				{@const currentWebsite = websiteByDevice.get(device.id)}
 				{@const currentState = stateByDevice.get(device.id)}
 				{@const code = codeByDevice.get(device.id)}
-				{@const callbacks = status?.helperTestCallbacks ?? []}
+				{@const errors = errorCount(device.id)}
 				<div class="rounded-md border">
 					<div class="flex items-center gap-2 px-3 py-2">
 						<span class={cn('size-2 rounded-full', status?.online ? 'bg-primary' : 'bg-muted')}
@@ -191,6 +184,22 @@
 						<Badge variant={status?.online ? 'outline' : 'secondary'} class="ml-auto">
 							{status?.online ? '온라인' : '오프라인'}
 						</Badge>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							class="relative"
+							aria-label="플레이어 로그"
+							title="플레이어 로그"
+							onclick={() => (logDeviceId = device.id)}
+						>
+							<ScrollTextIcon />
+							{#if errors > 0}
+								<span
+									class="absolute -top-1 -right-1 rounded-full bg-destructive px-1 text-[10px] leading-4 text-white"
+									>{errors > 99 ? '99+' : errors}</span
+								>
+							{/if}
+						</Button>
 						<Button
 							variant="ghost"
 							size="icon-sm"
@@ -313,23 +322,6 @@
 							{/if}
 						</div>
 					{/if}
-
-					{#if callbacks.length > 0}
-						<div class="flex flex-wrap items-center gap-1.5 border-t px-3 py-2">
-							<span class="mr-1 text-xs font-medium text-muted-foreground">테스트 콜백</span>
-							{#each callbacks as name (name)}
-								{@const result = callbackResults[`${device.id}:${name}`]}
-								<Button
-									variant="outline"
-									size="xs"
-									disabled={result === 'running'}
-									onclick={() => callback(device.id, name)}
-								>
-									{name}{result === 'ok' ? ' ✓' : result === 'fail' ? ' ✕' : ''}
-								</Button>
-							{/each}
-						</div>
-					{/if}
 				</div>
 			{/each}
 		</Card.Content>
@@ -342,6 +334,17 @@
 				() => injectDeviceId !== null,
 				(value) => {
 					if (!value) injectDeviceId = null;
+				}
+			}
+		/>
+	{/if}
+	{#if logDevice}
+		<DeviceLogDialog
+			device={logDevice}
+			bind:open={
+				() => logDeviceId !== null,
+				(value) => {
+					if (!value) logDeviceId = null;
 				}
 			}
 		/>

@@ -27,6 +27,7 @@ import {
   type SwitchPhaseInput,
 } from '@roomkit/shared';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { DeviceLogsService } from '../runtime/device-logs.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { SessionsService } from './sessions.service';
 import { SessionSummaryService } from './session-summary.service';
@@ -37,6 +38,7 @@ export class SessionsController {
     private readonly sessionsService: SessionsService,
     private readonly runtime: SessionRuntimeService,
     private readonly summaryService: SessionSummaryService,
+    private readonly deviceLogs: DeviceLogsService,
   ) {}
 
   @Get()
@@ -187,6 +189,20 @@ export class SessionsController {
   ) {
     await this.sessionsService.get(id);
     await this.runtime.pushHint(id, input);
+  }
+
+  /** Player log lines one device uploaded during this session (in-memory, oldest first). */
+  @Get(':id/devices/:deviceId/logs')
+  async listDeviceLogs(
+    @Param('id') id: string,
+    @Param('deviceId') deviceId: string,
+  ) {
+    await this.sessionsService.get(id);
+    return {
+      sessionId: id,
+      deviceId,
+      lines: this.deviceLogs.list(id, deviceId),
+    };
   }
 
   /** Run a website-registered test callback on one device (test sessions only). */

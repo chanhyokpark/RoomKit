@@ -8,15 +8,19 @@
  *   roomkit-player://launch?server=<origin>                just start / focus Player
  *
  * `server` is the RoomKit server origin (no /api suffix). Player asks before
- * switching to a server that differs from its configured one.
+ * switching to a server that differs from its configured one. `source` names
+ * who fired the link (`studio`, `cli`): a Studio launch keeps its own session
+ * dashboard, so Player skips its debug window for it.
  *
  * Hand-rolled query handling: this package compiles against the ES lib only
  * (no DOM / node typings), and the format is tiny.
  */
 export const PLAYER_URL_SCHEME = 'roomkit-player';
 
+export type PlayerLinkSource = 'studio' | 'cli';
+
 export type PlayerLink =
-  | { action: 'test'; server: string | null; sessionId: string }
+  | { action: 'test'; server: string | null; sessionId: string; source: PlayerLinkSource | null }
   | { action: 'launch'; server: string | null };
 
 function normalizeServer(value: string | null | undefined): string | null {
@@ -31,8 +35,16 @@ function query(params: Record<string, string>): string {
 }
 
 /** App link that opens test session `sessionId` in Player. */
-export function playerTestLink(serverUrl: string, sessionId: string): string {
-  return `${PLAYER_URL_SCHEME}://test?${query({ server: normalizeServer(serverUrl) ?? serverUrl, session: sessionId })}`;
+export function playerTestLink(
+  serverUrl: string,
+  sessionId: string,
+  options: { source?: PlayerLinkSource } = {},
+): string {
+  return `${PLAYER_URL_SCHEME}://test?${query({
+    server: normalizeServer(serverUrl) ?? serverUrl,
+    session: sessionId,
+    ...(options.source ? { source: options.source } : {}),
+  })}`;
 }
 
 /** App link that starts Player pointed at `serverUrl`. */
@@ -73,7 +85,10 @@ export function parsePlayerLink(raw: string): PlayerLink | null {
   if (action === 'test') {
     const sessionId = params['session']?.trim() ?? '';
     if (!UUID_RE.test(sessionId)) return null;
-    return { action: 'test', server, sessionId: sessionId.toLowerCase() };
+    const rawSource = params['source']?.trim().toLowerCase();
+    const source: PlayerLinkSource | null =
+      rawSource === 'studio' || rawSource === 'cli' ? rawSource : null;
+    return { action: 'test', server, sessionId: sessionId.toLowerCase(), source };
   }
   if (action === 'launch') return { action: 'launch', server };
   return null;

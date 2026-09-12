@@ -19,6 +19,7 @@ import {
   CallStartInputSchema,
   type CallActionAck,
   type CallConfig,
+  type DeviceLogBatch,
   type DeviceScreenshot,
   type DeviceStatus,
   type PlayerStatus,
@@ -212,6 +213,10 @@ export class AdminGateway
 
   broadcastDeviceScreenshot(screenshot: DeviceScreenshot): void {
     this.server.to(ADMINS_ROOM).emit(AdminEvents.deviceScreenshot, screenshot);
+  }
+
+  broadcastDeviceLogs(batch: DeviceLogBatch): void {
+    this.server.to(ADMINS_ROOM).emit(AdminEvents.deviceLogs, batch);
   }
 
   broadcastPlayerStatus(status: PlayerStatus): void {

@@ -6,6 +6,7 @@
 		type SessionUiModel
 	} from '@roomkit/session-ui';
 	import {
+		DeviceLogBatchSchema,
 		SessionLogEntrySchema,
 		SessionResponseSchema,
 		SessionSummarySchema,
@@ -144,6 +145,9 @@
 		},
 		screenshotOf(deviceId) {
 			return admin.deviceScreenshot[deviceId] ?? null;
+		},
+		deviceLogsOf(deviceId) {
+			return admin.deviceLogs[deviceId] ?? [];
 		}
 	};
 
@@ -186,6 +190,10 @@
 				method: 'POST',
 				body: { name }
 			}),
+		getDeviceLogs: async (deviceId) =>
+			DeviceLogBatchSchema.parse(
+				await api<unknown>(`/sessions/${sessionId}/devices/${deviceId}/logs`)
+			).lines,
 		getSummary: async () =>
 			SessionSummarySchema.parse(
 				await api<unknown>(`/sessions/${sessionId}/summary`)

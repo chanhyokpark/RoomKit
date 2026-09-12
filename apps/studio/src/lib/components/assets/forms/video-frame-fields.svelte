@@ -15,9 +15,7 @@
 <Field.Field orientation="horizontal">
 	<Field.FieldContent>
 		<Field.FieldLabel for="video-fullscreen">전체 화면</Field.FieldLabel>
-		<Field.FieldDescription>
-			끄면 화면 내 위치와 크기를 퍼센트로 지정합니다 (예: 채팅 UI 옆의 작은 영상).
-		</Field.FieldDescription>
+		<Field.FieldDescription>끄면 위치와 크기를 퍼센트로 지정합니다.</Field.FieldDescription>
 	</Field.FieldContent>
 	<Switch id="video-fullscreen" checked={frame === null} onCheckedChange={toggleFullscreen} />
 </Field.Field>

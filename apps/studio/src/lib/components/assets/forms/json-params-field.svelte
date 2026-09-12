@@ -32,9 +32,7 @@
 		placeholder={'{ "key": "value" }'}
 		aria-invalid={invalid}
 	/>
-	<Field.FieldDescription>
-		웹사이트가 이 슬롯을 직접 렌더링할 때 데이터와 함께 전달되는 자유 형식 JSON 객체입니다 (선택).
-	</Field.FieldDescription>
+	<Field.FieldDescription>웹사이트에 함께 전달되는 JSON 객체입니다 (선택).</Field.FieldDescription>
 	{#if invalid}
 		<p class="text-sm text-destructive">올바른 JSON 객체가 아닙니다.</p>
 	{/if}

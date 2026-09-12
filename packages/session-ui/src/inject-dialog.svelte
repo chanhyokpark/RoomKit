@@ -23,12 +23,13 @@
 
 	const { model, actions } = useSessionUi();
 
-	type Kind = 'website' | 'message' | 'state' | 'hintCode';
+	type Kind = 'website' | 'message' | 'state' | 'hintCode' | 'testCallback';
 	const kindLabels: Record<Kind, string> = {
 		website: '웹사이트',
 		message: '메시지',
 		state: '상태',
-		hintCode: '힌트 코드'
+		hintCode: '힌트 코드',
+		testCallback: '테스트 콜백'
 	};
 
 	let kind = $state<Kind>('website');
@@ -40,6 +41,8 @@
 	const status = $derived(model.statusOf(device.id));
 	const registeredMessages = $derived(status?.helperMessages ?? []);
 	const registeredStates = $derived(status?.helperStates ?? []);
+	/** Parameterless callbacks the loaded website registered for test runs. */
+	const testCallbacks = $derived(status?.helperTestCallbacks ?? []);
 
 	interface Option {
 		id: string;
@@ -86,6 +89,9 @@
 					label: hint.code ? `${hint.code} · ${hint.name}` : hint.name,
 					registered: false
 				}));
+			case 'testCallback':
+				// Not assets: the option id is the callback name itself.
+				return testCallbacks.map((name) => ({ id: name, label: name, registered: false }));
 		}
 	}
 
@@ -177,11 +183,31 @@
 			}
 			case 'hintCode':
 				return { type: 'showHintCode', hintId: assetId, deviceId };
+			case 'testCallback':
+				return null;
+		}
+	}
+
+	/** Test callbacks bypass the command path: the dialog stays open for repeats. */
+	async function runCallback(name: string): Promise<void> {
+		busy = true;
+		try {
+			const result = await actions.runTestCallback(device.id, name);
+			if (result.ok) toast.success(`콜백 "${name}"을(를) 실행했습니다.`);
+			else toast.error(`콜백 "${name}" 실행에 실패했습니다.`);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : '콜백 실행에 실패했습니다.');
+		} finally {
+			busy = false;
 		}
 	}
 
 	async function apply(): Promise<void> {
 		if (!canApply) return;
+		if (kind === 'testCallback') {
+			await runCallback(assetId);
+			return;
+		}
 		const cmd = command();
 		if (!cmd) return;
 		busy = true;
@@ -252,6 +278,8 @@
 						<Field.FieldDescription
 							>페이지 등록: {registeredStates.join(', ')}</Field.FieldDescription
 						>
+					{:else if kind === 'testCallback'}
+						<Field.FieldDescription>웹사이트가 등록한 테스트 콜백을 실행합니다.</Field.FieldDescription>
 					{/if}
 				</Field.Field>
 
@@ -342,7 +370,7 @@
 			<Button variant="outline" disabled={busy} onclick={() => (open = false)}>취소</Button>
 			<Button disabled={!canApply} onclick={apply}>
 				{#if busy}<Spinner data-icon="inline-start" />{/if}
-				적용
+				{kind === 'testCallback' ? '실행' : '적용'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

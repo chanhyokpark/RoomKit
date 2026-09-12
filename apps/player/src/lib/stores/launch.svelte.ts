@@ -80,13 +80,18 @@ class LaunchStore {
 			// Stays pending; the launcher shows a login prompt and calls resume() after.
 			return;
 		}
-		const { sessionId } = pending.link;
+		const { sessionId, source } = pending.link;
 		this.pending = null;
-		await this.openSession(sessionId);
+		// Studio has its own session dashboard open next to the link it fired;
+		// a second one in the player would only fight it for the operator.
+		await this.openSession(sessionId, { debugWindow: source !== 'studio' });
 	}
 
-	/** Open the stage windows (and debug window) of an existing test session. */
-	async openSession(sessionId: string): Promise<boolean> {
+	/** Open the stage windows (and, by default, the debug window) of an existing test session. */
+	async openSession(
+		sessionId: string,
+		{ debugWindow = true }: { debugWindow?: boolean } = {}
+	): Promise<boolean> {
 		const id = sessionId.trim();
 		if (!id) return false;
 		this.status = 'opening';
@@ -100,14 +105,14 @@ class LaunchStore {
 			if (session.state === 'ended') throw new Error('이미 종료된 세션입니다.');
 			const devices = session.testDeviceCodes ?? [];
 			if (devices.length === 0) throw new Error('이 세션에는 장치 코드가 없습니다.');
-			vlog('launch', 'opening session', id, devices.length);
+			vlog('launch', 'opening session', id, devices.length, { debugWindow });
 			const mobile = await isMobile();
 			if (mobile) {
 				// One webview: the launcher itself becomes the first device's stage.
 				await openTestDeviceWindow(session.id, devices[0]!);
 			} else {
 				for (const device of devices) await openTestDeviceWindow(session.id, device);
-				await openDebugWindow(session.id, session.themeId);
+				if (debugWindow) await openDebugWindow(session.id, session.themeId);
 				// Keep the test tab in step so the theme's devices show up there.
 				if (config.selectedThemeId !== session.themeId) void testSetup.selectTheme(session.themeId);
 			}

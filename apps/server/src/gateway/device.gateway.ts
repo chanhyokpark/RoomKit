@@ -17,6 +17,7 @@ import {
   DeviceAuthSchema,
   DeviceDataSchema,
   DeviceEvents,
+  DeviceLogReportSchema,
   DeviceScreenshotReportSchema,
   HelperInfoSchema,
   HintNextSchema,
@@ -34,6 +35,7 @@ import {
 import type { DefaultEventsMap, Namespace } from 'socket.io';
 import { DeviceAssetsService } from '../assets/device-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DeviceLogsService } from '../runtime/device-logs.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { AdminGateway } from './admin.gateway';
 import { CallService } from './call.service';
@@ -83,6 +85,7 @@ export class DeviceGateway
     private readonly deviceAssets: DeviceAssetsService,
     private readonly admin: AdminGateway,
     private readonly calls: CallService,
+    private readonly deviceLogs: DeviceLogsService,
   ) {
     calls.onDeviceState((sessionId, deviceId, state) =>
       this.server
@@ -378,6 +381,28 @@ export class DeviceGateway
     };
     this.registry.setScreenshot(screenshot);
     this.admin.broadcastDeviceScreenshot(screenshot);
+  }
+
+  /**
+   * Batch of the player window's own log lines. Buffered per device (kept
+   * after the device goes offline) and relayed to /admin so operators can
+   * read what a device window did without touching the machine.
+   */
+  @SubscribeMessage(DeviceEvents.logs)
+  onLogs(
+    @ConnectedSocket() socket: DeviceSocket,
+    @MessageBody() body: unknown,
+  ): void {
+    const attach = socket.data.attach;
+    if (!attach) return;
+    const parsed = DeviceLogReportSchema.safeParse(body);
+    if (!parsed.success) return;
+    const batch = this.deviceLogs.append(
+      attach.sessionId,
+      attach.deviceId,
+      parsed.data.lines,
+    );
+    this.admin.broadcastDeviceLogs(batch);
   }
 
   // ── voice calls ──────────────────────────────────────────────────────────
