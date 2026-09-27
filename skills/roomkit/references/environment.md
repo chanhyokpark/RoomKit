@@ -19,7 +19,7 @@ The quickest complete environment is:
 pnpm infra
 ```
 
-It starts the application Docker profile. Defaults are Server `http://localhost:3000`, Studio `http://localhost:5173`, administrator `admin/roomkit`, PostgreSQL host port `5433`, MinIO API `9000`, and console `9001`.
+It starts the application Docker profile. Defaults are Server `http://localhost:3000`, Studio `http://localhost:5173`, administrator `admin/roomkit`, PostgreSQL host port `5433`, RustFS API `9000`, and console `9001`.
 
 For host development, start only infrastructure, initialize Server configuration, and apply migrations:
 
@@ -85,4 +85,4 @@ The server's optional `CALL_ICE_SERVERS` (a JSON array of RTCIceServer objects) 
 
 Studio reads `PUBLIC_API_URL` as a build-time public value. It reads optional `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, and `PUBLIC_EXPECTED_HELPER_VERSION` at runtime under adapter-node; these override the shared minimums used by operation-screen version warnings.
 
-Do not expose PostgreSQL or MinIO administration ports publicly. The Kubernetes manifests under `k8s/` show the expected services, ingress, and build/deploy flow.
+Do not expose PostgreSQL or RustFS administration ports publicly. The Kubernetes manifests under `k8s/` show the expected services, ingress, and build/deploy flow.

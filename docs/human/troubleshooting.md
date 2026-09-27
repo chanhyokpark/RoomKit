@@ -7,7 +7,7 @@
 - Studio가 서버에 연결되지 않으면 `http://localhost:3000/api`가 응답하는지와 프록시의 WebSocket 설정을 확인해 주세요.
 - 호스트에서 처음 실행할 때 환경변수 오류가 나면 루트에서 `./init.sh`를 실행했는지, 테이블 오류가 나면 `pnpm --filter server exec prisma migrate deploy`를 실행했는지 확인해 주세요.
 - 데이터베이스 오류가 발생하면 PostgreSQL이 `5433` 포트에서 실행 중인지 확인해 주세요.
-- 업로드가 실패하면 MinIO의 `9000` 포트, 버킷 설정과 Server의 S3 환경변수를 확인해 주세요.
+- 업로드가 실패하면 RustFS의 `9000` 포트, 버킷 설정과 Server의 S3 환경변수를 확인해 주세요.
 - 공유 타입을 변경한 뒤 컴파일 오류가 발생하면 `pnpm --filter @roomkit/shared build`를 먼저 실행해 주세요.
 
 ## 장치 연결

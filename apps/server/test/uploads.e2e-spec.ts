@@ -41,7 +41,7 @@ describe('Uploads (e2e)', () => {
         .send({ filename: 'a.mp3' }),
     ).expect(400));
 
-  it('presigns, uploads to MinIO, and reads the file back', async () => {
+  it('presigns, uploads to RustFS, and reads the file back', async () => {
     const presign = await auth(
       request(app.getHttpServer())
         .post(`/api/themes/${themeId}/uploads`)

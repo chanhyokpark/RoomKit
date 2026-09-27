@@ -21,12 +21,12 @@ pnpm install
 pnpm infra
 ```
 
-이 명령은 PostgreSQL, MinIO, Server와 Studio를 Docker로 실행합니다.
+이 명령은 PostgreSQL, RustFS, Server와 Studio를 Docker로 실행합니다.
 
 - Studio: `http://localhost:5173`
 - Server: `http://localhost:3000`
 - 기본 관리자: `admin` / `roomkit`
-- MinIO 콘솔: `http://localhost:9001`
+- RustFS 콘솔: `http://localhost:9001`
 
 브라우저에서 Studio를 열고 로그인해 주세요. 개발용 기본 비밀번호는 공개 환경에서 사용하지 마세요.
 
@@ -82,7 +82,7 @@ Player 런처에서 다음 값을 설정해 주세요.
 
 - 기본 관리자 비밀번호를 변경해 주세요.
 - Server와 Studio를 HTTPS로 제공해 주세요.
-- PostgreSQL과 S3/MinIO를 공개 인터넷에 직접 노출하지 마세요.
+- PostgreSQL과 S3/RustFS를 공개 인터넷에 직접 노출하지 마세요.
 - Player와 커스텀 웹 장치에서 접근할 수 있는 서버 URL을 사용해 주세요.
 - 프록시가 Socket.io WebSocket 업그레이드를 전달하도록 설정해 주세요.
 

@@ -20,18 +20,18 @@ kubectl create secret generic roomkit-secrets \
 	--dry-run=client -o yaml | kubectl apply -f -
 
 # The completed bucket-init job is immutable — drop it so apply re-creates it.
-kubectl delete job minio-init -n "$NS" --ignore-not-found
+kubectl delete job rustfs-init -n "$NS" --ignore-not-found
 
 kubectl apply \
 	-f postgres.yaml \
-	-f minio.yaml \
+	-f rustfs.yaml \
 	-f server.yaml \
 	-f studio.yaml \
 	-f ingress.yaml
 
 # Pick up freshly pushed :latest images.
 kubectl rollout restart deployment/server deployment/studio -n "$NS"
-for d in postgres minio server studio; do
+for d in postgres rustfs server studio; do
 	kubectl rollout status "deployment/$d" -n "$NS" --timeout=300s
 done
 

@@ -12,7 +12,7 @@ import { auth } from '$lib/stores/auth.svelte';
 import { api } from './client';
 
 /**
- * Presign + PUT the file directly to S3/MinIO. Returns the storage key to
+ * Presign + PUT the file directly to S3/RustFS. Returns the storage key to
  * persist in asset data. Uses XHR because fetch has no upload progress.
  */
 export async function uploadFile(

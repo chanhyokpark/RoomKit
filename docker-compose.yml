@@ -17,34 +17,38 @@ services:
       timeout: 2s
       retries: 15
 
-  minio:
-    image: minio/minio
-    command: server /data --console-address ":9001"
+  rustfs:
+    image: rustfs/rustfs:latest
     ports:
       - '9000:9000'
       - '9001:9001'
     environment:
-      MINIO_ROOT_USER: roomkit
-      MINIO_ROOT_PASSWORD: roomkit123
+      RUSTFS_ACCESS_KEY: roomkit
+      RUSTFS_SECRET_KEY: roomkit123
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
     volumes:
-      - minio-data:/data
+      - rustfs-data:/data
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9000/health']
       interval: 2s
       timeout: 2s
       retries: 15
 
+  # One-shot bucket creation. `rclone mkdir` is idempotent, so this is safe to
+  # re-run on every `up`.
   createbucket:
-    image: minio/mc
+    image: rclone/rclone
     depends_on:
-      minio:
+      rustfs:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 roomkit roomkit123 &&
-      mc mb -p local/roomkit &&
-      exit 0
-      "
+    environment:
+      RCLONE_CONFIG_S3_TYPE: s3
+      RCLONE_CONFIG_S3_PROVIDER: Other
+      RCLONE_CONFIG_S3_ENDPOINT: http://rustfs:9000
+      RCLONE_CONFIG_S3_ACCESS_KEY_ID: roomkit
+      RCLONE_CONFIG_S3_SECRET_ACCESS_KEY: roomkit123
+    command: ['mkdir', 's3:roomkit']
 
   # server and studio only start under the "app" profile (compose.sh enables
   # it). A plain `docker compose up` keeps booting infra only, so host dev
@@ -63,7 +67,7 @@ services:
       ADMIN_ID: ${ADMIN_ID:-admin}
       # Default is bcrypt("roomkit") — matches local dev creds.
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-$$2b$$10$$Ha7ajwI4Ub8WWFpvmgvBhO1VsK2N4kL1AKmXoPp5n35oSI.K9RuDG}
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://rustfs:9000
       # Browsers/devices fetch presigned URLs via the published host port.
       S3_PUBLIC_ENDPOINT: http://localhost:9000
       S3_REGION: us-east-1
@@ -75,7 +79,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
       createbucket:
         condition: service_completed_successfully
@@ -108,4 +112,6 @@ services:
 
 volumes:
   postgres-data:
-  minio-data:
+  # Pre-RustFS installs have a `minio-data` volume instead; see
+  # docker/migrate-minio-to-rustfs.sh to copy it over.
+  rustfs-data:

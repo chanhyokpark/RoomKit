@@ -10,8 +10,8 @@ const EnvSchema = z.object({
   S3_ENDPOINT: z.url(),
   /**
    * S3 endpoint as reachable by browsers/devices, used only for presigned
-   * URLs. Needed when the server runs in Docker and reaches MinIO via the
-   * compose network (`http://minio:9000`) while clients reach it via the
+   * URLs. Needed when the server runs in Docker and reaches RustFS via the
+   * compose network (`http://rustfs:9000`) while clients reach it via the
    * published host port (`http://localhost:9000`). Defaults to S3_ENDPOINT.
    */
   S3_PUBLIC_ENDPOINT: z.url().optional(),

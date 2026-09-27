@@ -50,12 +50,12 @@ spec:
                 name: server
                 port:
                   number: 3000
-          # Path-style presigned S3 URLs: /roomkit/<key> → minio
+          # Path-style presigned S3 URLs: /roomkit/<key> → rustfs
           - path: /roomkit
             pathType: Prefix
             backend:
               service:
-                name: minio
+                name: rustfs
                 port:
                   number: 9000
           # Everything else → studio (SvelteKit SSR)

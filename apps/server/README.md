@@ -15,7 +15,7 @@ pnpm --filter server exec prisma migrate deploy
 pnpm dev:server
 ```
 
-Without the `app` profile, `docker compose up -d` starts PostgreSQL, MinIO, and the one-shot bucket creator only. `./init.sh` creates `apps/server/.env`, prompts for an administrator password, generates a JWT secret, and refuses to overwrite an existing file unless `--force` is passed. For non-interactive setup, pass the password as an argument.
+Without the `app` profile, `docker compose up -d` starts PostgreSQL, RustFS, and the one-shot bucket creator only. `./init.sh` creates `apps/server/.env`, prompts for an administrator password, generates a JWT secret, and refuses to overwrite an existing file unless `--force` is passed. For non-interactive setup, pass the password as an argument.
 
 The API starts at `http://localhost:3000/api` by default. Host development does not apply migrations automatically; rerun the Prisma command after schema changes. The Docker Server image does apply migrations before startup.
 
@@ -39,4 +39,4 @@ pnpm --filter server test
 pnpm --filter server test:e2e
 ```
 
-The end-to-end suite expects PostgreSQL and MinIO on the compose defaults, applies migrations to `roomkit_test`, and builds `@roomkit/client` first.
+The end-to-end suite expects PostgreSQL and RustFS on the compose defaults, applies migrations to `roomkit_test`, and builds `@roomkit/client` first.

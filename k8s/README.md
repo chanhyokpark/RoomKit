@@ -9,10 +9,10 @@ Deploys to the k3s cluster under namespace `roomkit`, exposed at
 | ------------ | -------------- | ---------------------------------------- |
 | `/api`       | server:3000    | NestJS REST API (global prefix)          |
 | `/socket.io` | server:3000    | socket.io gateways                       |
-| `/roomkit`   | minio:9000     | path-style presigned S3 URLs             |
+| `/roomkit`   | rustfs:9000    | path-style presigned S3 URLs             |
 | `/`          | studio:80      | SvelteKit SSR                            |
 
-Postgres and MinIO run in-cluster on `local-path` PVCs (single replica,
+Postgres and RustFS run in-cluster on `local-path` PVCs (single replica,
 `Recreate` strategy).
 
 ## First deploy
