@@ -62,6 +62,11 @@ export class ConnectionRegistry {
   private readonly versions = new Map<string, DeviceVersions>();
   /** `${sessionId}:${deviceId}` → latest stage capture (in-memory only). */
   private readonly screenshots = new Map<string, DeviceScreenshot>();
+  /** `${sessionId}:${deviceId}` → callers waiting for the next helper hello. */
+  private readonly helperWaiters = new Map<
+    string,
+    Set<(versions: DeviceVersions) => void>
+  >();
 
   /** Returns true when this is the device's first live socket (went online). */
   add(sessionId: string, deviceId: string, socket: Socket): boolean {
@@ -93,7 +98,70 @@ export class ConnectionRegistry {
     patch: DeviceVersions,
   ): void {
     const key = `${sessionId}:${deviceId}`;
-    this.versions.set(key, { ...this.versions.get(key), ...patch });
+    const merged = { ...this.versions.get(key), ...patch };
+    this.versions.set(key, merged);
+    // A helper:info report means a (re)loaded page said hello.
+    if ('helperVersion' in patch) {
+      const waiters = this.helperWaiters.get(key);
+      if (waiters) {
+        this.helperWaiters.delete(key);
+        for (const resolve of waiters) resolve(merged);
+      }
+    }
+  }
+
+  /**
+   * Resolves with the device's versions when its next helper hello arrives
+   * (a `helper:info` report after this call), or null on timeout/cancel.
+   * Arm it before triggering the reload so a fast hello is not missed;
+   * cancel it when the result is no longer needed so no timer lingers.
+   */
+  waitForHelperInfo(
+    sessionId: string,
+    deviceId: string,
+    timeoutMs: number,
+  ): { promise: Promise<DeviceVersions | null>; cancel: () => void } {
+    const key = `${sessionId}:${deviceId}`;
+    let waiters = this.helperWaiters.get(key);
+    if (!waiters) this.helperWaiters.set(key, (waiters = new Set()));
+    const set = waiters;
+    let done!: (versions: DeviceVersions | null) => void;
+    const promise = new Promise<DeviceVersions | null>((resolve) => {
+      done = (versions) => {
+        clearTimeout(timer);
+        set.delete(done as (versions: DeviceVersions) => void);
+        if (set.size === 0 && this.helperWaiters.get(key) === set)
+          this.helperWaiters.delete(key);
+        resolve(versions);
+      };
+    });
+    const timer = setTimeout(() => done(null), timeoutMs);
+    set.add(done as (versions: DeviceVersions) => void);
+    return { promise, cancel: () => done(null) };
+  }
+
+  /**
+   * Forget the helper of the page a device is leaving (a navigate was sent):
+   * the versions are stale until the new page says hello. Never resolves
+   * helper waiters.
+   */
+  clearHelper(sessionId: string, deviceId: string): void {
+    const key = `${sessionId}:${deviceId}`;
+    const current = this.versions.get(key);
+    if (!current || current.helperVersion === undefined) return;
+    const {
+      helperVersion: _v,
+      helperMessages: _m,
+      helperTestCallbacks: _t,
+      helperStates: _s,
+      ...rest
+    } = current;
+    this.versions.set(key, rest);
+  }
+
+  /** Epoch ms of the latest capture held for a device, null when none. */
+  screenshotAt(sessionId: string, deviceId: string): number | null {
+    return this.screenshots.get(`${sessionId}:${deviceId}`)?.capturedAt ?? null;
   }
 
   versionsFor(sessionId: string, deviceId: string): DeviceVersions {

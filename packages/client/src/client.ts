@@ -8,8 +8,12 @@ import {
   DeviceEvents,
   DeviceEvalRequestSchema,
   DeviceEvalResultSchema,
+  DeviceWindowRequestSchema,
+  DeviceWindowResultSchema,
   type DeviceEvalRequest,
   type DeviceEvalResult,
+  type DeviceWindowRequest,
+  type DeviceWindowResult,
   FATAL_CONNECT_ERRORS,
   HintErrorSchema,
   HintShowSchema,
@@ -179,6 +183,11 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
   testCallback: [WireTestCallback, DoneFn];
   /** Test-only RPC; a Player consumer executes inside the website and replies once. */
   evaluate: [DeviceEvalRequest, (result: DeviceEvalResult) => void];
+  /**
+   * Test-only RPC; a Player consumer brings its window to the front and/or
+   * captures it (no website involved) and replies once.
+   */
+  window: [DeviceWindowRequest, (result: DeviceWindowResult) => void];
 }
 
 const SEEN_COMMANDS_LIMIT = 200;
@@ -210,6 +219,60 @@ export class RoomKitClient {
   /** Debug-only console logging; payload objects stay expandable in devtools. */
   private log(...args: unknown[]): void {
     if (this.options.debug) console.log('[roomkit]', ...args);
+  }
+
+  /**
+   * Test-only request/acknowledgement RPCs (`device:eval`, `device:window`):
+   * validate the request, refuse outside live test sessions, hand it to the
+   * consumer's handler and answer the socket.io ack exactly once (an invalid
+   * or late reply becomes a structured failure, never a hung request).
+   */
+  private answerTestRpc<
+    K extends 'evaluate' | 'window',
+    Req extends { requestId: string; timeoutMs: number },
+    Res extends { requestId: string },
+  >(
+    event: K,
+    payload: unknown,
+    reply: unknown,
+    spec: {
+      request: { safeParse(value: unknown): { success: true; data: Req } | { success: false } };
+      result: { safeParse(value: unknown): { success: true; data: Res } | { success: false } };
+      what: string;
+      /** Subject of the "… requires a live test session" refusal. */
+      requires: string;
+      timeoutMessage: string;
+      unsupportedMessage: string;
+    },
+  ): void {
+    if (typeof reply !== 'function') return;
+    const parsed = spec.request.safeParse(payload);
+    if (!parsed.success) return;
+    const request = parsed.data;
+    let answered = false;
+    const fail = (code: string, message: string) =>
+      ({ requestId: request.requestId, result: { ok: false, error: { code, message } } }) as unknown as Res;
+    const timer = setTimeout(() => done(fail('timeout', spec.timeoutMessage)), request.timeoutMs + 6000);
+    const done = (result: Res) => {
+      if (answered) return;
+      answered = true;
+      clearTimeout(timer);
+      const valid = spec.result.safeParse(result);
+      reply(valid.success && valid.data.requestId === request.requestId
+        ? valid.data : fail('invalid_result', `Player returned an invalid ${spec.what} result`));
+    };
+    if (this.lastSessionState?.mode !== 'test' || this.lastSessionState.state === 'ended') {
+      done(fail('test_only', `${spec.requires} requires a live test session`));
+      return;
+    }
+    const handlers = this.emitter.emitCollect(
+      event,
+      ...([request, done] as unknown as RoomKitClientEvents[K]),
+    );
+    if (!handlers.length) done(fail('unsupported', spec.unsupportedMessage));
+    for (const handler of handlers) {
+      void Promise.resolve(handler).catch(() => done(fail('player_error', `Player ${spec.what} handler failed`)));
+    }
   }
 
   get status(): ConnectionStatus {
@@ -341,34 +404,26 @@ export class RoomKitClient {
     socket.on(DeviceEvents.command, (payload: unknown) =>
       this.handleCommand(payload),
     );
-    socket.on(DeviceEvents.evaluate, (payload: unknown, reply: unknown) => {
-      if (typeof reply !== 'function') return;
-      const parsed = DeviceEvalRequestSchema.safeParse(payload);
-      if (!parsed.success) return;
-      const request = parsed.data;
-      let answered = false;
-      const fail = (code: string, message: string): DeviceEvalResult => ({
-        requestId: request.requestId, result: { ok: false, error: { code, message } },
-      });
-      const timer = setTimeout(() => done(fail('timeout', 'Player evaluation timed out; execution may still be running')), request.timeoutMs + 6000);
-      const done = (result: DeviceEvalResult) => {
-        if (answered) return;
-        answered = true;
-        clearTimeout(timer);
-        const valid = DeviceEvalResultSchema.safeParse(result);
-        reply(valid.success && valid.data.requestId === request.requestId
-          ? valid.data : fail('invalid_result', 'Player returned an invalid evaluation result'));
-      };
-      if (this.lastSessionState?.mode !== 'test' || this.lastSessionState.state === 'ended') {
-        done(fail('test_only', 'JS evaluation requires a live test session'));
-        return;
-      }
-      const handlers = this.emitter.emitCollect('evaluate', request, done);
-      if (!handlers.length) done(fail('unsupported', 'No website evaluation handler; use an updated Player with a website loaded'));
-      for (const handler of handlers) {
-        void Promise.resolve(handler).catch(() => done(fail('player_error', 'Player evaluation handler failed')));
-      }
-    });
+    socket.on(DeviceEvents.evaluate, (payload: unknown, reply: unknown) =>
+      this.answerTestRpc('evaluate', payload, reply, {
+        request: DeviceEvalRequestSchema,
+        result: DeviceEvalResultSchema,
+        what: 'evaluation',
+        requires: 'JS evaluation',
+        timeoutMessage: 'Player evaluation timed out; execution may still be running',
+        unsupportedMessage: 'No website evaluation handler; use an updated Player with a website loaded',
+      }),
+    );
+    socket.on(DeviceEvents.window, (payload: unknown, reply: unknown) =>
+      this.answerTestRpc('window', payload, reply, {
+        request: DeviceWindowRequestSchema,
+        result: DeviceWindowResultSchema,
+        what: 'window request',
+        requires: 'A window request',
+        timeoutMessage: 'Player window request timed out',
+        unsupportedMessage: 'No window handler; use an updated Player',
+      }),
+    );
 
     socket.on(DeviceEvents.progress, (payload: unknown) => {
       const parsed = PlaybackProgressSchema.safeParse(payload);

@@ -37,6 +37,9 @@ export class RuntimeTransportAdapter implements RuntimeTransport, OnModuleInit {
     deviceId: string,
     command: WireCommand,
   ): boolean {
+    // The page the device shows is about to change (or reload): its helper
+    // report is stale until the new document says hello.
+    if (command.type === 'navigate') this.registry.clearHelper(sessionId, deviceId);
     return this.deviceGateway.sendCommand(sessionId, deviceId, command);
   }
 

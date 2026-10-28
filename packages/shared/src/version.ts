@@ -16,11 +16,11 @@
  */
 export const EXPECTED_VERSIONS = {
   /** Player app (apps/player package.json / tauri.conf.json). */
-  player: "0.13.0",
+  player: "0.15.0",
   /** @roomkit/client (packages/client). */
-  client: "0.5.0",
+  client: "0.7.0",
   /** @roomkit/helper (packages/helper). */
-  helper: "0.8.0",
+  helper: "0.9.0",
 } as const;
 
 export type VersionedComponent = keyof typeof EXPECTED_VERSIONS;

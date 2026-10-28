@@ -66,6 +66,11 @@ export const DeviceEvents = {
   /** S→C with socket.io acknowledgement: test-only JS execution and optional fresh capture. */
   evaluate: 'device:eval',
   /**
+   * S→C with socket.io acknowledgement: test-only window RPC — bring the
+   * device window to the front and/or take a fresh capture (`DeviceWindowRequest`).
+   */
+  window: 'device:window',
+  /**
    * C→S: a batch of the player window's own log lines (`DeviceLogReport`):
    * console output, socket trace, uncaught errors. Sent periodically and
    * right after session end / reconnection. The server keeps a bounded

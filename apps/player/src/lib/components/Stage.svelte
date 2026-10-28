@@ -5,7 +5,9 @@
 	import { PlaybackEngine } from '../playback/engine';
 	import { startKiosk } from '../kiosk';
 	import { keepScreenAwake } from '../wake-lock';
-	import { startScreenshotReporter } from '../screenshot';
+	import { afterPaint, captureStage, startScreenshotReporter } from '../screenshot';
+	import { focusStageWindow, stageWindowState } from '../window-focus';
+	import { answerWindowRequest } from '../window-rpc';
 	import { vlog } from '../log';
 	import { isTauri } from '../tauri';
 	import { config } from '../stores/config.svelte';
@@ -95,6 +97,17 @@
 		});
 		// Studio's device list shows a live thumbnail of this stage.
 		stopScreenshots = startScreenshotReporter(client, () => connection.status === 'connected');
+		// Test tooling (`rk device focus|screenshot`): bring this window to the
+		// front and/or capture it, with or without a website loaded.
+		client.on('window', (request, reply) => {
+			void answerWindowRequest(request, {
+				isTest: () => connection.isTest && connection.session?.state !== 'ended',
+				focus: focusStageWindow,
+				state: stageWindowState,
+				afterPaint,
+				capture: captureStage
+			}).then(reply);
+		});
 		// The screen stays on for as long as this stage window exists, connected or not.
 		releaseWakeLock = keepScreenAwake();
 		window.addEventListener('pagehide', teardown);

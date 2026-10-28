@@ -21,6 +21,6 @@ import { RuntimeTransportAdapter } from './runtime-transport.adapter';
     PlayerGateway,
     RuntimeTransportAdapter,
   ],
-  exports: [DeviceEvalService],
+  exports: [DeviceEvalService, ConnectionRegistry],
 })
 export class GatewayModule {}

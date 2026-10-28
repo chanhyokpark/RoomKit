@@ -7,10 +7,12 @@ import { collect, parseDuration, parseInteger, readJsonArg } from '../ui/json-in
 import { out, table } from '../ui/output.js';
 import { emit, fmtDate, type GetContext } from './util.js';
 import { registerDeviceEval } from './device-eval.js';
+import { registerDeviceTest } from './device-test.js';
 
 export function register(program: Command, ctx: GetContext): void {
-  const device = program.command('device').description('Player 웹사이트 JS 실행 및 가상 장치 테스트');
+  const device = program.command('device').description('Player 웹사이트 JS 실행·창 제어 및 가상 장치 테스트');
   registerDeviceEval(device, ctx);
+  registerDeviceTest(device, ctx);
 
   device
     .command('connect')

@@ -477,4 +477,68 @@ describe('Player test sessions (e2e)', () => {
       await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(201);
     }
   });
+
+  it('reports device readiness, force-reloads websites and relays window requests', async () => {
+    const themeId = await createTheme();
+    const deviceId = await createDevice(themeId, 'reload-device');
+    const idleId = await createDevice(themeId, 'idle-device');
+    const websiteId = await createWebsite(themeId, 'reload-site', 'http://localhost:5173/');
+    const code = nextTestCode();
+    const idleCode = nextTestCode();
+    const created = await auth(request(server()).post('/api/sessions').send({
+      themeId, mode: 'test', deviceCodes: [{ deviceId, code }, { deviceId: idleId, code: idleCode }],
+    })).expect(201);
+    const sessionId = created.body.id as string;
+    const base = `/api/sessions/${sessionId}/devices`;
+    const devices = async () => (await auth(request(server()).get(base)).expect(200)).body as {
+      devices: { deviceId: string; online: boolean; windows: number; helperVersion?: string | null; website: { url: string } | null; ready: boolean; code: string | null }[];
+    };
+
+    const offline = await devices();
+    expect(offline.devices.find((d) => d.deviceId === deviceId)).toMatchObject({ online: false, windows: 0, website: null, ready: false, code });
+
+    const device = track(connectDevice(url, code));
+    const idle = track(connectDevice(url, idleCode));
+    await Promise.all([waitForEvent(device, 'welcome'), waitForEvent(idle, 'welcome')]);
+    await auth(request(server()).post(`/api/sessions/${sessionId}/start`)).expect(201);
+
+    // Navigate, ack the load like a player, and say hello like its helper.
+    const navigated = waitForEvent<WireCommand>(device, 'command');
+    await auth(request(server()).post(`/api/sessions/${sessionId}/command`).send({ type: 'navigate', deviceId, websiteId, query: [] })).expect(204);
+    const first = await navigated;
+    device.emit('ack', { commandId: first.id, status: 'done' });
+    let shown = await devices();
+    expect(shown.devices.find((d) => d.deviceId === deviceId)).toMatchObject({ online: true, windows: 1, website: { url: 'http://localhost:5173/' }, ready: false });
+    device.emit('helper:info', { version: '0.9.0', testCallbacks: ['reset'] });
+    for (let i = 0; i < 20 && !shown.devices.find((d) => d.deviceId === deviceId)?.ready; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+      shown = await devices();
+    }
+    expect(shown.devices.find((d) => d.deviceId === deviceId)).toMatchObject({ helperVersion: '0.9.0', ready: true });
+    expect(shown.devices.find((d) => d.deviceId === idleId)).toMatchObject({ online: true, website: null, ready: true });
+
+    // Reload: the forced navigate arrives, the page loads, its helper says hello.
+    device.once('command', (wire: WireCommand) => {
+      expect(wire).toMatchObject({ type: 'navigate', url: 'http://localhost:5173/', force: true });
+      device.emit('ack', { commandId: wire.id, status: 'done' });
+      device.emit('helper:info', { version: '0.9.1', testCallbacks: ['reset', 'solve'] });
+    });
+    const reloaded = await auth(request(server()).post(`${base}/${deviceId}/reload`).send({ waitReady: true, timeoutMs: 3000 })).expect(200);
+    expect(reloaded.body).toMatchObject({ websiteId, url: 'http://localhost:5173/', loaded: true, status: 'done', helperReady: true, helperVersion: '0.9.1', helperTestCallbacks: ['reset', 'solve'] });
+
+    // A device showing nothing cannot be reloaded; an offline one is a conflict.
+    await auth(request(server()).post(`${base}/${idleId}/reload`).send({})).expect(400);
+    await auth(request(server()).post(`${base}/${crypto.randomUUID()}/reload`).send({})).expect(409);
+
+    // Window RPC: answered by the device socket like the player would.
+    device.once('device:window', (req: { requestId: string; focus: boolean }, reply: (r: unknown) => void) => {
+      expect(req.focus).toBe(true);
+      reply({ requestId: req.requestId, result: { ok: true, value: { visible: true, focused: true, platform: 'test' } } });
+    });
+    const focused = await auth(request(server()).post(`${base}/${deviceId}/window`).send({ focus: true })).expect(200);
+    expect(focused.body).toMatchObject({ result: { ok: true, value: { visible: true, focused: true } } });
+    await request(server()).post(`${base}/${deviceId}/window`).send({ focus: true }).expect(401);
+
+    await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(201);
+  });
 });

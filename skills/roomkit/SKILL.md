@@ -2,7 +2,7 @@
 name: roomkit
 description: Build, deploy, author, and test RoomKit escape-room projects with the `rk` CLI — website projects (Helper), themes, assets, event sequences, sessions, and virtual devices.
 metadata:
-  roomkit-cli-version: "0.4.0"
+  roomkit-cli-version: "0.5.0"
   source: github:chanhyokpark/RoomKit#path:skills/roomkit
 ---
 
@@ -38,7 +38,8 @@ The server owns every piece of game logic — phases, timers, variables, event s
 | New website project from template | `rk init --dir site --template react --create-asset "Main screen" --asset-key main --ai claude,codex` |
 | Theme + skill only (no project scaffold) | `rk init ai --theme "Stella" --ai claude` |
 | Test a website against its dev server in Player | `rk dev` (starts `websites[].dev`, creates a test session with URL overrides, opens it in Player via `roomkit-player://` app link; `--json --no-open` for agents) |
-| Interact with the actual website and capture the result | `rk device eval <deviceKey> --session <id> --file test.js --screenshot result.png --json` — [JS execution contract](./references/website-eval.md) |
+| Interact with the actual website and capture the result | `rk device eval <deviceKey> --session <id> --file test.js --focus --screenshot result.png --json` — [JS execution contract](./references/website-eval.md) |
+| Check, focus, capture or reload a Player test window | `rk device status --session <id> --wait-ready`, `rk device focus|screenshot|reload <deviceKey> --session <id>` — [window tools](./references/website-eval.md#window-screenshot-reload-and-status) |
 | Build + deploy the website(s) in `roomkit.json` | `rk deploy` (`rk deploy <name>`, `--all`, `--no-build`) |
 | Themes | `rk theme list|use|create|update|delete|duplicate|export|import` |
 | Assets | `rk asset list --kind event`, `rk asset get <ref>`, `rk asset create --kind sfx --name Beep --key beep --file ./beep.mp3`, `rk asset update <ref> --data @data.json` |
@@ -66,7 +67,7 @@ Full command reference, `roomkit.json` schema, and workflows: [references/cli.md
 - [CLI reference](./references/cli.md) — every `rk` command, output contract, `roomkit.json`.
 - [Helper integration](./references/helper.md) — websites embedded by RoomKit Player (`@roomkit/helper`, `helper-react`, `helper-svelte`).
 - [Direct client integration](./references/client.md) — standalone devices and custom players.
-- [Website JS evaluation](./references/website-eval.md) — inspect/manipulate the Player website DOM, await results and receive fresh screenshots through `rk device eval`, without OS automation or external browser drivers.
+- [Website JS evaluation](./references/website-eval.md) — inspect/manipulate the Player website DOM, await results and receive fresh screenshots through `rk device eval`, without OS automation or external browser drivers; plus `rk device status|focus|screenshot|reload` for window readiness, focus, website-less captures and forced reloads.
 - [Hintphone integration](./references/hintphone.md) — React/Svelte hint components and transports.
 - [HTTP and Socket.io protocols](./references/api-protocol.md) — public routes and wire behavior.
 - [Troubleshooting](./references/troubleshooting.md) — failure diagnosis by subsystem.

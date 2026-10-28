@@ -1549,6 +1549,48 @@ export class SessionEngine {
     return status === 'done';
   }
 
+  /**
+   * Test tooling: re-send the website a device currently shows as a forced
+   * navigate (the player re-creates its iframe for the same URL) and wait
+   * for the load ack. Test sessions only; the device must have a website.
+   */
+  async reloadWebsite(
+    deviceId: string,
+    timeoutMs: number,
+  ): Promise<{
+    websiteId: string;
+    url: string;
+    status: 'done' | 'failed' | 'ended' | 'timeout' | 'aborted';
+  }> {
+    if (this.mode !== 'test') {
+      throw new EngineStateError(
+        'Website reload is only available in test sessions',
+      );
+    }
+    if (this.state === 'ended') {
+      throw new EngineStateError('Session has ended');
+    }
+    const website = this.deviceWebsites.get(deviceId);
+    if (!website) {
+      throw new EngineStateError(
+        'No website is shown on this device; navigate it first',
+      );
+    }
+    const wire: WireCommand = {
+      id: randomUUID(),
+      type: 'navigate',
+      websiteId: website.websiteId,
+      url: website.url,
+      force: true,
+    };
+    const online = this.sendWire(deviceId, wire, 'website reload');
+    if (!online) {
+      throw new EngineStateError('Device is offline in this session');
+    }
+    const status = await this.waitForAck(wire.id, undefined, timeoutMs);
+    return { websiteId: website.websiteId, url: website.url, status };
+  }
+
   private async callEvent(
     eventId: string,
     depth: number,

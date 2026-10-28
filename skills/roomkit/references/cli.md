@@ -224,7 +224,16 @@ rk sequence validate --sequence -
 
 ## Sessions and devices
 
-`rk device eval <deviceRef> --session <id> (--script <js> | --file <path|->) [--timeout 10000] [--screenshot <path.png|path.jpg>] --json` executes an async JS body in a connected Player test website. References resolve in the session's theme. See [Website JS evaluation](./website-eval.md) for bindings, errors, versions and screenshots.
+`rk device eval <deviceRef> --session <id> (--script <js> | --file <path|->) [--timeout 10000] [--screenshot <path.png|path.jpg>] [--overwrite] [--focus] --json` executes an async JS body in a connected Player test website. References resolve in the session's theme. See [Website JS evaluation](./website-eval.md) for bindings, errors, versions and screenshots.
+
+```sh
+rk device status --session <id> [--device <ref>] [--wait-ready] [--timeout 30000]   # online/windows/helper/website/ready per device
+rk device focus <deviceRef> --session <id> [--timeout 10000]                        # show, unminimize, focus, wait until visible
+rk device screenshot <deviceRef> <path.png|.jpg> --session <id> [--focus] [--overwrite]   # fresh capture, no website needed
+rk device reload <deviceRef> --session <id> [--wait-ready] [--focus] [--timeout 15000]    # forced website reload (+ Helper hello)
+```
+
+`status` works for any session; the other three need a live test session and exactly one Player window for the device. `--wait-ready` on `status` polls until the devices can run `eval`; on `reload` it waits for the reloaded page's Helper handshake. Details and error codes: [Window, screenshot, reload and status](./website-eval.md#window-screenshot-reload-and-status).
 
 ```sh
 rk session create [--mode test|production] [--device-code <deviceRef>=<code>]... [--player <launcherId>] [--devices a,b] [--url-override <websiteRef>=<url>]... [--start]

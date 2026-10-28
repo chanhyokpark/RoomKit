@@ -188,6 +188,26 @@ export class SessionRuntimeService
     );
   }
 
+  /** Test tooling: force-reload the website a device shows and await its load ack. */
+  async reloadWebsite(
+    sessionId: string,
+    deviceId: string,
+    timeoutMs: number,
+  ): Promise<{
+    websiteId: string;
+    url: string;
+    status: 'done' | 'failed' | 'ended' | 'timeout' | 'aborted';
+  }> {
+    return this.wrapAsync(() =>
+      this.getEngine(sessionId).reloadWebsite(deviceId, timeoutMs),
+    );
+  }
+
+  /** Playing media / websites / states of one session (null when not live). */
+  getSessionMedia(sessionId: string): SessionMedia | null {
+    return this.engines.get(sessionId)?.sessionMedia() ?? null;
+  }
+
   /** Debug window: run a website-registered test callback (test sessions only). */
   async runTestCallback(
     sessionId: string,

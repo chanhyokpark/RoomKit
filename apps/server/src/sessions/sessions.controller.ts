@@ -17,7 +17,11 @@ import {
   PushHintInputSchema,
   RunTestCallbackInputSchema,
   DeviceEvalInputSchema,
+  DeviceReloadInputSchema,
+  DeviceWindowInputSchema,
   type DeviceEvalInput,
+  type DeviceReloadInput,
+  type DeviceWindowInput,
   SwitchPhaseInputSchema,
   type AdjustTimerInput,
   type Command,
@@ -31,6 +35,7 @@ import {
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { DeviceLogsService } from '../runtime/device-logs.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
+import { SessionDevicesService } from './session-devices.service';
 import { SessionsService } from './sessions.service';
 import { SessionSummaryService } from './session-summary.service';
 import { DeviceEvalService } from '../gateway/device-eval.service';
@@ -43,6 +48,7 @@ export class SessionsController {
     private readonly summaryService: SessionSummaryService,
     private readonly deviceLogs: DeviceLogsService,
     private readonly deviceEval: DeviceEvalService,
+    private readonly sessionDevices: SessionDevicesService,
   ) {}
 
   @Get()
@@ -195,6 +201,13 @@ export class SessionsController {
     await this.runtime.pushHint(id, input);
   }
 
+  /** Live per-device diagnostics: sockets, versions, shown website/state, eval readiness. */
+  @Get(':id/devices')
+  async listDevices(@Param('id') id: string) {
+    const session = await this.sessionsService.get(id);
+    return this.sessionDevices.list(session);
+  }
+
   /** Player log lines one device uploaded during this session (in-memory, oldest first). */
   @Get(':id/devices/:deviceId/logs')
   async listDeviceLogs(
@@ -219,6 +232,32 @@ export class SessionsController {
   ) {
     const session = await this.sessionsService.get(id);
     return this.deviceEval.evaluate(session, deviceId, input);
+  }
+
+  /** Bring one test device window to the front and/or capture it (no website needed). */
+  @Post(':id/devices/:deviceId/window')
+  @HttpCode(200)
+  async deviceWindow(
+    @Param('id') id: string,
+    @Param('deviceId') deviceId: string,
+    @Body(new ZodValidationPipe(DeviceWindowInputSchema))
+    input: DeviceWindowInput,
+  ) {
+    const session = await this.sessionsService.get(id);
+    return this.deviceEval.window(session, deviceId, input);
+  }
+
+  /** Force-reload the website one test device shows; optionally wait for its Helper. */
+  @Post(':id/devices/:deviceId/reload')
+  @HttpCode(200)
+  async reloadDevice(
+    @Param('id') id: string,
+    @Param('deviceId') deviceId: string,
+    @Body(new ZodValidationPipe(DeviceReloadInputSchema))
+    input: DeviceReloadInput,
+  ) {
+    const session = await this.sessionsService.get(id);
+    return this.deviceEval.reload(session, deviceId, input);
   }
 
   /** Run a website-registered test callback on one device (test sessions only). */

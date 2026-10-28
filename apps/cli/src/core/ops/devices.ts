@@ -1,23 +1,91 @@
-import { DeviceEvalInputSchema, DeviceEvalResultSchema, SessionResponseSchema, type DeviceEvalInput } from '@roomkit/shared';
+import {
+  DeviceEvalInputSchema,
+  DeviceEvalResultSchema,
+  DeviceReloadInputSchema,
+  DeviceReloadResultSchema,
+  DeviceWindowInputSchema,
+  DeviceWindowResultSchema,
+  SessionDevicesResponseSchema,
+  SessionResponseSchema,
+  type DeviceEvalInput,
+  type DeviceReloadInput,
+  type DeviceWindowInput,
+  type SessionDevicesResponse,
+} from '@roomkit/shared';
 import { z } from 'zod';
 import { ThemeIndex } from '../refs.js';
 import type { OpsContext } from '../context.js';
 import { ToolError } from '../session.js';
 import type { DeviceState } from '../virtual-device.js';
 
-/** Resolve in the session's theme (independent of the current project theme). Never retry JS. */
-export async function evaluateDevice(ctx: OpsContext, sessionId: string, deviceRef: string, input: DeviceEvalInput) {
+/**
+ * Resolve a device reference in the session's theme (independent of the
+ * current project theme) for the test-only device RPCs, which all require a
+ * live test session.
+ */
+export async function resolveSessionDevice(ctx: OpsContext, sessionId: string, deviceRef: string, what: string) {
   z.uuid().parse(sessionId);
-  const body = DeviceEvalInputSchema.parse(input);
   const session = await ctx.api.api(`/sessions/${sessionId}`, { schema: SessionResponseSchema });
   if (session.mode !== 'test' || session.state === 'ended') {
-    throw new ToolError('JS evaluation requires a live test session.', 'test_only');
+    throw new ToolError(`${what} requires a live test session.`, 'test_only');
   }
   const index = await ThemeIndex.load(ctx, session.themeId);
-  const deviceId = index.resolveAssetId(deviceRef, 'device');
+  return { session, deviceId: index.resolveAssetId(deviceRef, 'device') };
+}
+
+/** Resolve in the session's theme (independent of the current project theme). Never retry JS. */
+export async function evaluateDevice(ctx: OpsContext, sessionId: string, deviceRef: string, input: DeviceEvalInput) {
+  const body = DeviceEvalInputSchema.parse(input);
+  const { deviceId } = await resolveSessionDevice(ctx, sessionId, deviceRef, 'JS evaluation');
   return ctx.api.api(`/sessions/${sessionId}/devices/${deviceId}/eval`, {
     method: 'POST', body, schema: DeviceEvalResultSchema,
   });
+}
+
+/** Bring the device's Player window to the front and/or capture it (no website needed). */
+export async function windowDevice(ctx: OpsContext, sessionId: string, deviceRef: string, input: Partial<DeviceWindowInput>) {
+  const body = DeviceWindowInputSchema.parse(input);
+  const { deviceId } = await resolveSessionDevice(ctx, sessionId, deviceRef, 'A window request');
+  return ctx.api.api(`/sessions/${sessionId}/devices/${deviceId}/window`, {
+    method: 'POST', body, schema: DeviceWindowResultSchema,
+  });
+}
+
+/** Force-reload the website the device shows; optionally wait for its Helper hello. */
+export async function reloadDevice(ctx: OpsContext, sessionId: string, deviceRef: string, input: Partial<DeviceReloadInput>) {
+  const body = DeviceReloadInputSchema.parse(input);
+  const { deviceId } = await resolveSessionDevice(ctx, sessionId, deviceRef, 'Website reload');
+  return ctx.api.api(`/sessions/${sessionId}/devices/${deviceId}/reload`, {
+    method: 'POST', body, schema: DeviceReloadResultSchema,
+  });
+}
+
+/** Live per-device diagnostics of a session (any mode). */
+export function listSessionDevices(ctx: OpsContext, sessionId: string): Promise<SessionDevicesResponse> {
+  z.uuid().parse(sessionId);
+  return ctx.api.api(`/sessions/${sessionId}/devices`, { schema: SessionDevicesResponseSchema });
+}
+
+/**
+ * Poll the device list until every device (or the given one) is ready for
+ * `eval`: exactly one window online and, when a website is shown, its Helper
+ * said hello. Resolves with the last snapshot and whether it became ready.
+ */
+export async function waitForDevicesReady(
+  ctx: OpsContext,
+  sessionId: string,
+  opts: { deviceId?: string; timeoutMs: number; intervalMs?: number },
+): Promise<{ ready: boolean; status: SessionDevicesResponse }> {
+  const deadline = Date.now() + opts.timeoutMs;
+  const interval = opts.intervalMs ?? 500;
+  for (;;) {
+    const status = await listSessionDevices(ctx, sessionId);
+    const targets = opts.deviceId ? status.devices.filter((d) => d.deviceId === opts.deviceId) : status.devices;
+    const ready = targets.length > 0 && targets.every((d) => d.ready);
+    if (ready || status.state === 'ended') return { ready, status };
+    if (Date.now() + interval > deadline) return { ready: false, status };
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
 }
 
 /**

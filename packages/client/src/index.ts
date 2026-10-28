@@ -15,6 +15,8 @@ export type {
   DeviceCallState,
   DeviceEvalRequest,
   DeviceEvalResult,
+  DeviceWindowRequest,
+  DeviceWindowResult,
   HintError,
   HintShow,
   PlaybackProgress,
