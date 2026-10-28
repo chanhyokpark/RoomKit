@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import type { PlayerTestStart, WireCommand } from '@roomkit/shared';
+import { RoomKitClient } from '@roomkit/client';
 import request from 'supertest';
 import type { Socket } from 'socket.io-client';
 import {
@@ -445,5 +446,35 @@ describe('Player test sessions (e2e)', () => {
     await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(
       201,
     );
+  });
+
+  it('authenticates and routes JS evaluation through a real client acknowledgement', async () => {
+    const themeId = await createTheme();
+    const deviceId = await createDevice(themeId, 'eval-device');
+    const code = nextTestCode();
+    const created = await auth(request(server()).post('/api/sessions').send({ themeId, mode: 'test', deviceCodes: [{ deviceId, code }] })).expect(201);
+    const sessionId = created.body.id as string;
+    const path = `/api/sessions/${sessionId}/devices/${deviceId}/eval`;
+    await request(server()).post(path).send({ code: 'return 42;' }).expect(401);
+    const client = new RoomKitClient({ serverUrl: url, deviceCode: code, persistTestCode: false });
+    let calls = 0;
+    client.on('evaluate', (req, reply) => {
+      calls++;
+      reply({ requestId: req.requestId, result: { ok: true, value: { code: req.code } },
+        ...(req.screenshot ? { screenshot: { image: 'data:image/png;base64,aGVsbG8=', width: 1, height: 1, capturedAt: Date.now() } } : {}) });
+    });
+    try {
+      const welcome = new Promise<void>((resolve) => client.on('welcome', () => resolve()));
+      client.connect();
+      await welcome;
+      const response = await auth(request(server()).post(path).send({ code: 'return 42;', screenshot: true })).expect(200);
+      expect(response.body).toMatchObject({ result: { ok: true, value: { code: 'return 42;' } }, screenshot: { width: 1 } });
+      expect(calls).toBe(1);
+      await auth(request(server()).post(path).send({ code: '', timeoutMs: 0 })).expect(400);
+      expect(calls).toBe(1);
+    } finally {
+      client.disconnect();
+      await auth(request(server()).post(`/api/sessions/${sessionId}/end`)).expect(201);
+    }
   });
 });

@@ -6,6 +6,8 @@ Use Helper only for a website navigated inside RoomKit Player's iframe. It does 
 
 ## Installation
 
+For DOM inspection, scripted interaction and fresh Player screenshots during a test session, see [Website JS evaluation](./website-eval.md). Helper 0.9.0+ supports this automatically through `rk device eval`; no per-button callbacks are required.
+
 ```sh
 pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
 ```

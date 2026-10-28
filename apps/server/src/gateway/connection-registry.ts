@@ -116,6 +116,11 @@ export class ConnectionRegistry {
     return (this.sockets.get(`${sessionId}:${deviceId}`)?.size ?? 0) > 0;
   }
 
+  /** Script RPCs must target exactly one window, never broadcast mutations. */
+  socketsFor(sessionId: string, deviceId: string): Socket[] {
+    return [...(this.sockets.get(`${sessionId}:${deviceId}`) ?? [])];
+  }
+
   /** True while any device socket of the session is connected. */
   hasAnyForSession(sessionId: string): boolean {
     for (const key of this.sockets.keys()) {

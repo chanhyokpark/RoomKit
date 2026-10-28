@@ -6,6 +6,10 @@ import {
   DEVICE_NAMESPACE,
   DeviceAssetManifestSchema,
   DeviceEvents,
+  DeviceEvalRequestSchema,
+  DeviceEvalResultSchema,
+  type DeviceEvalRequest,
+  type DeviceEvalResult,
   FATAL_CONNECT_ERRORS,
   HintErrorSchema,
   HintShowSchema,
@@ -173,6 +177,8 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    * server's REST reply waits on this ack.
    */
   testCallback: [WireTestCallback, DoneFn];
+  /** Test-only RPC; a Player consumer executes inside the website and replies once. */
+  evaluate: [DeviceEvalRequest, (result: DeviceEvalResult) => void];
 }
 
 const SEEN_COMMANDS_LIMIT = 200;
@@ -335,6 +341,34 @@ export class RoomKitClient {
     socket.on(DeviceEvents.command, (payload: unknown) =>
       this.handleCommand(payload),
     );
+    socket.on(DeviceEvents.evaluate, (payload: unknown, reply: unknown) => {
+      if (typeof reply !== 'function') return;
+      const parsed = DeviceEvalRequestSchema.safeParse(payload);
+      if (!parsed.success) return;
+      const request = parsed.data;
+      let answered = false;
+      const fail = (code: string, message: string): DeviceEvalResult => ({
+        requestId: request.requestId, result: { ok: false, error: { code, message } },
+      });
+      const timer = setTimeout(() => done(fail('timeout', 'Player evaluation timed out; execution may still be running')), request.timeoutMs + 6000);
+      const done = (result: DeviceEvalResult) => {
+        if (answered) return;
+        answered = true;
+        clearTimeout(timer);
+        const valid = DeviceEvalResultSchema.safeParse(result);
+        reply(valid.success && valid.data.requestId === request.requestId
+          ? valid.data : fail('invalid_result', 'Player returned an invalid evaluation result'));
+      };
+      if (this.lastSessionState?.mode !== 'test' || this.lastSessionState.state === 'ended') {
+        done(fail('test_only', 'JS evaluation requires a live test session'));
+        return;
+      }
+      const handlers = this.emitter.emitCollect('evaluate', request, done);
+      if (!handlers.length) done(fail('unsupported', 'No website evaluation handler; use an updated Player with a website loaded'));
+      for (const handler of handlers) {
+        void Promise.resolve(handler).catch(() => done(fail('player_error', 'Player evaluation handler failed')));
+      }
+    });
 
     socket.on(DeviceEvents.progress, (payload: unknown) => {
       const parsed = PlaybackProgressSchema.safeParse(payload);

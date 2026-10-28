@@ -13,6 +13,8 @@ export type {
   DeviceAssetEntry,
   DeviceAssetManifest,
   DeviceCallState,
+  DeviceEvalRequest,
+  DeviceEvalResult,
   HintError,
   HintShow,
   PlaybackProgress,

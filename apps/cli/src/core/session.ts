@@ -19,6 +19,7 @@ export class ToolError extends Error {
     message: string,
     /** Stable machine-readable code for --json output and exit codes. */
     readonly code: string = 'error',
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = 'ToolError';

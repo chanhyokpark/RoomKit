@@ -224,6 +224,8 @@ rk sequence validate --sequence -
 
 ## Sessions and devices
 
+`rk device eval <deviceRef> --session <id> (--script <js> | --file <path|->) [--timeout 10000] [--screenshot <path.png|path.jpg>] --json` executes an async JS body in a connected Player test website. References resolve in the session's theme. See [Website JS evaluation](./website-eval.md) for bindings, errors, versions and screenshots.
+
 ```sh
 rk session create [--mode test|production] [--device-code <deviceRef>=<code>]... [--player <launcherId>] [--devices a,b] [--url-override <websiteRef>=<url>]... [--start]
 rk session start|pause|resume|end|restart-phase|reset-devices <id>

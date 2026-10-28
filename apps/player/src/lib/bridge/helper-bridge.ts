@@ -1,4 +1,4 @@
-import type { DoneFn, RoomKitClient } from '@roomkit/client';
+import type { ConnectionStatus, DoneFn, RoomKitClient } from '@roomkit/client';
 import {
 	HelperToPlayerSchema,
 	PLAYER_SOURCE,
@@ -22,6 +22,9 @@ import { connection } from '../stores/connection.svelte';
 import { runHaptics } from '../haptics';
 import { vlog } from '../log';
 import { stage } from '../stores/stage.svelte';
+import { captureStage, afterPaint } from '../screenshot';
+import { WebsiteEvaluator } from './website-evaluator';
+import type { DeviceEvalRequest, DeviceEvalResult, SessionState } from '@roomkit/shared';
 
 /**
  * Player side of the @roomkit/helper postMessage bridge (contract in
@@ -33,6 +36,8 @@ import { stage } from '../stores/stage.svelte';
  * away (reload or destroy) — a non-claiming page restores player rendering.
  */
 export class HelperBridge {
+	private readonly evaluator: WebsiteEvaluator;
+	private helperEval = false;
 	private ready = false;
 	/** A hello arrived after the previous iframe load event (or construction). */
 	private helloSinceLoad = false;
@@ -65,6 +70,28 @@ export class HelperBridge {
 		url: string
 	) {
 		this.targetOrigin = new URL(url).origin;
+		this.evaluator = new WebsiteEvaluator({
+			post: (request) => this.iframe.contentWindow!.postMessage({ ...request, source: PLAYER_SOURCE, type: 'test:eval' }, this.targetOrigin),
+			isTest: () => this.client.sessionState?.mode === 'test' && this.client.sessionState.state !== 'ended',
+			afterPaint,
+			capture: captureStage
+		});
+		const onEvaluate = (request: DeviceEvalRequest, reply: (result: DeviceEvalResult) => void) =>
+			this.evaluator.run(request).then(reply);
+		const onStatus = (status: ConnectionStatus) => {
+			if (status !== 'connected') {
+				this.evaluator.invalidate('Player disconnected');
+				this.post({ source: PLAYER_SOURCE, type: 'mode', mode: 'production' });
+			}
+		};
+		const onSession = (session: SessionState) => {
+			if (session.mode !== 'test' || session.state === 'ended') {
+				this.evaluator.invalidate('Test session ended');
+				this.post({ source: PLAYER_SOURCE, type: 'mode', mode: 'production' });
+			}
+		};
+		this.client.on('evaluate', onEvaluate).on('status', onStatus).on('sessionState', onSession);
+		this.cleanups.push(() => this.client.off('evaluate', onEvaluate).off('status', onStatus).off('sessionState', onSession));
 
 		const onWindowMessage = (event: MessageEvent) => this.receive(event);
 		window.addEventListener('message', onWindowMessage);
@@ -84,6 +111,7 @@ export class HelperBridge {
 		// handshake for good (the helper's hello is one-shot on old bundles).
 		const onLoad = () => {
 			if (!this.helloSinceLoad) {
+				this.evaluator.invalidate('Website navigated or reloaded');
 				this.ready = false;
 				stage.dropHelperClaims();
 				// Awaited messages already delivered to the old document will never
@@ -125,6 +153,8 @@ export class HelperBridge {
 		const onHintError = (error: HintError) =>
 			this.send({ source: PLAYER_SOURCE, type: 'hint:error', error });
 		const onWelcome = () => {
+			this.evaluator.hello(this.ready && this.helperEval);
+			this.post({ source: PLAYER_SOURCE, type: 'mode', mode: connection.session?.mode ?? 'production' });
 			if (this.helperVersion !== undefined) {
 				this.client.reportHelperInfo(this.helperVersion, this.helperExtras);
 			}
@@ -157,6 +187,7 @@ export class HelperBridge {
 	}
 
 	destroy(): void {
+		this.evaluator.invalidate('Website closed or navigated');
 		for (const cleanup of this.cleanups.splice(0)) cleanup();
 		this.buffered = [];
 		stage.dropHelperClaims();
@@ -223,6 +254,7 @@ export class HelperBridge {
 
 	private receive(event: MessageEvent): void {
 		if (event.source !== this.iframe.contentWindow) return;
+		if (event.origin !== this.targetOrigin) return;
 		const parsed = HelperToPlayerSchema.safeParse(event.data);
 		if (!parsed.success) {
 			// Only warn for messages that claim to be from the helper — a silent
@@ -236,6 +268,8 @@ export class HelperBridge {
 		vlog('bridge', '← helper', msg.type, msg);
 		switch (msg.type) {
 			case 'hello': {
+				this.helperEval = msg.testEval === true;
+				this.evaluator.hello(msg.testEval === true);
 				this.ready = true;
 				this.helloSinceLoad = true;
 				stage.helperRenders = { ...msg.renders };
@@ -319,6 +353,12 @@ export class HelperBridge {
 				done(msg.ok ? 'done' : 'failed');
 				return;
 			}
+			case 'test:eval:result':
+				void this.evaluator.receive(msg.requestId, msg.result);
+				return;
+			case 'test:eval:invalidate':
+				this.evaluator.invalidate('Website navigated or its Helper was destroyed');
+				return;
 		}
 	}
 

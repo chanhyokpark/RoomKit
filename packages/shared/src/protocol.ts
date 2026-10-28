@@ -63,6 +63,8 @@ export const DeviceEvents = {
    * and relays it to /admin as `device:screenshot`.
    */
   screenshot: 'device:screenshot',
+  /** S→C with socket.io acknowledgement: test-only JS execution and optional fresh capture. */
+  evaluate: 'device:eval',
   /**
    * C→S: a batch of the player window's own log lines (`DeviceLogReport`):
    * console output, socket trace, uncaught errors. Sent periodically and

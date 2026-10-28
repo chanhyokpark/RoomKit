@@ -16,6 +16,8 @@ import {
   ManualTriggerInputSchema,
   PushHintInputSchema,
   RunTestCallbackInputSchema,
+  DeviceEvalInputSchema,
+  type DeviceEvalInput,
   SwitchPhaseInputSchema,
   type AdjustTimerInput,
   type Command,
@@ -31,6 +33,7 @@ import { DeviceLogsService } from '../runtime/device-logs.service';
 import { SessionRuntimeService } from '../runtime/session-runtime.service';
 import { SessionsService } from './sessions.service';
 import { SessionSummaryService } from './session-summary.service';
+import { DeviceEvalService } from '../gateway/device-eval.service';
 
 @Controller('sessions')
 export class SessionsController {
@@ -39,6 +42,7 @@ export class SessionsController {
     private readonly runtime: SessionRuntimeService,
     private readonly summaryService: SessionSummaryService,
     private readonly deviceLogs: DeviceLogsService,
+    private readonly deviceEval: DeviceEvalService,
   ) {}
 
   @Get()
@@ -203,6 +207,18 @@ export class SessionsController {
       deviceId,
       lines: this.deviceLogs.list(id, deviceId),
     };
+  }
+
+  /** Execute JS in one test website; optionally return a fresh native capture. */
+  @Post(':id/devices/:deviceId/eval')
+  @HttpCode(200)
+  async evaluateDevice(
+    @Param('id') id: string,
+    @Param('deviceId') deviceId: string,
+    @Body(new ZodValidationPipe(DeviceEvalInputSchema)) input: DeviceEvalInput,
+  ) {
+    const session = await this.sessionsService.get(id);
+    return this.deviceEval.evaluate(session, deviceId, input);
   }
 
   /** Run a website-registered test callback on one device (test sessions only). */

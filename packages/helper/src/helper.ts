@@ -10,6 +10,8 @@ import type {
   HelperMessageDone,
   HelperRenderClaims,
   HelperTestCallbackDone,
+  HelperEvalResult,
+  HelperEvalInvalidate,
   HelperTimerGet,
   HelperTrigger,
   HelperVideoEnded,
@@ -29,6 +31,7 @@ import type {
 } from '@roomkit/shared';
 import { Emitter } from './emitter.js';
 import { HELPER_VERSION } from './version.js';
+import { evaluateScript } from './evaluate.js';
 
 /*
  * The shared schemas define the envelopes (packages/shared/src/helper.ts),
@@ -253,7 +256,15 @@ export class RoomKitHelper {
   private readonly emitter = new Emitter<RoomKitHelperEvents>();
   private readonly parent: Pick<Window, 'postMessage'>;
   private readonly self: Pick<Window, 'addEventListener' | 'removeEventListener'>;
-  private readonly onMessage = (event: MessageEvent) => this.receive(event.data);
+  private readonly onMessage = (event: MessageEvent) => {
+    if (event.source === this.parent) this.receive(event.data);
+  };
+  private evaluation: AbortController | null = null;
+  private evaluationTimedOut = false;
+  private readonly onPageHide = () => {
+    this.evaluation?.abort();
+    if (this.mode === 'test') this.post({ source: HELPER_SOURCE, type: 'test:eval:invalidate' });
+  };
   // Test sessions keep the context menu so devtools stay reachable.
   private readonly onContextMenu = (event: Event) => {
     if (this.mode !== 'test') event.preventDefault();
@@ -331,6 +342,7 @@ export class RoomKitHelper {
     this.states = options.states ?? [];
     this.testCallbacks = options.testCallbacks ?? {};
     this.self.addEventListener('message', this.onMessage as EventListener);
+    this.self.addEventListener('pagehide', this.onPageHide);
     if (options.lockdown !== false) this.lockdown();
     // Tells the player this frame is ready (and which slots it renders); the
     // player flushes buffered messages on it.
@@ -343,6 +355,7 @@ export class RoomKitHelper {
         video: options.renders?.video ?? false,
       },
       version: HELPER_VERSION,
+      testEval: true,
       messages: this.messages,
       testCallbacks: Object.keys(this.testCallbacks),
       states: this.states,
@@ -587,6 +600,8 @@ export class RoomKitHelper {
 
   /** Unregisters the message listener; the instance is dead afterwards. */
   destroy(): void {
+    this.onPageHide();
+    this.self.removeEventListener('pagehide', this.onPageHide);
     this.stopHelloRetry();
     this.revokeVideoUrl();
     this.self.removeEventListener('message', this.onMessage as EventListener);
@@ -630,6 +645,8 @@ export class RoomKitHelper {
       | HelperVideoError
       | HelperMessageDone
       | HelperTestCallbackDone
+      | HelperEvalResult
+      | HelperEvalInvalidate
       | HelperHaptics
       | HelperCallRequest
       | HelperCallCancel,
@@ -647,6 +664,32 @@ export class RoomKitHelper {
     this.stopHelloRetry();
     this.setBridge('connected');
     switch (msg.type) {
+      case 'test:eval': {
+        if (typeof msg.requestId !== 'string' || typeof msg.code !== 'string'
+          || !msg.code.length || msg.code.length > 64_000
+          || typeof msg.timeoutMs !== 'number' || !Number.isInteger(msg.timeoutMs)
+          || msg.timeoutMs < 100 || msg.timeoutMs > 60_000) return;
+        const requestId = msg.requestId;
+        const reply = (result: HelperEvalResult['result']) => this.post({
+          source: HELPER_SOURCE, type: 'test:eval:result', requestId, result,
+        });
+        if (this.mode !== 'test') {
+          reply({ ok: false, error: { code: 'test_only', message: 'JS evaluation is only available in test sessions' } });
+          return;
+        }
+        if (this.evaluation || this.evaluationTimedOut) {
+          reply({ ok: false, error: { code: 'busy', message: this.evaluationTimedOut ? 'Reload the website after a script timeout before evaluating again' : 'Another script is running' } });
+          return;
+        }
+        const controller = new AbortController();
+        this.evaluation = controller;
+        void evaluateScript(msg.code, this, msg.timeoutMs, controller.signal).then((result) => {
+          this.evaluation = null;
+          if (!result.ok && result.error.code === 'timeout') this.evaluationTimedOut = true;
+          reply(result);
+        });
+        return;
+      }
       case 'message': {
         if (typeof msg.payload !== 'object' || msg.payload === null) return;
         const payload = msg.payload as Record<string, JsonValue>;
@@ -807,6 +850,7 @@ export class RoomKitHelper {
       }
       case 'mode': {
         if (msg.mode !== 'test' && msg.mode !== 'production') return;
+        if (msg.mode !== 'test') this.evaluation?.abort();
         if (this.mode !== msg.mode) {
           this.mode = msg.mode;
           this.emitter.emit('mode', this.mode);

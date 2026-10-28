@@ -9,13 +9,25 @@ export const SCREENSHOT_INTERVAL_MS = 5000;
 const CAPTURE_WIDTH = 960;
 const JPEG_QUALITY = 0.7;
 
+/** Two paint turns, bounded even if the window becomes hidden. */
+export function afterPaint(): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (document.hidden) { reject(new Error('Show the Player window before capturing')); return; }
+		let frame = 0;
+		const timer = setTimeout(() => { cancelAnimationFrame(frame); reject(new Error('Player did not paint')); }, 1000);
+		frame = requestAnimationFrame(() => {
+			frame = requestAnimationFrame(() => { clearTimeout(timer); resolve(); });
+		});
+	});
+}
+
 /**
  * Snapshot this webview through the native webview API (no screen-recording
  * permission; see src-tauri/src/screenshot.rs), then downscale/re-encode to a
  * JPEG data URL that fits the protocol's size cap. Null in the browser dev
  * harness or when the result cannot be made small enough.
  */
-export async function captureStage(): Promise<DeviceScreenshotReport | null> {
+export async function captureStage(format: 'jpeg' | 'png' = 'jpeg'): Promise<DeviceScreenshotReport | null> {
 	if (!isTauri()) return null;
 	const { invoke } = await import('@tauri-apps/api/core');
 	const bytes = await invoke<ArrayBuffer>('capture_webview', { maxWidth: CAPTURE_WIDTH });
@@ -31,9 +43,9 @@ export async function captureStage(): Promise<DeviceScreenshotReport | null> {
 		if (!ctx) return null;
 		ctx.drawImage(bitmap, 0, 0, width, height);
 		let quality = JPEG_QUALITY;
-		let image = canvas.toDataURL('image/jpeg', quality);
+		let image = canvas.toDataURL(`image/${format}`, quality);
 		// Busy frames compress worse; trade quality before giving up.
-		while (image.length > SCREENSHOT_MAX_CHARS && quality > 0.35) {
+		while (format === 'jpeg' && image.length > SCREENSHOT_MAX_CHARS && quality > 0.35) {
 			quality -= 0.15;
 			image = canvas.toDataURL('image/jpeg', quality);
 		}

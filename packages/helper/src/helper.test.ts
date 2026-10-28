@@ -9,7 +9,7 @@ import {
 import { RoomKitHelper, type RoomKitHelperOptions } from './helper.js';
 import { HELPER_VERSION } from './version.js';
 
-type Listener = (event: { data: unknown }) => void;
+type Listener = (event: { data: unknown; source?: unknown }) => void;
 
 /** Fake iframe environment: capture outbound posts, allow injecting inbound. */
 function env(
@@ -17,20 +17,22 @@ function env(
 ) {
   const posted: unknown[] = [];
   const listeners = new Set<Listener>();
+  const pagehideListeners = new Set<Listener>();
+  const parent = {
+    postMessage: ((message: unknown) => void posted.push(message)) as Window['postMessage'],
+  };
   const helper = new RoomKitHelper({
     ...options,
-    parentWindow: {
-      postMessage: ((message: unknown) => void posted.push(message)) as Window['postMessage'],
-    },
+    parentWindow: parent,
     selfWindow: {
-      addEventListener: ((_: string, l: Listener) => void listeners.add(l)) as Window['addEventListener'],
-      removeEventListener: ((_: string, l: Listener) => void listeners.delete(l)) as Window['removeEventListener'],
+      addEventListener: ((type: string, l: Listener) => void (type === 'message' ? listeners : pagehideListeners).add(l)) as Window['addEventListener'],
+      removeEventListener: ((type: string, l: Listener) => void (type === 'message' ? listeners : pagehideListeners).delete(l)) as Window['removeEventListener'],
     },
   });
-  const inject = (data: unknown) => {
-    for (const l of [...listeners]) l({ data });
+  const inject = (data: unknown, source: unknown = parent) => {
+    for (const l of [...listeners]) l({ data, source });
   };
-  return { helper, posted, listeners, inject };
+  return { helper, posted, listeners, inject, pagehide: () => { for (const l of pagehideListeners) l({ data: null }); } };
 }
 
 const HINT: HintShow = {
@@ -54,6 +56,7 @@ describe('RoomKitHelper', () => {
         type: 'hello',
         renders: { subtitle: false, hintCode: false, video: false },
         version: HELPER_VERSION,
+        testEval: true,
         messages: [],
         testCallbacks: [],
         states: [],
@@ -69,6 +72,7 @@ describe('RoomKitHelper', () => {
       type: 'hello',
       renders: { subtitle: true, hintCode: false, video: true },
       version: HELPER_VERSION,
+      testEval: true,
       messages: [],
       testCallbacks: [],
       states: [],
@@ -347,6 +351,57 @@ describe('RoomKitHelper', () => {
         type: 'test:callback:done',
         ok: false,
       });
+    });
+  });
+
+  describe('test eval bridge', () => {
+    const request = { source: 'roomkit-player', type: 'test:eval', requestId: '77777777-7777-4777-8777-777777777777', code: 'return { mode: roomkit.sessionMode };', timeoutMs: 100 };
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('rejects production and ignores messages from windows other than its parent', async () => {
+      const { helper, posted, inject } = env();
+      inject({ source: 'roomkit-player', type: 'mode', mode: 'test' }, {});
+      inject(request, {});
+      expect(posted).toHaveLength(1);
+      inject(request);
+      expect(posted[1]).toMatchObject({ result: { ok: false, error: { code: 'test_only' } } });
+      helper.destroy();
+    });
+
+    it('returns schema-valid async results in test mode', async () => {
+      const { helper, posted, inject } = env();
+      inject({ source: 'roomkit-player', type: 'mode', mode: 'test' });
+      inject(request);
+      await flush();
+      expect(HelperToPlayerSchema.parse(posted[1])).toEqual({ source: 'roomkit-helper', type: 'test:eval:result', requestId: request.requestId, result: { ok: true, value: { mode: 'test' } } });
+      helper.destroy();
+    });
+
+    it('refuses overlapping scripts and aborts a pending evaluation on pagehide', async () => {
+      const { helper, posted, inject, pagehide } = env();
+      inject({ source: 'roomkit-player', type: 'mode', mode: 'test' });
+      inject({ ...request, code: 'await new Promise(() => {});' });
+      inject(request);
+      expect(posted[1]).toMatchObject({ result: { ok: false, error: { code: 'busy' } } });
+      pagehide();
+      await flush();
+      expect(HelperToPlayerSchema.parse(posted[2])).toMatchObject({ type: 'test:eval:invalidate' });
+      expect(posted[3]).toMatchObject({ result: { ok: false, error: { code: 'page_gone' } } });
+      helper.destroy();
+    });
+
+    it('requires a reload after an async timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        const { helper, posted, inject } = env();
+        inject({ source: 'roomkit-player', type: 'mode', mode: 'test' });
+        inject({ ...request, code: 'await new Promise(() => {});' });
+        await vi.advanceTimersByTimeAsync(100);
+        expect(posted[1]).toMatchObject({ result: { ok: false, error: { code: 'timeout' } } });
+        inject(request);
+        expect(posted[2]).toMatchObject({ result: { ok: false, error: { code: 'busy' } } });
+        helper.destroy();
+      } finally { vi.useRealTimers(); }
     });
   });
 

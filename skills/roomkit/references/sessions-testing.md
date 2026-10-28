@@ -47,6 +47,8 @@ Player-created test sessions auto-end server-side: sixty seconds after all their
 
 ## Operations behavior
 
+For AI website interaction and visual checks, use `rk device eval <deviceKey> --session <id> --file test.js --screenshot result.png --json`. It executes async JS inside the actual website Helper and returns JSON plus an optional fresh native Player capture. Read the [execution and image contract](./website-eval.md) first. Virtual devices cannot run it.
+
 The Studio operation dashboard uses the same session component and feature set as Player's debug window. Studio additionally owns session selection and component-version warnings around that shared dashboard. Operators can navigate websites, set or clear a device's durable state, send registered Helper messages, run test callbacks, push hints, stop individual playback channels, or abort an event run from either host. The device panel shows each device's current state next to its website and playing media; the console accepts `setState <device> <state> [key=value ...]` and `clearState [device|all]`.
 
 The log console accepts asset names/IDs, exposes `help` and `list`, and supports common commands directly. `json {"type":"..."}` validates and dispatches any command in the full sequence command union. It is an operator override and remains usable before start or while paused. Its local input/output appears beneath the durable server logs; only server log entries persist.

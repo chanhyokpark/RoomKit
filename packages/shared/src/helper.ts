@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { VideoFrameSchema } from './assets.js';
 import { JsonValueSchema } from './json.js';
 import { HintErrorSchema, HintShowSchema, SessionModeSchema } from './protocol.js';
+import { DeviceEvalRequestSchema, EvalOutcomeSchema } from './device-eval.js';
 
 /**
  * postMessage bridge between the tauri player and `@roomkit/helper` running
@@ -48,6 +49,8 @@ export const HelperHelloSchema = z.object({
   messages: z.array(z.string()).default([]),
   /** Parameterless test-callback names registered via the `testCallbacks` option. */
   testCallbacks: z.array(z.string()).default([]),
+  /** Supports test:eval; absent on older helpers. */
+  testEval: z.boolean().optional(),
   /** State names registered via the `states` option (declarative handlers). */
   states: z.array(z.string()).default([]),
 });
@@ -137,6 +140,21 @@ export const HelperTestCallbackDoneSchema = z.object({
 });
 export type HelperTestCallbackDone = z.infer<typeof HelperTestCallbackDoneSchema>;
 
+export const HelperEvalResultSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('test:eval:result'),
+  requestId: z.uuid(),
+  result: EvalOutcomeSchema,
+});
+export type HelperEvalResult = z.infer<typeof HelperEvalResultSchema>;
+
+/** Invalidates an evaluation even when JS already returned and capture is pending. */
+export const HelperEvalInvalidateSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('test:eval:invalidate'),
+});
+export type HelperEvalInvalidate = z.infer<typeof HelperEvalInvalidateSchema>;
+
 // Mirrors @tauri-apps/plugin-haptics (ImpactFeedbackStyle / NotificationFeedbackType).
 export const ImpactFeedbackStyleSchema = z.enum(['light', 'medium', 'heavy', 'soft', 'rigid']);
 export type ImpactFeedbackStyle = z.infer<typeof ImpactFeedbackStyleSchema>;
@@ -194,6 +212,8 @@ export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperVideoErrorSchema,
   HelperMessageDoneSchema,
   HelperTestCallbackDoneSchema,
+  HelperEvalResultSchema,
+  HelperEvalInvalidateSchema,
   HelperHapticsSchema,
   HelperCallRequestSchema,
   HelperCallCancelSchema,
@@ -391,6 +411,12 @@ export const PlayerTestCallbackSchema = z.object({
 });
 export type PlayerTestCallback = z.infer<typeof PlayerTestCallbackSchema>;
 
+export const PlayerEvalSchema = DeviceEvalRequestSchema.extend({
+  source: z.literal(PLAYER_SOURCE),
+  type: z.literal('test:eval'),
+});
+export type PlayerEval = z.infer<typeof PlayerEvalSchema>;
+
 /** Reply to a `HelperHaptics`; `ok: false` carries the plugin's error text. */
 export const PlayerHapticsResultSchema = z.object({
   source: z.literal(PLAYER_SOURCE),
@@ -440,6 +466,7 @@ export const PlayerToHelperSchema = z.discriminatedUnion('type', [
   PlayerVideoStopSchema,
   PlayerModeSchema,
   PlayerTestCallbackSchema,
+  PlayerEvalSchema,
   PlayerHapticsResultSchema,
   PlayerCallResultSchema,
   PlayerCallStateSchema,

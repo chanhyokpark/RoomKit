@@ -6,9 +6,11 @@ import { ToolError } from '../core/session.js';
 import { collect, parseDuration, parseInteger, readJsonArg } from '../ui/json-input.js';
 import { out, table } from '../ui/output.js';
 import { emit, fmtDate, type GetContext } from './util.js';
+import { registerDeviceEval } from './device-eval.js';
 
 export function register(program: Command, ctx: GetContext): void {
-  const device = program.command('device').description('가상 장치 (헤드리스 socket.io 장치) — 재생 없이 즉시 ack');
+  const device = program.command('device').description('Player 웹사이트 JS 실행 및 가상 장치 테스트');
+  registerDeviceEval(device, ctx);
 
   device
     .command('connect')

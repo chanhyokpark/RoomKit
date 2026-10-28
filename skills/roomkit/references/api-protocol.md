@@ -22,6 +22,12 @@ There is no `/api/players` REST family. Connected launcher discovery is streamed
 
 ## Device namespace
 
+`POST /api/sessions/:id/devices/:deviceId/eval` (admin JWT, live test sessions only) takes `{code,timeoutMs?,screenshot?,screenshotFormat?:"png"|"jpeg"}` and returns HTTP 200 with `{requestId,result:{ok,value?|error?},screenshot?,screenshotError?}`. Invalid/production/ended requests are rejected; offline, duplicate windows or a busy target return 409. See [Website JS evaluation](./website-eval.md).
+
+This sends `device:eval` to exactly one `/device` socket with an acknowledgement carrying the correlated result. It is separate from authored wire commands: no replay or automatic retry. Player relays `test:eval` to the iframe and receives `test:eval:result`; Helper hello advertises `testEval:true`. Both sides check the source window; Player also checks the site's origin.
+
+Helper also sends `test:eval:invalidate` on pagehide/disposal so a capture still in flight cannot be returned as the previous document's result.
+
 Socket.io `/device` authenticates with device code, optional name, and client version. A code may match a production asset/lobby or a live test mapping.
 
 Server-to-client events include `welcome`, session state, command, dialogue progress, hint show/error, hint-code state, and `call:state` (voice call control, see below). Client-to-server events include acknowledgment, trigger, progress, hint submit/step, Helper version, session resync, asset-manifest request, `device:logs` (a batch of the player window's own log lines, buffered per device and relayed to `/admin`), and the call events `call:request` (ack), `call:cancel`, `call:status`.

@@ -37,7 +37,7 @@ export function errorToJson(err: unknown): ErrorJson {
   if (err instanceof z.ZodError) {
     return { error: { code: 'validation', message: z.prettifyError(err), details: err.issues } };
   }
-  if (err instanceof ToolError) return { error: { code: err.code, message: err.message } };
+  if (err instanceof ToolError) return { error: { code: err.code, message: err.message, ...(err.details === undefined ? {} : { details: err.details }) } };
   if (err instanceof Error) return { error: { code: 'error', message: err.message } };
   return { error: { code: 'error', message: String(err) } };
 }

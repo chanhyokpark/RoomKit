@@ -6,6 +6,7 @@ import { AdminGateway } from './admin.gateway';
 import { CallService } from './call.service';
 import { ConnectionRegistry } from './connection-registry';
 import { DeviceGateway } from './device.gateway';
+import { DeviceEvalService } from './device-eval.service';
 import { PlayerGateway } from './player.gateway';
 import { RuntimeTransportAdapter } from './runtime-transport.adapter';
 
@@ -15,9 +16,11 @@ import { RuntimeTransportAdapter } from './runtime-transport.adapter';
     ConnectionRegistry,
     CallService,
     DeviceGateway,
+    DeviceEvalService,
     AdminGateway,
     PlayerGateway,
     RuntimeTransportAdapter,
   ],
+  exports: [DeviceEvalService],
 })
 export class GatewayModule {}

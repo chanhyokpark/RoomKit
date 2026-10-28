@@ -1,7 +1,24 @@
-import { SessionResponseSchema } from '@roomkit/shared';
+import { DeviceEvalInputSchema, DeviceEvalResultSchema, SessionResponseSchema, type DeviceEvalInput } from '@roomkit/shared';
+import { z } from 'zod';
+import { ThemeIndex } from '../refs.js';
 import type { OpsContext } from '../context.js';
 import { ToolError } from '../session.js';
 import type { DeviceState } from '../virtual-device.js';
+
+/** Resolve in the session's theme (independent of the current project theme). Never retry JS. */
+export async function evaluateDevice(ctx: OpsContext, sessionId: string, deviceRef: string, input: DeviceEvalInput) {
+  z.uuid().parse(sessionId);
+  const body = DeviceEvalInputSchema.parse(input);
+  const session = await ctx.api.api(`/sessions/${sessionId}`, { schema: SessionResponseSchema });
+  if (session.mode !== 'test' || session.state === 'ended') {
+    throw new ToolError('JS evaluation requires a live test session.', 'test_only');
+  }
+  const index = await ThemeIndex.load(ctx, session.themeId);
+  const deviceId = index.resolveAssetId(deviceRef, 'device');
+  return ctx.api.api(`/sessions/${sessionId}/devices/${deviceId}/eval`, {
+    method: 'POST', body, schema: DeviceEvalResultSchema,
+  });
+}
 
 /**
  * Resolve the device codes to connect: explicit codes plus, with a session
