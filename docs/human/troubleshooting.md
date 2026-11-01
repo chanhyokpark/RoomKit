@@ -45,4 +45,4 @@
 - 운영 화면의 노란 경고는 연결된 Player, Client 또는 Helper가 Studio의 기대 버전보다 낮다는 뜻입니다. 해당 앱/라이브러리를 함께 업데이트해 주세요.
 - 배포 환경에서 의도적으로 다른 최소 버전을 사용할 때는 Studio의 `PUBLIC_EXPECTED_PLAYER_VERSION`, `PUBLIC_EXPECTED_CLIENT_VERSION`, `PUBLIC_EXPECTED_HELPER_VERSION`을 설정해 주세요.
 
-문제가 계속되면 세션 로그, 장치 콘솔과 사용 중인 Client/Helper 버전을 함께 확인해 주세요.
+문제가 계속되면 세션 로그, 장치 콘솔과 사용 중인 Client/Helper 버전을 함께 확인해 주세요. 장치 콘솔은 운영 세션에서도 `rk device logs <장치> --session <세션> --tail 200` 으로 볼 수 있고(웹사이트 콘솔은 Helper 0.10.0 이상에서 `site:` 접두어로 표시), 진행 중인 운영 세션의 복구 절차는 [AI 문서의 문제 해결(영문)](../../skills/roomkit/references/troubleshooting.md#production-session-wedged-or-an-event-did-not-fire)을 참고해 주세요.

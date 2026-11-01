@@ -24,7 +24,7 @@ Use the cheapest feedback loop that can prove the behavior:
 1. `rk session create --json` — a test session; generated device codes are returned.
 2. `rk device connect --session <id>` in a second terminal/background process (it stays connected and streams received commands; `--for 5m` / `--until-end` bound it).
 3. `rk session start <id>`.
-4. `rk device trigger <code> <event>` (waits for the event runs to finish) or `rk session trigger <id> <eventRef>`.
+4. `rk device trigger <code> <event>` (waits for the event runs to finish), `rk session trigger <id> --name <trigger> [--payload '{…}']` (same device-trigger semantics, no virtual device needed; returns run ids, does not wait), or `rk session trigger <id> <eventRef>`.
 5. `rk session logs <id>` (or `--follow`) and the `rk device connect` stream.
 6. `rk session end <id>`; the connect process exits on Ctrl-C, `--for`, or `--until-end`.
 
@@ -47,7 +47,14 @@ Player-created test sessions auto-end server-side: sixty seconds after all their
 
 ## Operations behavior
 
-For AI website interaction and visual checks, use `rk device eval <deviceKey> --session <id> --file test.js --focus --screenshot result.png --json`. It executes async JS inside the actual website Helper and returns JSON plus an optional fresh native Player capture. Around it: `rk device status --session <id> --wait-ready` (is each window online, single, Helper loaded?), `rk device focus` / `--focus` (bring a covered or minimized Player window forward without the app link), `rk device screenshot` (capture without a website) and `rk device reload --wait-ready` (force-reload the page and wait for its Helper). Read the [execution and image contract](./website-eval.md) first. Virtual devices cannot run any of them.
+For AI website interaction and visual checks, use `rk device eval <deviceKey> --session <id> --file test.js --focus --screenshot result.png --json`. It executes async JS inside the actual website Helper and returns JSON plus an optional fresh native Player capture. Around it: `rk device status --session <id> --wait-ready` (is each window online, single, Helper loaded?), `rk device focus` / `--focus` (bring a covered or minimized Player window forward without the app link), `rk device screenshot` (capture without a website), `rk device reload --wait-ready` (force-reload the page and wait for its Helper) and `rk device logs` (the device's console). All of them work in any live session, production included (Player 0.16.0+; eval also needs Helper 0.10.0+ in the site). Read the [execution and image contract](./website-eval.md) — and its production cautions — first. Virtual devices cannot run any of them.
+
+Manual operations from the CLI (any session mode):
+
+- `rk session trigger <id> <eventRef> [--payload <json>]` runs that one event — any event, not only `manualTriggerable` ones, even outside its phase (`once` and re-entry still apply). `rk session trigger <id> --name <trigger> [--payload <json>]` fires a device trigger name: every listening event runs exactly as if a device had emitted it (phase guard, `once`, re-entry apply). The payload is `{{payload.x}}` in the sequence. `--force` also ignores `once` history (recovery only). The reply lists each considered event with `started` + `runId` or the `reason` it did not start; an empty list for `--name` means nothing listens.
+- `rk session skip <id> <runId>` skips the current entry of an in-flight run (a `wait` ends now; a waited playback/message stops being awaited) and the sequence continues; `rk session abort <id> <runId>` cancels the remainder. Run ids come from `rk session runs` or the trigger reply.
+- `rk device logs <deviceKey> --session <id> [--tail 200] [--level warn] [--follow]` reads the device's buffered Player log lines (last 1000, kept while offline, dropped at session end) including the website console (`site: `, Helper 0.10.0+). It complements `rk session logs`, which holds the server's view.
+- Recovery recipe for a running room: [troubleshooting](./troubleshooting.md#production-session-wedged-or-an-event-did-not-fire).
 
 The Studio operation dashboard uses the same session component and feature set as Player's debug window. Studio additionally owns session selection and component-version warnings around that shared dashboard. Operators can navigate websites, set or clear a device's durable state, send registered Helper messages, run test callbacks, push hints, stop individual playback channels, or abort an event run from either host. The device panel shows each device's current state next to its website and playing media; the console accepts `setState <device> <state> [key=value ...]` and `clearState [device|all]`.
 

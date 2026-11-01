@@ -37,7 +37,7 @@ describe("player window RPC and CLI screenshot/reload/status plumbing", () => {
     const result = await answerWindowRequest(
       request({ focus: true, screenshot: true, screenshotFormat: "png" }),
       {
-        isTest: () => true,
+        isLive: () => true,
         focus: async () => {
           calls.push("focus");
         },
@@ -60,9 +60,9 @@ describe("player window RPC and CLI screenshot/reload/status plumbing", () => {
     assert.equal(parsed.screenshot?.width, 1);
   });
 
-  it("keeps the window state when capture fails or misses the deadline, and refuses outside test sessions", async () => {
+  it("keeps the window state when capture fails or misses the deadline, and refuses once the session ended", async () => {
     const io = {
-      isTest: () => true,
+      isLive: () => true,
       focus: async () => {},
       state: async () => state,
       afterPaint: async () => {},
@@ -88,8 +88,9 @@ describe("player window RPC and CLI screenshot/reload/status plumbing", () => {
     assert.equal(hidden.result.ok, false);
     if (!hidden.result.ok) assert.equal(hidden.result.error.code, "focus_failed");
 
-    const production = await answerWindowRequest(request(), { ...io, isTest: () => false });
-    assert.equal(production.result.ok, false);
+    const ended = await answerWindowRequest(request(), { ...io, isLive: () => false });
+    assert.equal(ended.result.ok, false);
+    if (!ended.result.ok) assert.equal(ended.result.error.code, "not_live");
   });
 
   it("refuses existing screenshot targets unless --overwrite and surfaces errors with details", () => {

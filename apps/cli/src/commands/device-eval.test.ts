@@ -26,7 +26,7 @@ describe("website evaluation and CLI image contract", () => {
   it("waits for the script and painting, captures a fresh image, and writes the matching bytes", async () => {
     const calls: string[] = [];
     const evaluator = new WebsiteEvaluator({
-      isTest: () => true,
+      isLive: () => true,
       post: () => {
         calls.push("script");
       },
@@ -76,7 +76,7 @@ describe("website evaluation and CLI image contract", () => {
 
   it("preserves a successful return value when capture fails", async () => {
     const evaluator = new WebsiteEvaluator({
-      isTest: () => true,
+      isLive: () => true,
       post() {},
       afterPaint: async () => {},
       capture: async () => null,
@@ -93,7 +93,7 @@ describe("website evaluation and CLI image contract", () => {
   it("invalidates navigation during capture and rejects late results from the old document", async () => {
     let finishCapture!: (value: typeof shot) => void;
     const evaluator = new WebsiteEvaluator({
-      isTest: () => true,
+      isLive: () => true,
       post() {},
       afterPaint: async () => {},
       capture: () =>
@@ -116,33 +116,53 @@ describe("website evaluation and CLI image contract", () => {
       assert.equal(response.result.error.code, "page_gone");
   });
 
-  it("refuses production, old helpers and overlapping requests without delivering code", async () => {
+  it("refuses missing or ended sessions, old helpers and overlapping requests without delivering code", async () => {
     let posts = 0;
-    let isTest = false;
+    let session: { mode: "test" | "production"; state: string } | null = null;
     const evaluator = new WebsiteEvaluator({
-      isTest: () => isTest,
+      // The helper bridge's rule: any mode, as long as the session is live.
+      isLive: () => session !== null && session.state !== "ended",
       post() {
         posts++;
       },
       afterPaint: async () => {},
       capture: async () => shot,
     });
+    const refusal = async () => {
+      const { result } = await evaluator.run(request());
+      return result.ok ? null : result.error.code;
+    };
     evaluator.hello(true);
-    assert.equal((await evaluator.run(request())).result.ok, false);
-    isTest = true;
+    assert.equal(await refusal(), "not_live");
+    session = { mode: "test", state: "ended" };
+    assert.equal(await refusal(), "not_live");
+    session = { mode: "production", state: "running" };
     evaluator.hello(false);
-    assert.equal((await evaluator.run(request())).result.ok, false);
+    assert.equal(await refusal(), "helper_unavailable");
     assert.equal(posts, 0);
     evaluator.hello(true);
     const req = request(false);
     const pending = evaluator.run(req);
-    assert.equal((await evaluator.run(request())).result.ok, false);
+    assert.equal(await refusal(), "busy");
     assert.equal(posts, 1);
     await evaluator.receive(req.requestId, {
       ok: false,
       error: { code: "script_error", message: "boom" },
     });
     assert.equal((await pending).screenshot, undefined);
+    // A pre-0.10.0 Helper's production refusal becomes an actionable code.
+    const old = request(false);
+    const refused = evaluator.run(old);
+    await evaluator.receive(old.requestId, {
+      ok: false,
+      error: { code: "test_only", message: "JS evaluation is only available in test sessions" },
+    });
+    const outdated = (await refused).result;
+    assert.equal(outdated.ok, false);
+    if (!outdated.ok) {
+      assert.equal(outdated.error.code, "helper_outdated");
+      assert.match(outdated.error.message, /Helper 0\.10\.0\+/);
+    }
   });
 
   it("validates CLI input before connecting to a server and preserves structured error details", async () => {

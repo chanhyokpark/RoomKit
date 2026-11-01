@@ -52,13 +52,35 @@ describe('DeviceEvalService', () => {
     );
   });
 
-  it('refuses production, ended sessions, offline devices and duplicate windows', async () => {
-    await expect(
-      service.evaluate({ ...session, mode: 'production' }, 'device', input),
-    ).rejects.toThrow('live test');
+  it('serves live production sessions too (debugging a wedged game)', async () => {
+    expect(
+      await service.evaluate(
+        { ...session, mode: 'production' },
+        'device',
+        input,
+      ),
+    ).toMatchObject({ result: { ok: true, value: 42 } });
+    expect(
+      await service.evaluate(
+        { ...session, mode: 'production', state: 'paused' },
+        'device',
+        input,
+      ),
+    ).toMatchObject({ result: { ok: true, value: 42 } });
+    expect(socket.emitWithAck).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses ended sessions (any mode), offline devices and duplicate windows', async () => {
     await expect(
       service.evaluate({ ...session, state: 'ended' }, 'device', input),
-    ).rejects.toThrow('live test');
+    ).rejects.toThrow('requires a live session');
+    await expect(
+      service.evaluate(
+        { ...session, mode: 'production', state: 'ended' },
+        'device',
+        input,
+      ),
+    ).rejects.toThrow('requires a live session');
     jest.spyOn(registry, 'socketsFor').mockReturnValue([]);
     await expect(service.evaluate(session, 'device', input)).rejects.toThrow(
       'offline',
@@ -117,9 +139,15 @@ describe('DeviceEvalService', () => {
   it('answers window requests through the same single-window RPC path', async () => {
     socket.emitWithAck.mockImplementation(async (_event, request) => ({
       requestId: request.requestId,
-      result: { ok: true, value: { visible: true, focused: true, platform: 'macos' } },
+      result: {
+        ok: true,
+        value: { visible: true, focused: true, platform: 'macos' },
+      },
     }));
-    const input = DeviceWindowInputSchema.parse({ focus: true, screenshot: true });
+    const input = DeviceWindowInputSchema.parse({
+      focus: true,
+      screenshot: true,
+    });
     expect(await service.window(session, 'device', input)).toMatchObject({
       result: { ok: true, value: { focused: true } },
       screenshotError: { code: 'capture_failed' },
@@ -128,17 +156,31 @@ describe('DeviceEvalService', () => {
       'device:window',
       expect.objectContaining({ focus: true, screenshot: true }),
     );
+    expect(
+      await service.window({ ...session, mode: 'production' }, 'device', input),
+    ).toMatchObject({ result: { ok: true, value: { focused: true } } });
     await expect(
-      service.window({ ...session, mode: 'production' }, 'device', input),
-    ).rejects.toThrow('live test');
+      service.window({ ...session, state: 'ended' }, 'device', input),
+    ).rejects.toThrow('requires a live session');
+    expect(socket.emitWithAck).toHaveBeenCalledTimes(2);
   });
 
   it('reloads through the runtime and waits for the helper hello armed beforehand', async () => {
-    const input = DeviceReloadInputSchema.parse({ waitReady: true, timeoutMs: 500 });
+    const input = DeviceReloadInputSchema.parse({
+      waitReady: true,
+      timeoutMs: 500,
+    });
     runtime.reloadWebsite.mockImplementation(async () => {
       // The reloaded page says hello while the load ack is still pending.
-      registry.setVersions('session', 'device', { helperVersion: '0.9.0', helperTestCallbacks: ['reset'] });
-      return { websiteId: crypto.randomUUID(), url: 'http://localhost:5173/', status: 'done' };
+      registry.setVersions('session', 'device', {
+        helperVersion: '0.9.0',
+        helperTestCallbacks: ['reset'],
+      });
+      return {
+        websiteId: crypto.randomUUID(),
+        url: 'http://localhost:5173/',
+        status: 'done',
+      };
     });
     expect(await service.reload(session, 'device', input)).toMatchObject({
       loaded: true,
@@ -147,33 +189,83 @@ describe('DeviceEvalService', () => {
       helperVersion: '0.9.0',
       helperTestCallbacks: ['reset'],
     });
-    expect(runtime.reloadWebsite).toHaveBeenCalledWith('session', 'device', 500);
+    expect(runtime.reloadWebsite).toHaveBeenCalledWith(
+      'session',
+      'device',
+      500,
+    );
 
     // No hello within the deadline → loaded but not ready; nothing is retried.
-    runtime.reloadWebsite.mockResolvedValue({ websiteId: crypto.randomUUID(), url: 'http://x.example/', status: 'done' });
-    expect(await service.reload(session, 'device', input)).toMatchObject({ loaded: true, helperReady: false });
+    runtime.reloadWebsite.mockResolvedValue({
+      websiteId: crypto.randomUUID(),
+      url: 'http://x.example/',
+      status: 'done',
+    });
+    expect(await service.reload(session, 'device', input)).toMatchObject({
+      loaded: true,
+      helperReady: false,
+    });
     expect(runtime.reloadWebsite).toHaveBeenCalledTimes(2);
 
     // Without waitReady the hello is not awaited at all.
-    const quick = await service.reload(session, 'device', DeviceReloadInputSchema.parse({}));
+    const quick = await service.reload(
+      session,
+      'device',
+      DeviceReloadInputSchema.parse({}),
+    );
     expect(quick.helperReady).toBeUndefined();
 
     // A failed load reports loaded:false and skips the hello wait.
-    runtime.reloadWebsite.mockResolvedValue({ websiteId: crypto.randomUUID(), url: 'http://x.example/', status: 'timeout' });
-    expect(await service.reload(session, 'device', input)).toMatchObject({ loaded: false, status: 'timeout', helperReady: false });
+    runtime.reloadWebsite.mockResolvedValue({
+      websiteId: crypto.randomUUID(),
+      url: 'http://x.example/',
+      status: 'timeout',
+    });
+    expect(await service.reload(session, 'device', input)).toMatchObject({
+      loaded: false,
+      status: 'timeout',
+      helperReady: false,
+    });
+
+    // Production sessions may reload too; ended sessions never reach the runtime.
+    runtime.reloadWebsite.mockResolvedValue({
+      websiteId: crypto.randomUUID(),
+      url: 'http://x.example/',
+      status: 'done',
+    });
+    const prod = await service.reload(
+      { ...session, mode: 'production' },
+      'device',
+      DeviceReloadInputSchema.parse({}),
+    );
+    expect(prod).toMatchObject({ loaded: true, status: 'done' });
+    const calls = runtime.reloadWebsite.mock.calls.length;
+    await expect(
+      service.reload({ ...session, state: 'ended' }, 'device', input),
+    ).rejects.toThrow('requires a live session');
+    expect(runtime.reloadWebsite).toHaveBeenCalledTimes(calls);
 
     jest.spyOn(registry, 'socketsFor').mockReturnValue([]);
-    await expect(service.reload(session, 'device', input)).rejects.toThrow('offline');
+    await expect(service.reload(session, 'device', input)).rejects.toThrow(
+      'offline',
+    );
   });
 
   it('forgets a stale helper on navigate without resolving hello waiters', async () => {
-    registry.setVersions('s', 'd', { clientVersion: '0.6.0', helperVersion: '0.9.0', helperMessages: ['m'] });
+    registry.setVersions('s', 'd', {
+      clientVersion: '0.6.0',
+      helperVersion: '0.9.0',
+      helperMessages: ['m'],
+    });
     const waiter = registry.waitForHelperInfo('s', 'd', 200);
     registry.clearHelper('s', 'd');
     expect(registry.versionsFor('s', 'd')).toEqual({ clientVersion: '0.6.0' });
     registry.setVersions('s', 'd', { clientVersion: '0.6.1' });
     registry.setVersions('s', 'd', { helperVersion: null });
-    expect(await waiter.promise).toEqual({ clientVersion: '0.6.1', helperVersion: null });
+    expect(await waiter.promise).toEqual({
+      clientVersion: '0.6.1',
+      helperVersion: null,
+    });
     expect(await registry.waitForHelperInfo('s', 'd', 20).promise).toBeNull();
     const cancelled = registry.waitForHelperInfo('s', 'd', 10_000);
     cancelled.cancel();

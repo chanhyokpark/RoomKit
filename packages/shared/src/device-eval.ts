@@ -2,7 +2,10 @@ import { z } from "zod";
 import { JsonValueSchema } from "./json.js";
 import { DeviceScreenshotReportSchema } from "./protocol.js";
 
-/** Test-only script RPC, independent of authored commands and their replay/ack rules. */
+/**
+ * Debug script RPC (any live session — test or production), independent of
+ * authored commands and their replay/ack rules.
+ */
 export const DeviceEvalInputSchema = z.object({
   code: z.string().min(1).max(64_000),
   timeoutMs: z.number().int().min(100).max(60_000).default(10_000),
@@ -48,7 +51,7 @@ export const DeviceEvalResultSchema = z.object({
 export type DeviceEvalResult = z.infer<typeof DeviceEvalResultSchema>;
 
 /**
- * Test-only window RPC, independent of any website: bring the device window
+ * Debug window RPC (any live session), independent of any website: bring the device window
  * to the front (show, unminimize, focus, wait for paint) and/or capture it.
  * Works on the idle screen and during video playback, where `eval` cannot.
  */
@@ -89,7 +92,7 @@ export const DeviceWindowResultSchema = z.object({
 export type DeviceWindowResult = z.infer<typeof DeviceWindowResultSchema>;
 
 /**
- * Test-only forced reload of the website a device currently shows
+ * Debug forced reload (any live session) of the website a device currently shows
  * (`POST /sessions/:id/devices/:deviceId/reload`). The server re-sends the
  * last navigate with `force: true` and waits for the player's load ack;
  * `waitReady` additionally waits for the reloaded page's Helper hello.

@@ -20,7 +20,7 @@ export async function evaluateScript(
   const { signal } = controller;
   const abort = () =>
     controller.abort(
-      new EvaluationError("page_gone", "The website or test session went away"),
+      new EvaluationError("page_gone", "The website or its session went away"),
     );
   parentSignal.addEventListener("abort", abort, { once: true });
   if (parentSignal.aborted) abort();

@@ -133,11 +133,11 @@ export function registerDeviceEval(device: Command, ctx: GetContext): void {
   device
     .command("eval <device>")
     .description(
-      "테스트 Player 의 웹사이트 iframe 안에서 비동기 JS 실행 (return 으로 JSON 반환)",
+      "Player 웹사이트 iframe 안에서 비동기 JS 실행 (return 으로 JSON 반환; 운영 세션 포함, 운영 중에는 읽기 전용 확인 우선)",
     )
     .requiredOption(
       "--session <id>",
-      "실행 중이거나 시작 전인 테스트 세션 UUID",
+      "종료되지 않은 세션 UUID (테스트·운영; 운영 세션은 웹사이트에 Helper 0.10.0+ 필요)",
     )
     .option("--script <js>", "실행할 async 함수 본문 (--file 과 택일)")
     .option("--file <path>", "JS 파일 경로, 또는 - 로 표준 입력")

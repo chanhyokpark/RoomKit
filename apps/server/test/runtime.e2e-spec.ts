@@ -438,6 +438,135 @@ describe('Runtime (e2e)', () => {
     });
   });
 
+  it('manual trigger fires by event id or device trigger name with a payload, force re-runs once events', async () => {
+    const themeId = await createTheme();
+    const p1 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P1',
+      data: { order: 1 },
+    });
+    const p2 = await createAsset(themeId, {
+      kind: 'phase',
+      name: 'P2',
+      data: { order: 2 },
+    });
+    const onceId = await createEvent(themeId, 'once-door', {
+      triggerKind: 'device',
+      triggerName: 'door',
+      once: true,
+      sequence: [
+        entry({
+          type: 'eval',
+          code: 'ctx.log("door " + JSON.stringify(ctx.payload))',
+        }),
+      ],
+    });
+    const p2Id = await createEvent(themeId, 'p2-door', {
+      phaseId: p2,
+      triggerKind: 'device',
+      triggerName: 'door',
+      sequence: [entry({ type: 'eval', code: 'ctx.log("p2 door")' })],
+    });
+    const sessionId = await createSession(themeId);
+    await post(`/api/sessions/${sessionId}/phase`, { phaseId: p1 });
+    const trigger = (body: object) =>
+      auth(
+        request(server()).post(`/api/sessions/${sessionId}/trigger`).send(body),
+      );
+    const finished = async () =>
+      (await getLogs(sessionId)).filter(
+        (l) => l.message === 'Event "once-door" finished',
+      ).length;
+
+    // By name: behaves like a device trigger (phase guard applies) and
+    // reports every listener; the payload reaches ctx.payload.
+    const byName = await trigger({
+      trigger: 'door',
+      payload: { code: 1234 },
+    }).expect(200);
+    expect(byName.body.trigger).toBe('door');
+    expect(byName.body.eventId).toBeUndefined();
+    expect(byName.body.events).toHaveLength(2);
+    expect(byName.body.events).toEqual(
+      expect.arrayContaining([
+        {
+          eventId: onceId,
+          eventName: 'once-door',
+          started: true,
+          runId: expect.any(String),
+        },
+        {
+          eventId: p2Id,
+          eventName: 'p2-door',
+          started: false,
+          reason: 'out of phase',
+        },
+      ]),
+    );
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some(
+        (l) => l.message === 'door {"code":1234}',
+      ),
+    );
+    await waitFor(async () => (await finished()) === 1);
+
+    // `once` already ran: reported by name, an error by id.
+    const again = await trigger({ trigger: 'door' }).expect(200);
+    expect(
+      (again.body.events as { eventId: string }[]).find(
+        (e) => e.eventId === onceId,
+      ),
+    ).toMatchObject({ started: false, reason: 'already ran (once)' });
+    await trigger({ eventId: onceId }).expect(400);
+
+    // force skips only the once guard — by id, with a payload…
+    const forced = await trigger({
+      eventId: onceId,
+      payload: 'again',
+      force: true,
+    }).expect(200);
+    expect(forced.body).toEqual({
+      eventId: onceId,
+      events: [
+        {
+          eventId: onceId,
+          eventName: 'once-door',
+          started: true,
+          runId: expect.any(String),
+        },
+      ],
+    });
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) => l.message === 'door "again"'),
+    );
+    await waitFor(async () => (await finished()) === 2);
+
+    // …and by name (the phase guard still applies there).
+    const forcedByName = await trigger({ trigger: 'door', force: true }).expect(
+      200,
+    );
+    const byId = new Map(
+      (forcedByName.body.events as { eventId: string }[]).map((e) => [
+        e.eventId,
+        e,
+      ]),
+    );
+    expect(byId.get(onceId)).toMatchObject({ started: true });
+    expect(byId.get(p2Id)).toMatchObject({
+      started: false,
+      reason: 'out of phase',
+    });
+    await waitFor(async () =>
+      (await getLogs(sessionId)).some((l) => l.message === 'door null'),
+    );
+
+    // Nothing listening → empty list; exactly one of eventId / trigger.
+    const none = await trigger({ trigger: 'nobody' }).expect(200);
+    expect(none.body).toEqual({ trigger: 'nobody', events: [] });
+    await trigger({}).expect(400);
+    await trigger({ eventId: onceId, trigger: 'door' }).expect(400);
+  });
+
   it('switching phase aborts in-flight runs of the old phase mid-wait', async () => {
     const themeId = await createTheme();
     const p1 = await createAsset(themeId, {

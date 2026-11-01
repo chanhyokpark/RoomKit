@@ -155,6 +155,26 @@ export const HelperEvalInvalidateSchema = z.object({
 });
 export type HelperEvalInvalidate = z.infer<typeof HelperEvalInvalidateSchema>;
 
+export const HelperLogLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
+export type HelperLogLevel = z.infer<typeof HelperLogLevelSchema>;
+
+/**
+ * One console line (or uncaught error) of the website, forwarded by the
+ * helper so the player ships it with its own device logs (`device:logs`,
+ * readable through `rk device logs` / the session dashboard). Only sent
+ * after the player's `mode` message carried `forwardLogs: true`, so older
+ * players never see this type.
+ */
+export const HelperLogSchema = z.object({
+  source: z.literal(HELPER_SOURCE),
+  type: z.literal('log'),
+  /** Epoch ms on the website's clock. */
+  at: z.number().int().nonnegative(),
+  level: HelperLogLevelSchema,
+  message: z.string().max(4000),
+});
+export type HelperLog = z.infer<typeof HelperLogSchema>;
+
 // Mirrors @tauri-apps/plugin-haptics (ImpactFeedbackStyle / NotificationFeedbackType).
 export const ImpactFeedbackStyleSchema = z.enum(['light', 'medium', 'heavy', 'soft', 'rigid']);
 export type ImpactFeedbackStyle = z.infer<typeof ImpactFeedbackStyleSchema>;
@@ -214,6 +234,7 @@ export const HelperToPlayerSchema = z.discriminatedUnion('type', [
   HelperTestCallbackDoneSchema,
   HelperEvalResultSchema,
   HelperEvalInvalidateSchema,
+  HelperLogSchema,
   HelperHapticsSchema,
   HelperCallRequestSchema,
   HelperCallCancelSchema,
@@ -382,11 +403,14 @@ export type PlayerVideoPlay = z.infer<typeof PlayerVideoPlaySchema>;
  * The session's mode, posted in reply to every helper `hello` (so a reloaded
  * page learns it again). In test sessions the helper keeps the context menu
  * usable so devtools stay reachable; production keeps the kiosk lockdown.
+ * `forwardLogs: true` tells the helper this player collects the website's
+ * console output (`HelperLog`); absent on older players.
  */
 export const PlayerModeSchema = z.object({
   source: z.literal(PLAYER_SOURCE),
   type: z.literal('mode'),
   mode: SessionModeSchema,
+  forwardLogs: z.boolean().optional(),
 });
 export type PlayerMode = z.infer<typeof PlayerModeSchema>;
 

@@ -12,6 +12,9 @@ import {
   type HintNext,
   type HintShow,
   type JsonValue,
+  type ManualTriggerEvent,
+  type ManualTriggerInput,
+  type ManualTriggerResult,
   type PlaybackProgress,
   type PlayingMedia,
   type RunningEvent,
@@ -724,46 +727,121 @@ export class SessionEngine {
       return;
     }
     void this.log('info', 'trigger', `Trigger "${name}" from ${source}`);
-    const events = await this.findEvents(
+    const { done } = await this.startDeviceTriggerEvents(name, payload);
+    // Run promises never reject (startRun catches internally), so awaiting is safe.
+    await Promise.all(done);
+  }
+
+  /**
+   * Admits and starts every event listening to device trigger `name`, the way
+   * a real device trigger does (phase guard applies). `force` skips only the
+   * `once` guard. Returns each event's outcome and the completion promises of
+   * the started runs (which never reject).
+   */
+  private async startDeviceTriggerEvents(
+    name: string,
+    payload: JsonValue | null,
+    opts: { force?: boolean } = {},
+  ): Promise<{ events: ManualTriggerEvent[]; done: Promise<void>[] }> {
+    const listeners = await this.findEvents(
       (e) => e.data.triggerKind === 'device' && e.data.triggerName === name,
     );
-    if (events.length === 0) {
+    if (listeners.length === 0) {
       void this.log('warn', 'trigger', `No event listens to trigger "${name}"`);
-      return;
     }
-    const runs: Promise<void>[] = [];
-    for (const event of events) {
-      const rejection = this.admit(event);
+    const events: ManualTriggerEvent[] = [];
+    const done: Promise<void>[] = [];
+    for (const event of listeners) {
+      const rejection = this.admit(event, { force: opts.force });
       if (rejection) {
         void this.log(
           'info',
           'trigger',
           `Event "${event.name}" not run: ${rejection}`,
         );
+        events.push({
+          eventId: event.id,
+          eventName: event.name,
+          started: false,
+          reason: rejection,
+        });
         continue;
       }
-      // executeRun never rejects (it catches internally), so awaiting is safe.
-      runs.push(this.executeRun(event, 0, payload));
+      const run = this.startRun(event, 0, payload);
+      events.push({
+        eventId: event.id,
+        eventName: event.name,
+        started: true,
+        runId: run.runId,
+      });
+      done.push(run.done);
     }
-    await Promise.all(runs);
+    return { events, done };
   }
 
   /**
-   * REST manual trigger; admission failures surface as errors to the admin.
-   * Any event may be run by hand — `manualTriggerable` only decides which
-   * ones the dashboard offers as quick buttons — and the phase guard is
-   * bypassed: the operator explicitly asked for this event, in this phase.
+   * REST manual trigger, by event id or by device trigger name, with an
+   * optional payload handed to the run(s) like a device trigger's.
+   *
+   * - `eventId`: any event may be run by hand — `manualTriggerable` only
+   *   decides which ones the dashboard offers as quick buttons — and the phase
+   *   guard is bypassed: the operator explicitly asked for this event, in this
+   *   phase. Admission failures surface as errors to the admin.
+   * - `trigger`: behaves exactly like a device trigger from source `admin`
+   *   (phase guard applies); per-event rejections are reported, not thrown.
+   *
+   * `force` skips only the `once` guard (re-run an event that already ran).
+   * Runs are started, not awaited; the result carries their run ids.
    */
-  async manualTrigger(eventId: string): Promise<void> {
-    const event = await this.getEvent(eventId);
-    const rejection = this.admit(event, { bypassPhaseGuard: true });
+  async manualTrigger(input: ManualTriggerInput): Promise<ManualTriggerResult> {
+    const payload = input.payload ?? null;
+    const force = input.force ?? false;
+    const notes = [
+      ...(force ? ['force'] : []),
+      ...(payload !== null ? ['with payload'] : []),
+    ];
+    const suffix = notes.length ? ` (${notes.join(', ')})` : '';
+    const logData = payload !== null ? { payload } : undefined;
+
+    if (input.trigger !== undefined) {
+      const name = input.trigger;
+      if (this.state === 'ended') {
+        throw new EngineStateError('Session has ended');
+      }
+      if (this.state === 'created') {
+        throw new EngineStateError('Session not started');
+      }
+      void this.log(
+        'info',
+        'trigger',
+        `Trigger "${name}" from admin${suffix}`,
+        logData,
+      );
+      const { events } = await this.startDeviceTriggerEvents(name, payload, {
+        force,
+      });
+      return { trigger: name, events };
+    }
+
+    if (input.eventId === undefined) {
+      throw new EngineStateError('Pass exactly one of eventId or trigger');
+    }
+    const event = await this.getEvent(input.eventId);
+    const rejection = this.admit(event, { bypassPhaseGuard: true, force });
     if (rejection) throw new EngineStateError(rejection);
     void this.log(
       'info',
       'trigger',
-      `Event "${event.name}" triggered manually`,
+      `Event "${event.name}" triggered manually${suffix}`,
+      logData,
     );
-    void this.executeRun(event, 0);
+    const { runId } = this.startRun(event, 0, payload);
+    return {
+      eventId: event.id,
+      events: [
+        { eventId: event.id, eventName: event.name, started: true, runId },
+      ],
+    };
   }
 
   /** REST forced phase switch. */
@@ -1086,10 +1164,13 @@ export class SessionEngine {
     return promise;
   }
 
-  /** Returns a human-readable rejection reason, or null when admitted. */
+  /**
+   * Returns a human-readable rejection reason, or null when admitted.
+   * `force` (operator manual trigger) skips only the `once` guard.
+   */
   private admit(
     event: ParsedEvent,
-    opts: { bypassPhaseGuard?: boolean } = {},
+    opts: { bypassPhaseGuard?: boolean; force?: boolean } = {},
   ): string | null {
     if (this.state === 'ended') return 'session ended';
     if (this.state === 'created') return 'session not started';
@@ -1111,17 +1192,31 @@ export class SessionEngine {
       }
       if (live > 0) return 'already running (re-entry not allowed)';
     }
-    if (event.data.once && this.onceRun.has(event.id)) {
+    if (!opts.force && event.data.once && this.onceRun.has(event.id)) {
       return 'already ran (once)';
     }
     return null;
   }
 
+  /** Runs an admitted event to completion. Never rejects. */
   private async executeRun(
     event: ParsedEvent,
     depth: number,
     payload: JsonValue | null = null,
   ): Promise<void> {
+    await this.startRun(event, depth, payload).done;
+  }
+
+  /**
+   * Registers and starts a run of an admitted event synchronously (so the
+   * caller gets its run id right away); `done` settles when the run has
+   * completely finished and never rejects (failures and aborts are logged).
+   */
+  private startRun(
+    event: ParsedEvent,
+    depth: number,
+    payload: JsonValue | null = null,
+  ): { runId: string; done: Promise<void> } {
     if (event.data.once) {
       this.onceRun.add(event.id);
       this.queuePersist({ onceRun: [...this.onceRun] });
@@ -1142,37 +1237,40 @@ export class SessionEngine {
       eventId: event.id,
       runId: run.runId,
     });
-    try {
-      await this.runSequence(event, depth, run, payload);
-      void this.log('info', 'event', `Event "${event.name}" finished`, {
-        eventId: event.id,
-      });
-    } catch (err) {
-      if (err instanceof RunAbortedError) {
-        void this.log(
-          'warn',
-          'event',
-          `Event "${event.name}" aborted (session ended or phase changed)`,
-        );
-      } else {
-        void this.log(
-          'error',
-          'event',
-          `Event "${event.name}" failed: ${msg(err)}`,
-          {
-            eventId: event.id,
-          },
-        );
+    const done = (async () => {
+      try {
+        await this.runSequence(event, depth, run, payload);
+        void this.log('info', 'event', `Event "${event.name}" finished`, {
+          eventId: event.id,
+        });
+      } catch (err) {
+        if (err instanceof RunAbortedError) {
+          void this.log(
+            'warn',
+            'event',
+            `Event "${event.name}" aborted (session ended or phase changed)`,
+          );
+        } else {
+          void this.log(
+            'error',
+            'event',
+            `Event "${event.name}" failed: ${msg(err)}`,
+            {
+              eventId: event.id,
+            },
+          );
+        }
+      } finally {
+        const count = (this.runCounts.get(event.id) ?? 1) - 1;
+        if (count <= 0) this.runCounts.delete(event.id);
+        else this.runCounts.set(event.id, count);
+        this.activeRuns.delete(run.runId);
+        this.abortedRunIds.delete(run.runId);
+        this.skippedRunIds.delete(run.runId);
+        this.broadcastRuns();
       }
-    } finally {
-      const count = (this.runCounts.get(event.id) ?? 1) - 1;
-      if (count <= 0) this.runCounts.delete(event.id);
-      else this.runCounts.set(event.id, count);
-      this.activeRuns.delete(run.runId);
-      this.abortedRunIds.delete(run.runId);
-      this.skippedRunIds.delete(run.runId);
-      this.broadcastRuns();
-    }
+    })();
+    return { runId: run.runId, done };
   }
 
   // ── sequence execution ───────────────────────────────────────────────────
@@ -1550,9 +1648,10 @@ export class SessionEngine {
   }
 
   /**
-   * Test tooling: re-send the website a device currently shows as a forced
+   * Debug tooling: re-send the website a device currently shows as a forced
    * navigate (the player re-creates its iframe for the same URL) and wait
-   * for the load ack. Test sessions only; the device must have a website.
+   * for the load ack. Any live session (test or production) — operators use
+   * it to recover a wedged production device; the device must have a website.
    */
   async reloadWebsite(
     deviceId: string,
@@ -1562,11 +1661,6 @@ export class SessionEngine {
     url: string;
     status: 'done' | 'failed' | 'ended' | 'timeout' | 'aborted';
   }> {
-    if (this.mode !== 'test') {
-      throw new EngineStateError(
-        'Website reload is only available in test sessions',
-      );
-    }
     if (this.state === 'ended') {
       throw new EngineStateError('Session has ended');
     }
@@ -1615,7 +1709,7 @@ export class SessionEngine {
       return;
     }
     // executeRun never rejects (it catches internally), so fire-and-forget
-    // needs no .catch — same as handleTriggerInner. Depth still applies.
+    // needs no .catch — same as device triggers. Depth still applies.
     // The callee inherits the caller's trigger payload (subroutine semantics).
     if (waitUntilFinish) await this.executeRun(event, depth + 1, payload);
     else void this.executeRun(event, depth + 1, payload);

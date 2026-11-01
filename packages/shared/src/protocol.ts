@@ -63,10 +63,10 @@ export const DeviceEvents = {
    * and relays it to /admin as `device:screenshot`.
    */
   screenshot: 'device:screenshot',
-  /** S→C with socket.io acknowledgement: test-only JS execution and optional fresh capture. */
+  /** S→C with socket.io acknowledgement: debug JS execution (any live session) and optional fresh capture. */
   evaluate: 'device:eval',
   /**
-   * S→C with socket.io acknowledgement: test-only window RPC — bring the
+   * S→C with socket.io acknowledgement: debug window RPC (any live session) — bring the
    * device window to the front and/or take a fresh capture (`DeviceWindowRequest`).
    */
   window: 'device:window',

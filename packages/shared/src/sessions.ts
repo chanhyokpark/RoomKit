@@ -131,8 +131,49 @@ export type AdjustTimerInput = z.infer<typeof AdjustTimerInputSchema>;
 export const SwitchPhaseInputSchema = z.object({ phaseId: z.uuid() });
 export type SwitchPhaseInput = z.infer<typeof SwitchPhaseInputSchema>;
 
-export const ManualTriggerInputSchema = z.object({ eventId: z.uuid() });
+/**
+ * POST /sessions/:id/trigger — run events by hand, in any session mode.
+ * Exactly one of:
+ * - `eventId`: run that one event (any event, not only `manualTriggerable`;
+ *   the phase guard is bypassed — the operator asked for it in this phase).
+ * - `trigger`: a device trigger name; every event listening to it is run
+ *   exactly as if a device had emitted it (phase guard applies).
+ * `payload` is available to the sequence as `{{payload.x}}` (device-trigger
+ * semantics); `force` runs an event even when its `once` already fired, which
+ * no UI exposes — it is for recovering a wedged production session.
+ */
+export const ManualTriggerInputSchema = z
+  .object({
+    eventId: z.uuid().optional(),
+    trigger: z.string().min(1).max(200).optional(),
+    payload: JsonValueSchema.nullable().optional(),
+    force: z.boolean().default(false),
+  })
+  .refine((input) => (input.eventId === undefined) !== (input.trigger === undefined), {
+    message: 'Pass exactly one of eventId or trigger',
+  });
 export type ManualTriggerInput = z.infer<typeof ManualTriggerInputSchema>;
+
+/** One event the manual trigger considered: started (with its run id) or why not. */
+export const ManualTriggerEventSchema = z.object({
+  eventId: z.uuid(),
+  eventName: z.string(),
+  started: z.boolean(),
+  /** Run id of the started run — pass it to `/runs/:runId/skip|abort`. */
+  runId: z.uuid().optional(),
+  /** Admission rejection reason when not started (e.g. "already ran (once)"). */
+  reason: z.string().optional(),
+});
+export type ManualTriggerEvent = z.infer<typeof ManualTriggerEventSchema>;
+
+/** Reply of POST /sessions/:id/trigger (200). `events` is empty when nothing listens to `trigger`. */
+export const ManualTriggerResultSchema = z.object({
+  /** Echo of what was asked: the event id or the device trigger name. */
+  eventId: z.uuid().optional(),
+  trigger: z.string().optional(),
+  events: z.array(ManualTriggerEventSchema),
+});
+export type ManualTriggerResult = z.infer<typeof ManualTriggerResultSchema>;
 
 /**
  * Debug window: run a website-registered test callback on one device.

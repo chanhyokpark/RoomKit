@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import pc from 'picocolors';
-import type { Session, SessionLogEntry, SessionResponse } from '@roomkit/shared';
+import type { JsonValue, ManualTriggerResult, Session, SessionLogEntry, SessionResponse } from '@roomkit/shared';
 import type { CliContext } from '../context.js';
 import {
   abortSessionRun,
@@ -13,6 +13,7 @@ import {
   listSessionRuns,
   listSessions,
   runSessionCommand,
+  skipSessionRun,
   type ControlAction,
 } from '../core/ops/sessions.js';
 import { ToolError } from '../core/session.js';
@@ -129,9 +130,41 @@ export function register(program: Command, ctx: GetContext): void {
     .action(async (sessionId: string, phaseId: string) => control(ctx(), sessionId, { type: 'switch_phase', phaseId }, '페이즈 전환'));
 
   session
-    .command('trigger <sessionId> <eventRef>')
-    .description('수동 실행 가능한 이벤트 실행')
-    .action(async (sessionId: string, eventId: string) => control(ctx(), sessionId, { type: 'trigger_event', eventId }, '이벤트 실행'));
+    .command('trigger <sessionId> [eventRef]')
+    .description('이벤트 수동 실행 (모든 이벤트; --name 으로 장치 트리거 이름 실행, --payload, --force)')
+    .option('--name <trigger>', '이벤트 대신 장치 트리거 이름 — 그 트리거를 듣는 모든 이벤트를 장치가 보낸 것처럼 실행 (페이즈 조건 적용)')
+    .option('--payload <json>', '페이로드 JSON, @파일, - (stdin) — 시퀀스에서 {{payload.x}} 로 사용')
+    .option('--force', '이벤트의 once 가 이미 실행됐어도 다시 실행 (운영 세션 복구용)', false)
+    .action(async (sessionId: string, eventRef: string | undefined, opts: { name?: string; payload?: string; force: boolean }) => {
+      if ((eventRef === undefined) === (opts.name === undefined))
+        throw new ToolError('이벤트 참조 또는 --name <트리거 이름> 중 하나만 지정해 주세요.', 'usage');
+      const payload = opts.payload !== undefined ? readJsonArg<JsonValue>(opts.payload, '--payload') : undefined;
+      const c = ctx();
+      const result = (await controlSession(c, sessionId, {
+        type: 'trigger_event',
+        eventId: eventRef,
+        trigger: opts.name,
+        payload,
+        force: opts.force,
+      })) as ManualTriggerResult;
+      if (opts.name !== undefined && !result.events.length) c.warn('이 트리거를 듣는 이벤트가 없습니다.');
+      emit(c, result, () => {
+        if (result.events.length) {
+          out.line(
+            table(
+              ['이벤트', '결과', '실행 ID / 사유'],
+              result.events.map((e) => [
+                e.eventName,
+                e.started ? pc.green('시작됨') : pc.yellow('미실행'),
+                e.started ? (e.runId ?? '') : (e.reason ?? ''),
+              ]),
+            ),
+          );
+        }
+        if (result.events.some((e) => e.started && e.runId))
+          out.line(pc.dim(`실행 제어: rk session skip ${sessionId} <runId> (현재 항목 건너뛰기) · rk session abort ${sessionId} <runId> (중단)`));
+      });
+    });
 
   session
     .command('hint <sessionId> <hintRef>')
@@ -170,6 +203,15 @@ export function register(program: Command, ctx: GetContext): void {
       const c = ctx();
       const result = await abortSessionRun(c, sessionId, runId);
       emit(c, result, () => out.ok(`중단: ${runId}`));
+    });
+
+  session
+    .command('skip <sessionId> <runId>')
+    .description('실행 중인 이벤트의 현재 항목(wait 등)을 건너뛰고 다음으로 진행')
+    .action(async (sessionId: string, runId: string) => {
+      const c = ctx();
+      const result = await skipSessionRun(c, sessionId, runId);
+      emit(c, result, () => out.ok(`건너뜀: ${runId}`));
     });
 
   session

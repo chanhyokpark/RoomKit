@@ -12,6 +12,7 @@ import type {
   HelperTestCallbackDone,
   HelperEvalResult,
   HelperEvalInvalidate,
+  HelperLog,
   HelperTimerGet,
   HelperTrigger,
   HelperVideoEnded,
@@ -32,6 +33,7 @@ import type {
 import { Emitter } from './emitter.js';
 import { HELPER_VERSION } from './version.js';
 import { evaluateScript } from './evaluate.js';
+import { ConsoleForwarder } from './console-forward.js';
 
 /*
  * The shared schemas define the envelopes (packages/shared/src/helper.ts),
@@ -137,6 +139,16 @@ export interface RoomKitHelperOptions {
    * the current state always arrives via `state` / `onState`.
    */
   states?: string[];
+  /**
+   * Forward this page's console output (`console.log/info/debug/warn/error`)
+   * and uncaught errors / unhandled rejections to the player, which ships
+   * them with its device logs (`rk device logs`, the session dashboard) —
+   * how operators see what a website in a running room is doing. The
+   * console keeps printing as usual. Lines are held (last 100) until the
+   * player confirms it collects them, then sent at most 100 per second.
+   * Default true; restored by destroy().
+   */
+  forwardConsole?: boolean;
 }
 
 export interface TriggerAndWaitOptions {
@@ -263,7 +275,8 @@ export class RoomKitHelper {
   private evaluationTimedOut = false;
   private readonly onPageHide = () => {
     this.evaluation?.abort();
-    if (this.mode === 'test') this.post({ source: HELPER_SOURCE, type: 'test:eval:invalidate' });
+    // Any mode: evaluation works in every live session (harmless otherwise).
+    this.post({ source: HELPER_SOURCE, type: 'test:eval:invalidate' });
   };
   // Test sessions keep the context menu so devtools stay reachable.
   private readonly onContextMenu = (event: Event) => {
@@ -271,6 +284,8 @@ export class RoomKitHelper {
   };
   /** Player-reported session mode; production (locked down) until told. */
   private mode: SessionMode = 'production';
+  /** Console capture (`forwardConsole`); posts once the player opts in. */
+  private readonly consoleForwarder: ConsoleForwarder | null;
   /** Bridge state; 'connected' on the first player message. */
   private bridge: HelperBridgeState = 'connecting';
   /** Declared message names from the `messages` option. */
@@ -341,6 +356,14 @@ export class RoomKitHelper {
     this.messages = options.messages ?? [];
     this.states = options.states ?? [];
     this.testCallbacks = options.testCallbacks ?? {};
+    // First, so console output from here on (boot logs) is captured.
+    this.consoleForwarder =
+      options.forwardConsole === false
+        ? null
+        : new ConsoleForwarder(
+            (line) => this.post({ source: HELPER_SOURCE, type: 'log', ...line }),
+            this.self,
+          );
     this.self.addEventListener('message', this.onMessage as EventListener);
     this.self.addEventListener('pagehide', this.onPageHide);
     if (options.lockdown !== false) this.lockdown();
@@ -598,9 +621,13 @@ export class RoomKitHelper {
     }
   }
 
-  /** Unregisters the message listener; the instance is dead afterwards. */
+  /**
+   * Unregisters the listeners and restores the console methods; the
+   * instance is dead afterwards.
+   */
   destroy(): void {
     this.onPageHide();
+    this.consoleForwarder?.destroy();
     this.self.removeEventListener('pagehide', this.onPageHide);
     this.stopHelloRetry();
     this.revokeVideoUrl();
@@ -647,6 +674,7 @@ export class RoomKitHelper {
       | HelperTestCallbackDone
       | HelperEvalResult
       | HelperEvalInvalidate
+      | HelperLog
       | HelperHaptics
       | HelperCallRequest
       | HelperCallCancel,
@@ -673,10 +701,8 @@ export class RoomKitHelper {
         const reply = (result: HelperEvalResult['result']) => this.post({
           source: HELPER_SOURCE, type: 'test:eval:result', requestId, result,
         });
-        if (this.mode !== 'test') {
-          reply({ ok: false, error: { code: 'test_only', message: 'JS evaluation is only available in test sessions' } });
-          return;
-        }
+        // Any session mode: the player only relays evaluations while a
+        // session is live, and the server only accepts them from admins.
         if (this.evaluation || this.evaluationTimedOut) {
           reply({ ok: false, error: { code: 'busy', message: this.evaluationTimedOut ? 'Reload the website after a script timeout before evaluating again' : 'Another script is running' } });
           return;
@@ -850,7 +876,9 @@ export class RoomKitHelper {
       }
       case 'mode': {
         if (msg.mode !== 'test' && msg.mode !== 'production') return;
-        if (msg.mode !== 'test') this.evaluation?.abort();
+        // Players that collect console output say so; older ones never do,
+        // so they never receive `log` messages they could not parse.
+        this.consoleForwarder?.setForwarding(msg.forwardLogs === true);
         if (this.mode !== msg.mode) {
           this.mode = msg.mode;
           this.emitter.emit('mode', this.mode);

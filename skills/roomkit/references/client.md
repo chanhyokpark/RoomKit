@@ -69,6 +69,7 @@ Reset should stop all media, clear subtitles/overlays, clear the durable state (
 - `submitHint` and `requestHintStep` drive hint UI.
 - `getRemainingTime({ resync?, timeoutMs? })` computes from the last state or requests a fresh snapshot.
 - `fetchAssetManifest()` returns role-scoped media and presigned URLs for pre-caching.
+- The `evaluate` / `window` events are Player-internal debug RPCs behind `rk device eval|focus|screenshot` (the server forwards them only for authenticated admins). Client 0.8.0+ answers them in any live session, production included, and refuses with `not_live` once the session ended (older clients refused outside test sessions with `test_only`); with no handler the reply is `unsupported`. A standalone device may leave them unhandled. `reportScreenshot()` / `reportLogs()` upload the window's periodic capture and log lines (`device:screenshot`, `device:logs` → `rk device logs`).
 - `requestCall()` / `cancelCall()` / `reportCallStatus()` and the `callState` event are Player-internal voice-call plumbing (see [API protocol](./api-protocol.md#voice-calls)); the server only accepts them from a Player window with a Helper website, so standalone devices never use them.
 
 Presigned manifest URLs expire; refresh before long downloads. File keys are immutable, so cache presence by key is sufficient and entries removed from the latest manifest may be pruned.
@@ -120,6 +121,10 @@ interface RoomKitClientEvents {
   callState: [DeviceCallState];
   hintCode: [WireHintCode];                      // show (code set) / hide (code null) the entry-code overlay
   testCallback: [WireTestCallback, DoneFn];      // debug window asked to run a registered test callback
+  /** Player-internal debug RPCs (any live session; `not_live` after the end). Reply exactly once.
+   *  The DeviceEval…, DeviceWindow…, DeviceScreenshotReport and DeviceLogReport types come from @roomkit/shared. */
+  evaluate: [DeviceEvalRequest, (result: DeviceEvalResult) => void];     // JS in the embedded website
+  window: [DeviceWindowRequest, (result: DeviceWindowResult) => void];   // focus and/or capture the window
 }
 
 class RoomKitClient {
@@ -148,6 +153,10 @@ class RoomKitClient {
   requestCall(timeoutMs?: number): Promise<{ callId: string }>;
   cancelCall(callId: string): void;
   reportCallStatus(callId: string, status: 'connected' | 'failed', reason?: string): void;
+  /** Player-internal: latest stage capture (no-op offline). */
+  reportScreenshot(report: DeviceScreenshotReport): void;
+  /** Player-internal: upload ≤200 log lines; false (nothing sent) while offline. */
+  reportLogs(report: DeviceLogReport): boolean;
   on<K extends keyof RoomKitClientEvents>(event: K, listener: (...args: RoomKitClientEvents[K]) => void): this;
   off<K extends keyof RoomKitClientEvents>(event: K, listener: (...args: RoomKitClientEvents[K]) => void): this;
 }

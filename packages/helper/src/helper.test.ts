@@ -13,11 +13,19 @@ type Listener = (event: { data: unknown; source?: unknown }) => void;
 
 /** Fake iframe environment: capture outbound posts, allow injecting inbound. */
 function env(
-  options: Pick<RoomKitHelperOptions, 'renders' | 'messages' | 'testCallbacks' | 'states'> = {},
+  options: Pick<
+    RoomKitHelperOptions,
+    'renders' | 'messages' | 'testCallbacks' | 'states' | 'forwardConsole'
+  > = {},
 ) {
   const posted: unknown[] = [];
-  const listeners = new Set<Listener>();
-  const pagehideListeners = new Set<Listener>();
+  const byType = new Map<string, Set<Listener>>();
+  const of = (type: string) => {
+    let set = byType.get(type);
+    if (!set) byType.set(type, (set = new Set()));
+    return set;
+  };
+  const listeners = of('message');
   const parent = {
     postMessage: ((message: unknown) => void posted.push(message)) as Window['postMessage'],
   };
@@ -25,14 +33,26 @@ function env(
     ...options,
     parentWindow: parent,
     selfWindow: {
-      addEventListener: ((type: string, l: Listener) => void (type === 'message' ? listeners : pagehideListeners).add(l)) as Window['addEventListener'],
-      removeEventListener: ((type: string, l: Listener) => void (type === 'message' ? listeners : pagehideListeners).delete(l)) as Window['removeEventListener'],
+      addEventListener: ((type: string, l: Listener) => void of(type).add(l)) as Window['addEventListener'],
+      removeEventListener: ((type: string, l: Listener) => void of(type).delete(l)) as Window['removeEventListener'],
     },
   });
   const inject = (data: unknown, source: unknown = parent) => {
     for (const l of [...listeners]) l({ data, source });
   };
-  return { helper, posted, listeners, inject, pagehide: () => { for (const l of pagehideListeners) l({ data: null }); } };
+  /** Dispatch a window event (pagehide, error, unhandledrejection, …). */
+  const fire = (type: string, event: object = {}) => {
+    for (const l of [...of(type)]) (l as (event: object) => void)(event);
+  };
+  return {
+    helper,
+    posted,
+    listeners,
+    inject,
+    fire,
+    count: (type: string) => of(type).size,
+    pagehide: () => fire('pagehide', { data: null }),
+  };
 }
 
 const HINT: HintShow = {
@@ -358,13 +378,25 @@ describe('RoomKitHelper', () => {
     const request = { source: 'roomkit-player', type: 'test:eval', requestId: '77777777-7777-4777-8777-777777777777', code: 'return { mode: roomkit.sessionMode };', timeoutMs: 100 };
     const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-    it('rejects production and ignores messages from windows other than its parent', async () => {
+    it('evaluates in production and ignores messages from windows other than its parent', async () => {
       const { helper, posted, inject } = env();
       inject({ source: 'roomkit-player', type: 'mode', mode: 'test' }, {});
       inject(request, {});
       expect(posted).toHaveLength(1);
+      expect(helper.sessionMode).toBe('production');
       inject(request);
-      expect(posted[1]).toMatchObject({ result: { ok: false, error: { code: 'test_only' } } });
+      await flush();
+      expect(HelperToPlayerSchema.parse(posted[1])).toEqual({ source: 'roomkit-helper', type: 'test:eval:result', requestId: request.requestId, result: { ok: true, value: { mode: 'production' } } });
+      helper.destroy();
+    });
+
+    it('a production mode post does not abort a running evaluation', async () => {
+      const { helper, posted, inject } = env();
+      inject({ ...request, code: 'await new Promise((r) => setTimeout(r, 20)); return 1;' });
+      inject({ source: 'roomkit-player', type: 'mode', mode: 'production', forwardLogs: true });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(posted.find((m) => (m as { type: string }).type === 'test:eval:result'))
+        .toMatchObject({ result: { ok: true, value: 1 } });
       helper.destroy();
     });
 
@@ -402,6 +434,165 @@ describe('RoomKitHelper', () => {
         expect(posted[2]).toMatchObject({ result: { ok: false, error: { code: 'busy' } } });
         helper.destroy();
       } finally { vi.useRealTimers(); }
+    });
+  });
+
+  describe('console forwarding', () => {
+    const MODE = { source: 'roomkit-player', type: 'mode', mode: 'production' };
+    type Log = { source: string; type: 'log'; at: number; level: string; message: string };
+    const logs = (posted: unknown[]) =>
+      posted.filter((m) => (m as { type?: string }).type === 'log') as Log[];
+    /** Silences the real console; helpers created afterwards wrap these spies. */
+    const silence = () =>
+      (['log', 'info', 'debug', 'warn', 'error'] as const).map((method) =>
+        vi.spyOn(console, method).mockImplementation(() => {}),
+      );
+
+    it('buffers until the player opts in, then flushes in order with level mapping', () => {
+      const spies = silence();
+      try {
+        const { helper, posted, inject, count } = env();
+        console.log('boot', 1, { a: true });
+        console.info('info line');
+        console.debug('debug line');
+        console.warn('warn line');
+        console.error(new TypeError('bad thing'));
+        // The original console still prints.
+        expect(spies[0]).toHaveBeenCalledWith('boot', 1, { a: true });
+        inject(MODE); // an older player: no forwardLogs
+        expect(logs(posted)).toEqual([]);
+        inject({ ...MODE, forwardLogs: true });
+        const lines = logs(posted);
+        expect(lines.map((l) => [l.level, l.message])).toEqual([
+          ['info', 'boot 1 {"a":true}'],
+          ['info', 'info line'],
+          ['debug', 'debug line'],
+          ['warn', 'warn line'],
+          ['error', 'TypeError: bad thing'],
+        ]);
+        for (const line of lines) {
+          expect(HelperToPlayerSchema.parse(line)).toEqual({
+            source: 'roomkit-helper',
+            type: 'log',
+            at: expect.any(Number),
+            level: line.level,
+            message: line.message,
+          });
+        }
+        console.log('live');
+        expect(logs(posted).at(-1)).toMatchObject({ level: 'info', message: 'live' });
+
+        helper.destroy();
+        expect(console.log).toBe(spies[0]);
+        expect(count('error') + count('unhandledrejection')).toBe(0);
+        console.log('after destroy');
+        expect(logs(posted).at(-1)).toMatchObject({ message: 'live' });
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it('forwards uncaught errors and rejections, and caps arguments and lines', () => {
+      const spies = silence();
+      try {
+        const { helper, posted, inject, fire } = env();
+        inject({ ...MODE, forwardLogs: true });
+        fire('error', { message: 'boom', filename: 'https://site/app.js', lineno: 3, colno: 7 });
+        fire('unhandledrejection', { reason: new RangeError('nope') });
+        const cyclic: Record<string, unknown> = {};
+        cyclic.self = cyclic;
+        console.log(cyclic, undefined, 2n);
+        console.log('x'.repeat(5000));
+        console.log(...Array.from({ length: 10 }, () => 'y'.repeat(1000)));
+        const lines = logs(posted);
+        expect(lines[0]).toMatchObject({ level: 'error', message: 'Uncaught boom (https://site/app.js:3:7)' });
+        expect(lines[1]).toMatchObject({ level: 'error', message: 'Unhandled rejection: RangeError: nope' });
+        expect(lines[2].message).toBe('[object Object] undefined 2');
+        expect(lines[3].message).toHaveLength(600);
+        expect(lines[4].message).toHaveLength(2000);
+        helper.destroy();
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it('keeps only the last 100 lines before the player opts in', () => {
+      vi.useFakeTimers();
+      const spies = silence();
+      try {
+        const { helper, posted, inject } = env();
+        for (let i = 0; i < 80; i++) console.log(`early ${i}`);
+        vi.advanceTimersByTime(1000); // next rate window
+        for (let i = 80; i < 150; i++) console.log(`early ${i}`);
+        inject({ ...MODE, forwardLogs: true });
+        const messages = logs(posted).map((l) => l.message);
+        expect(messages).toHaveLength(100);
+        expect(messages[0]).toBe('early 50');
+        expect(messages.at(-1)).toBe('early 149');
+        helper.destroy();
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it('rate-limits to 100 lines per second and reports the dropped count', () => {
+      vi.useFakeTimers();
+      const spies = silence();
+      try {
+        const { helper, posted, inject } = env();
+        inject({ ...MODE, forwardLogs: true });
+        for (let i = 0; i < 130; i++) console.log(`line ${i}`);
+        expect(logs(posted)).toHaveLength(100);
+        vi.advanceTimersByTime(1000);
+        expect(logs(posted)).toHaveLength(101);
+        expect(logs(posted).at(-1)).toMatchObject({
+          level: 'warn',
+          message: 'console forwarding dropped 30 lines',
+        });
+        console.log('next window');
+        expect(logs(posted).at(-1)).toMatchObject({ message: 'next window' });
+        helper.destroy();
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it('only the newest live helper forwards a line', () => {
+      const spies = silence();
+      try {
+        const a = env();
+        const b = env();
+        a.inject({ ...MODE, forwardLogs: true });
+        b.inject({ ...MODE, forwardLogs: true });
+        console.log('one');
+        expect(logs(a.posted)).toEqual([]);
+        expect(logs(b.posted).map((l) => l.message)).toEqual(['one']);
+        b.helper.destroy();
+        console.log('two');
+        expect(logs(a.posted).map((l) => l.message)).toEqual(['two']);
+        a.helper.destroy();
+        expect(console.log).toBe(spies[0]);
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it('forwardConsole: false posts nothing and leaves the console alone', () => {
+      const spies = silence();
+      try {
+        const { helper, posted, inject, fire, count } = env({ forwardConsole: false });
+        expect(console.log).toBe(spies[0]);
+        expect(count('error')).toBe(0);
+        inject({ ...MODE, forwardLogs: true });
+        console.log('hello');
+        fire('error', { message: 'boom' });
+        expect(logs(posted)).toEqual([]);
+        helper.destroy();
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
     });
   });
 

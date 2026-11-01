@@ -28,6 +28,7 @@ import {
   type CreateSessionInput,
   type ListSessionsQuery,
   type ManualTriggerInput,
+  type ManualTriggerResult,
   type PushHintInput,
   type RunTestCallbackInput,
   type SwitchPhaseInput,
@@ -139,15 +140,21 @@ export class SessionsController {
     return this.sessionsService.get(id);
   }
 
+  /**
+   * Manual trigger: run one event by id (phase guard bypassed) or fire a
+   * device trigger by name as if from source `admin`, with an optional
+   * payload; `force` skips only the `once` guard. Replies with the run ids
+   * of what started (and why the rest did not).
+   */
   @Post(':id/trigger')
-  @HttpCode(204)
+  @HttpCode(200)
   async trigger(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(ManualTriggerInputSchema))
     input: ManualTriggerInput,
-  ) {
+  ): Promise<ManualTriggerResult> {
     await this.sessionsService.get(id);
-    await this.runtime.manualTrigger(id, input.eventId);
+    return this.runtime.manualTrigger(id, input);
   }
 
   @Post(':id/reset-devices')
@@ -222,7 +229,7 @@ export class SessionsController {
     };
   }
 
-  /** Execute JS in one test website; optionally return a fresh native capture. */
+  /** Execute JS in one device's website (any live session); optionally return a fresh native capture. */
   @Post(':id/devices/:deviceId/eval')
   @HttpCode(200)
   async evaluateDevice(
@@ -234,7 +241,7 @@ export class SessionsController {
     return this.deviceEval.evaluate(session, deviceId, input);
   }
 
-  /** Bring one test device window to the front and/or capture it (no website needed). */
+  /** Bring one device window to the front and/or capture it (any live session; no website needed). */
   @Post(':id/devices/:deviceId/window')
   @HttpCode(200)
   async deviceWindow(
@@ -247,7 +254,7 @@ export class SessionsController {
     return this.deviceEval.window(session, deviceId, input);
   }
 
-  /** Force-reload the website one test device shows; optionally wait for its Helper. */
+  /** Force-reload the website one device shows (any live session); optionally wait for its Helper. */
   @Post(':id/devices/:deviceId/reload')
   @HttpCode(200)
   async reloadDevice(

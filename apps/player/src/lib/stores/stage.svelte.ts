@@ -163,7 +163,7 @@ class StageStore {
 				done();
 				return;
 			}
-			// Forced reload (website test): re-create the iframe for the same URL.
+			// Forced reload (`rk device reload`, any mode): re-create the iframe for the same URL.
 			vlog('stage', 'forced reload', url);
 			this.reloadNonce++;
 		} else {

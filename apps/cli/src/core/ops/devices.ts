@@ -1,5 +1,6 @@
 import {
   DeviceEvalInputSchema,
+  DeviceLogBatchSchema,
   DeviceEvalResultSchema,
   DeviceReloadInputSchema,
   DeviceReloadResultSchema,
@@ -8,6 +9,7 @@ import {
   SessionDevicesResponseSchema,
   SessionResponseSchema,
   type DeviceEvalInput,
+  type DeviceLogBatch,
   type DeviceReloadInput,
   type DeviceWindowInput,
   type SessionDevicesResponse,
@@ -20,14 +22,15 @@ import type { DeviceState } from '../virtual-device.js';
 
 /**
  * Resolve a device reference in the session's theme (independent of the
- * current project theme) for the test-only device RPCs, which all require a
- * live test session.
+ * current project theme) for the per-device debug tools (eval, window,
+ * reload, logs). They work in any live session — test or production — so
+ * only an ended session is refused (`not_live`).
  */
 export async function resolveSessionDevice(ctx: OpsContext, sessionId: string, deviceRef: string, what: string) {
   z.uuid().parse(sessionId);
   const session = await ctx.api.api(`/sessions/${sessionId}`, { schema: SessionResponseSchema });
-  if (session.mode !== 'test' || session.state === 'ended') {
-    throw new ToolError(`${what} requires a live test session.`, 'test_only');
+  if (session.state === 'ended') {
+    throw new ToolError(`${what} requires a live session.`, 'not_live');
   }
   const index = await ThemeIndex.load(ctx, session.themeId);
   return { session, deviceId: index.resolveAssetId(deviceRef, 'device') };
@@ -58,6 +61,16 @@ export async function reloadDevice(ctx: OpsContext, sessionId: string, deviceRef
   return ctx.api.api(`/sessions/${sessionId}/devices/${deviceId}/reload`, {
     method: 'POST', body, schema: DeviceReloadResultSchema,
   });
+}
+
+/**
+ * The device's buffered log lines (player console plus, with Helper 0.10.0+,
+ * the website's console prefixed `site: `), oldest first. The server keeps
+ * the last 1000 lines per device in memory until the session ends.
+ */
+export function getDeviceLogs(ctx: OpsContext, sessionId: string, deviceId: string): Promise<DeviceLogBatch> {
+  z.uuid().parse(sessionId);
+  return ctx.api.api(`/sessions/${sessionId}/devices/${deviceId}/logs`, { schema: DeviceLogBatchSchema });
 }
 
 /** Live per-device diagnostics of a session (any mode). */

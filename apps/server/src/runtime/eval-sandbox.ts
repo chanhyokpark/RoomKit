@@ -11,9 +11,10 @@ export interface EvalContext {
   /** Session variables — mutations are visible to parallel runs immediately. */
   vars: Record<string, JsonValue>;
   /**
-   * Payload of the device trigger that started this run (null when there is
-   * none — manual/system triggers, or the device sent no payload). A clone:
-   * mutations don't leak into other commands of the run.
+   * Payload of the trigger that started this run: the device's, or the one
+   * an operator passed to a manual trigger (null when there is none — system
+   * triggers, or no payload was sent). A clone: mutations don't leak into
+   * other commands of the run.
    */
   payload: JsonValue | null;
   /** Current phase name (null when the session has no phase). */

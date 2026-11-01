@@ -17,7 +17,7 @@ Requires Node 22+ and pnpm 10+. The CLI checks for a newer version in the backgr
 ## Output and exit contract
 
 - Human output is Korean and goes to stdout; warnings go to stderr.
-- `--json`: the result object/array is printed to stdout as JSON (with a `warnings` array when non-fatal notices occurred). Errors are printed to stderr as `{"error":{"code":"...","message":"...","status":404,"details":...}}`. Streaming commands (`rk device connect`, `rk session logs --follow`) print one JSON object per line (NDJSON).
+- `--json`: the result object/array is printed to stdout as JSON (with a `warnings` array when non-fatal notices occurred). Errors are printed to stderr as `{"error":{"code":"...","message":"...","status":404,"details":...}}`. Streaming commands (`rk device connect`, `rk session logs --follow`, `rk device logs --follow`) print one JSON object per line (NDJSON).
 - Exit codes: `0` success · `1` runtime/API error · `2` usage error, invalid input, missing input for a non-interactive run, invalid `roomkit.json` · `3` not logged in · `4` no theme selected · `130` cancelled.
 - Prompts appear only on a TTY without `--json`/`--yes`/`CI`. Otherwise a missing answer fails with `missing_input` and the error message lists the flags that would have answered it.
 - Destructive commands (`theme delete`, `asset delete`, `session delete`) confirm on a TTY and require `--yes` (`-y`, `--no-input`) elsewhere. `rk theme use` / `--use` create a missing `roomkit.json` at cwd after confirming on a TTY (silently otherwise).
@@ -224,29 +224,37 @@ rk sequence validate --sequence -
 
 ## Sessions and devices
 
-`rk device eval <deviceRef> --session <id> (--script <js> | --file <path|->) [--timeout 10000] [--screenshot <path.png|path.jpg>] [--overwrite] [--focus] --json` executes an async JS body in a connected Player test website. References resolve in the session's theme. See [Website JS evaluation](./website-eval.md) for bindings, errors, versions and screenshots.
+`rk device eval <deviceRef> --session <id> (--script <js> | --file <path|->) [--timeout 10000] [--screenshot <path.png|path.jpg>] [--overwrite] [--focus] --json` executes an async JS body in the website of a connected Player window — in any live session, production included (production needs Helper 0.10.0+ in the site; older Helpers answer `test_only`). References resolve in the session's theme. See [Website JS evaluation](./website-eval.md) for bindings, errors, versions, screenshots and the production cautions.
 
 ```sh
 rk device status --session <id> [--device <ref>] [--wait-ready] [--timeout 30000]   # online/windows/helper/website/ready per device
 rk device focus <deviceRef> --session <id> [--timeout 10000]                        # show, unminimize, focus, wait until visible
 rk device screenshot <deviceRef> <path.png|.jpg> --session <id> [--focus] [--overwrite]   # fresh capture, no website needed
 rk device reload <deviceRef> --session <id> [--wait-ready] [--focus] [--timeout 15000]    # forced website reload (+ Helper hello)
+rk device logs <deviceRef> --session <id> [--after <seq>] [--tail <n>] [--level debug|info|warn|error] [--follow --interval 1000]
 ```
 
-`status` works for any session; the other three need a live test session and exactly one Player window for the device. `--wait-ready` on `status` polls until the devices can run `eval`; on `reload` it waits for the reloaded page's Helper handshake. Details and error codes: [Window, screenshot, reload and status](./website-eval.md#window-screenshot-reload-and-status).
+`status` works for any session. `eval`, `focus`, `screenshot`, `reload` and `logs` need a live (not ended) session — test or production; ended sessions fail with `not_live` before any request. The window RPCs (`eval`, `focus`, `screenshot`, `reload`) also need exactly one Player window for the device. Server, Player 0.16.0+ (client 0.8.0+) and CLI 0.6.0+ are required for production sessions; older Players refuse outside test sessions. `--wait-ready` on `status` polls until the devices can run `eval`; on `reload` it waits for the reloaded page's Helper handshake. Details and error codes: [Window, screenshot, reload and status](./website-eval.md#window-screenshot-reload-and-status).
+
+`rk device logs` prints the device's buffered log lines (`GET /sessions/:id/devices/:deviceId/logs`): the Player window's own console (command/ack trace, errors) and, when the site bundles Helper 0.10.0+ on Player 0.16.0+, the website's console and uncaught errors prefixed `site: `. The server keeps the last 1000 lines per device in memory (also while the device is offline) and drops them when the session ends; any session mode works. Filters apply in order `--after <seq>` (only `seq > n`) → `--level <min>` → `--tail <n>`. Human lines are `seq time level message` (device clock). `--follow` polls every `--interval` ms, prints only new `seq`s, and stops with a notice when the session ends (Ctrl-C otherwise); `--tail 0 --follow` prints only new lines. `--json`: `{sessionId, deviceId, lines:[{seq, at, level, message}]}`; with `--follow` one line object per line (NDJSON).
 
 ```sh
 rk session create [--mode test|production] [--device-code <deviceRef>=<code>]... [--player <launcherId>] [--devices a,b] [--url-override <websiteRef>=<url>]... [--start]
 rk session start|pause|resume|end|restart-phase|reset-devices <id>
 rk session timer <id> --delta 5m | --pause | --resume
 rk session phase <id> <phaseRef>
-rk session trigger <id> <eventRef>            # manual-triggerable events
+rk session trigger <id> <eventRef> [--payload <json>] [--force]        # run that event (any event; phase guard bypassed)
+rk session trigger <id> --name <trigger> [--payload <json>] [--force]  # fire a device trigger name, as if a device emitted it
 rk session hint <id> <hintRef> [--step n]
 rk session command <id> --command '{"type":"navigate",...}'   # one-off command; watch logs
-rk session runs <id>  ·  rk session abort <id> <runId>
+rk session runs <id>  ·  rk session skip <id> <runId>  ·  rk session abort <id> <runId>
 rk session list [--active] [--all-themes]  ·  rk session get <id>  ·  rk session summary <id>  ·  rk session delete <id>
 rk session logs <id> [--after <logId>] [--limit 500] [--follow --interval 1000]
 ```
+
+`trigger` takes exactly one of `<eventRef>` or `--name` (usage error otherwise) and works in any session mode once the session is started. `<eventRef>` runs that one event (not only `manualTriggerable` ones) even outside its phase; `once` and re-entry still apply. `--name` runs every event listening to that device trigger exactly like a device trigger (phase guard, `once`, re-entry rules apply) — a way to fire device triggers without a virtual device or Player. `--payload` (inline JSON, `@file`, `-`) is available to the sequence as `{{payload.x}}`. `--force` additionally ignores an event's `once` history (nothing else); it exists to recover a wedged production session and no UI exposes it. The reply (HTTP 200) lists every considered event: `{eventId?, trigger?, events:[{eventId, eventName, started, runId?, reason?}]}` — human output is a table of `시작됨` + run id or `미실행` + reason, and `events: []` for `--name` means nothing listens to that trigger (warning). On a rejected `<eventRef>` the server answers 4xx with the reason.
+
+`skip <id> <runId>` skips the current entry of an in-flight run (`POST /sessions/:id/runs/:runId/skip`, 204): a `wait` ends now, a waited playback/message stops being awaited, and the sequence continues with the next entry. `abort` cancels the rest of the run instead. Run ids come from `rk session runs` or the `trigger` reply.
 
 `create` in test mode without `--device-code`/`--player` mints an `rk-…` code per device asset and returns `generatedDeviceCodes`. Any test session can be opened in the Player app on the current machine with the app link `roomkit-player://test?server=<origin>&session=<id>` (`playerTestLink()` in `@roomkit/shared`; `rk dev` does this automatically, and Studio shows an "open in Player" button for test sessions).
 

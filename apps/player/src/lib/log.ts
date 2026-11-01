@@ -66,6 +66,24 @@ function record(level: LogLevel, message: string): void {
 	void plugin?.[level](`[${windowLabel}] ${message}`).catch(() => {});
 }
 
+/**
+ * One console line of the website, forwarded by the helper (`HelperLog`).
+ * Goes the same two ways as the player's own lines (so the device-log
+ * uploader ships it) but keeps the website's timestamp and gets a `site: `
+ * prefix so operators can tell website lines from player lines. Not echoed
+ * to devtools — the website's own console already printed it.
+ */
+export function recordSiteLog(line: { at: number; level: LogLevel; message: string }): void {
+	const message = `site: ${line.message}`;
+	const capped: LogLine = {
+		at: line.at,
+		level: line.level,
+		message: message.length > LINE_LIMIT ? `${message.slice(0, LINE_LIMIT - 1)}…` : message
+	};
+	for (const fn of subscribers) fn(capped);
+	void plugin?.[line.level](`[${windowLabel}] ${capped.message}`).catch(() => {});
+}
+
 /** Receive every log line of this window (from the moment of subscribing). */
 export function subscribeLogs(fn: (line: LogLine) => void): () => void {
 	subscribers.add(fn);

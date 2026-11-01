@@ -97,11 +97,11 @@
 		});
 		// Studio's device list shows a live thumbnail of this stage.
 		stopScreenshots = startScreenshotReporter(client, () => connection.status === 'connected');
-		// Test tooling (`rk device focus|screenshot`): bring this window to the
-		// front and/or capture it, with or without a website loaded.
+		// Debug tooling (`rk device focus|screenshot`), any live session: bring
+		// this window to the front and/or capture it, with or without a website.
 		client.on('window', (request, reply) => {
 			void answerWindowRequest(request, {
-				isTest: () => connection.isTest && connection.session?.state !== 'ended',
+				isLive: () => connection.session !== null && connection.session?.state !== 'ended',
 				focus: focusStageWindow,
 				state: stageWindowState,
 				afterPaint,

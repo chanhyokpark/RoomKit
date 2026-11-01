@@ -6,7 +6,8 @@ import type {
 } from '@roomkit/shared';
 
 export interface WindowRpcIo {
-	isTest: () => boolean;
+	/** A session exists and has not ended (any mode). */
+	isLive: () => boolean;
 	/** Show / unminimize / focus the window and wait until it is visible. */
 	focus: (timeoutMs: number) => Promise<void>;
 	state: () => Promise<DeviceWindowState>;
@@ -19,7 +20,9 @@ const message = (error: unknown) =>
 	(error instanceof Error ? error.message : String(error)).slice(0, 4000);
 
 /**
- * `device:window` — the test-only window RPC. Unlike `device:eval` it needs
+ * `device:window` — the window debug RPC, answered in any live session
+ * (production included, so a wedged room can be inspected). Like
+ * `device:eval` the server only forwards it for admins; unlike it, it needs
  * no website: focus and capture work on the idle screen and during video.
  * The focus step is bounded by the request's deadline; a capture failure
  * keeps the (successful) window state in the result.
@@ -32,7 +35,7 @@ export async function answerWindowRequest(
 		requestId: request.requestId,
 		result: { ok: false, error: { code, message: text } }
 	});
-	if (!io.isTest()) return fail('test_only', 'A window request requires a live test session');
+	if (!io.isLive()) return fail('not_live', 'A window request requires a live session');
 	const deadline = Date.now() + request.timeoutMs;
 	if (request.focus) {
 		try {

@@ -26,9 +26,11 @@ type LiveSession = { id: string; mode: string; state: string };
 const RPC_GRACE_MS = 7000;
 
 /**
- * Test-only device RPCs that bypass the authored command pipeline: JS
+ * Debug device RPCs that bypass the authored command pipeline: JS
  * evaluation in the website, window focus/capture, and website reload.
- * Each targets exactly one connected player window and never retries.
+ * Available in any live (not ended) session — test or production — so
+ * operators can recover a wedged game. Each targets exactly one connected
+ * player window and never retries.
  */
 @Injectable()
 export class DeviceEvalService {
@@ -124,7 +126,7 @@ export class DeviceEvalService {
     deviceId: string,
     input: DeviceReloadInput,
   ): Promise<DeviceReloadResult> {
-    this.assertLiveTest(session, 'Website reload');
+    this.assertLive(session, 'Website reload');
     // Reload uses the authored navigate wire, which the runtime broadcasts
     // to every socket of the device — still require one window so the load
     // ack and the helper hello are unambiguous.
@@ -164,9 +166,10 @@ export class DeviceEvalService {
     }
   }
 
-  private assertLiveTest(session: LiveSession, what: string): void {
-    if (session.mode !== 'test' || session.state === 'ended') {
-      throw new BadRequestException(`${what} requires a live test session`);
+  /** Debug RPCs work in any session that has not ended (test or production). */
+  private assertLive(session: LiveSession, what: string): void {
+    if (session.state === 'ended') {
+      throw new BadRequestException(`${what} requires a live session`);
     }
   }
 
@@ -191,14 +194,14 @@ export class DeviceEvalService {
       input: Input;
       timeoutMs: number;
       schema: ZodType<Result>;
-      /** Subject of the "… requires a live test session" refusal. */
+      /** Subject of the "… requires a live session" refusal. */
       requires: string;
       busy: string;
       unavailable: (requestId: string) => Result;
       invalid: (requestId: string) => Result;
     },
   ): Promise<Result> {
-    this.assertLiveTest(session, spec.requires);
+    this.assertLive(session, spec.requires);
     const socket = this.targetSocket(session, deviceId);
     const key = `${session.id}:${deviceId}`;
     if (this.pending.has(key)) throw new ConflictException(spec.busy);

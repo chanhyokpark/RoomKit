@@ -134,8 +134,10 @@ rk deploy --all --no-build
 - 테마: `rk theme list|create|update|duplicate|export|import|delete`
 - 태그·애셋: `rk tag …`, `rk asset list|get|create|update|delete` (`rk asset create` 는 옵션 없이 실행하면 마법사), `rk upload <파일> --set <애셋>`, `rk import media sfx <zip>`
 - 시퀀스: `rk sequence get <이벤트> --outline`, `rk sequence edit <이벤트> --ops @ops.json`, `rk sequence set`, `rk sequence validate`
-- 세션: `rk session create|start|pause|resume|end|phase|trigger|hint|timer|command|logs|summary|delete` · 개발 서버와 Player 로 바로 테스트: `rk dev`
+- 세션: `rk session create|start|pause|resume|end|phase|trigger|hint|timer|command|runs|skip|abort|logs|summary|delete` · 개발 서버와 Player 로 바로 테스트: `rk dev`
+- 수동 실행: `rk session trigger <세션> <이벤트>` (어떤 이벤트든, 다른 페이즈도) · `rk session trigger <세션> --name <트리거> --payload '{...}'` (장치가 보낸 것처럼) · `--force` 는 1회 이벤트도 다시 실행 (운영 복구용) · `rk session skip <세션> <실행 ID>` 로 대기 중인 현재 단계를 건너뜀
 - 가상 장치: `rk device connect --session <id>` (연결을 유지하며 받은 커맨드를 출력) · `rk device trigger <코드> <이벤트>`
+- 장치 디버그: `rk device status|logs|screenshot|eval|focus|reload --session <id>` — 운영 세션에서도 동작합니다 (Player 0.16.0 이상, `eval` 은 웹사이트에 Helper 0.10.0 이상 필요)
 
 애셋은 uuid 대신 `key`(테마 안에서 유일한 슬러그)로 참조할 수 있습니다. 입력 형식은 `rk describe commands`, `rk describe asset <종류>` 로 확인할 수 있고, 전체 명령 설명은 `rk <명령> --help` 와 [CLI 레퍼런스(영문)](../../skills/roomkit/references/cli.md)에 있습니다.
 
@@ -144,4 +146,5 @@ rk deploy --all --no-build
 - 자격 증명은 평문으로 저장됩니다. 신뢰할 수 있는 컴퓨터에서만 사용해 주세요.
 - 삭제 명령은 데이터를 영구적으로 지웁니다. 터미널에서는 확인을 묻고, `--json`/`--yes` 에서는 `--yes` 가 있어야 실행됩니다.
 - 가상 장치는 즉시 완료 응답을 보내므로 실제 재생 시간과 화면은 검증하지 못합니다.
+- 운영 세션에서 `rk device eval`·`rk device reload`·`rk session trigger --force` 는 진행 중인 게임을 바꿉니다. 먼저 `rk device logs`·`rk device screenshot` 으로 확인하고, AI 에게는 실행 전에 변경 내용을 확인받도록 요청해 주세요.
 - `rk init` 의 템플릿 다운로드와 `rk docs --remote` 는 GitHub 접근이 필요합니다.

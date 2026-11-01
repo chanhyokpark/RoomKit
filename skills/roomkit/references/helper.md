@@ -6,7 +6,7 @@ Use Helper only for a website navigated inside RoomKit Player's iframe. It does 
 
 ## Installation
 
-For DOM inspection, scripted interaction and fresh Player screenshots during a test session, see [Website JS evaluation](./website-eval.md). Helper 0.9.0+ supports this automatically through `rk device eval`; no per-button callbacks are required.
+For DOM inspection, scripted interaction and fresh Player screenshots, see [Website JS evaluation](./website-eval.md). Helper 0.9.0+ supports this automatically through `rk device eval` in test sessions; Helper 0.10.0+ also in live production sessions (the Helper no longer refuses eval by session mode — the authenticated server and Player 0.16.0+ gate it; older Helpers answer `test_only` in production). No per-button callbacks are required. Helper 0.10.0+ also forwards the page's console to the device logs (`forwardConsole`, below).
 
 ```sh
 pnpm add "github:chanhyokpark/RoomKit#path:packages/helper"
@@ -24,7 +24,7 @@ pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-react"
 pnpm add "github:chanhyokpark/RoomKit#path:packages/helper-svelte"
 ```
 
-Initialize the wrapper once at the TOP layout — the component that never unmounts (React: the root component rendered in `main.tsx`; SvelteKit: the root `+layout.svelte`). Options are read once on mount, and a remount or document navigation re-runs the hello handshake and drops render claims, so nothing below the top layout should own the helper. `options` are the `RoomKitHelper` constructor options (`renders`, `messages`, `states`, `testCallbacks`, `lockdown`) plus `timerPollMs`.
+Initialize the wrapper once at the TOP layout — the component that never unmounts (React: the root component rendered in `main.tsx`; SvelteKit: the root `+layout.svelte`). Options are read once on mount, and a remount or document navigation re-runs the hello handshake and drops render claims, so nothing below the top layout should own the helper. `options` are the `RoomKitHelper` constructor options (`renders`, `messages`, `states`, `testCallbacks`, `lockdown`, `forwardConsole`) plus `timerPollMs`.
 
 Both wrappers expose one `rk` surface (`RoomKitApi`):
 
@@ -160,6 +160,10 @@ Claims are independent. An unclaimed slot remains Player-rendered.
 
 For `url: null`, render a placeholder from `assetName`/`durationMs`. Player owns the completion timer; do not call `videoEnded`. Forgetting an end/error for a real video stalls waited sequences.
 
+## Console forwarding
+
+`forwardConsole` (default `true`, Helper 0.10.0+) captures the page's `console.log/info/debug/warn/error` (log → `info`) plus uncaught errors and unhandled rejections and posts each as a `log` envelope to the Player, which ships them with its own device logs. Operators read them with `rk device logs <device> --session <id>` (prefixed `site: `) or the dashboard's device log dialog — in any session mode, which is how a misbehaving website in a running room is diagnosed. The console keeps printing as usual. Lines are sent only after the Player's `mode` message carries `forwardLogs: true` (Player 0.16.0+); until then the last 100 lines are buffered, so boot output is not lost. At most ~100 lines per second are forwarded (excess dropped with one summary line); arguments are stringified and clipped. Pass `forwardConsole: false` to keep a noisy or sensitive console out of the logs; `destroy()` restores the original console methods. Never log secrets: device logs are visible to every operator.
+
 ## Lockdown and local development
 
 Lockdown disables text selection outside form fields and blocks the context menu in production sessions. Test sessions retain context-menu access. Set `lockdown: false` for plain-browser development, but remember Helper has no functional transport outside Player.
@@ -274,6 +278,7 @@ interface RoomKitHelperOptions {
   messages?: string[];                          // declared names for the debug window (never filters delivery)
   states?: string[];                            // declared state names for the operation UI (never filters delivery)
   testCallbacks?: Record<string, TestCallback>; // debug-window callbacks (test sessions only)
+  forwardConsole?: boolean;                     // default true; console + uncaught errors → player device logs
   parentWindow?: Pick<Window, 'postMessage'>;                            // test seam
   selfWindow?: Pick<Window, 'addEventListener' | 'removeEventListener'>; // test seam
 }

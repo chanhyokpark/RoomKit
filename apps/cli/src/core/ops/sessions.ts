@@ -3,11 +3,14 @@ import { z } from 'zod';
 import {
   AdjustTimerInputSchema,
   CommandSchema,
+  JsonValueSchema,
+  ManualTriggerResultSchema,
   SessionLogEntrySchema,
   SessionResponseSchema,
   SessionRunsSchema,
   SessionSchema,
   SessionSummarySchema,
+  type ManualTriggerResult,
   type Session,
   type SessionResponse,
 } from '@roomkit/shared';
@@ -84,16 +87,29 @@ export const ControlActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('reset_devices') }),
   z.object({ type: z.literal('adjust_timer'), adjustment: AdjustTimerInputSchema }),
   z.object({ type: z.literal('switch_phase'), phaseId: z.string().min(1) }),
-  z.object({ type: z.literal('trigger_event'), eventId: z.string().min(1) }),
+  // Exactly one of eventId (event ref; any event, phase guard bypassed) or
+  // trigger (device trigger name, run like a device emitted it). `force`
+  // bypasses only the event's `once` rule.
+  z.object({
+    type: z.literal('trigger_event'),
+    eventId: z.string().min(1).optional(),
+    trigger: z.string().min(1).optional(),
+    payload: JsonValueSchema.nullable().optional(),
+    force: z.boolean().optional(),
+  }),
   z.object({ type: z.literal('push_hint'), hintId: z.string().min(1), step: z.number().int().nonnegative().default(0) }),
 ]);
 export type ControlAction = z.infer<typeof ControlActionSchema>;
 
 export async function controlSession(ctx: OpsContext, sessionId: string, action: ControlAction): Promise<unknown> {
-  if (action.type === 'switch_phase' || action.type === 'trigger_event' || action.type === 'push_hint') {
+  if (action.type === 'trigger_event' && (action.eventId === undefined) === (action.trigger === undefined)) {
+    throw new ToolError('Pass exactly one of an event ref or a device trigger name.', 'usage');
+  }
+  if (action.type === 'switch_phase' || (action.type === 'trigger_event' && action.eventId !== undefined) || action.type === 'push_hint') {
     const index = await sessionIndex(ctx, sessionId);
     if (action.type === 'switch_phase') action.phaseId = index.resolveAssetId(action.phaseId, 'phase', 'phase');
-    if (action.type === 'trigger_event') action.eventId = index.resolveAssetId(action.eventId, 'event', 'event');
+    if (action.type === 'trigger_event' && action.eventId !== undefined)
+      action.eventId = index.resolveAssetId(action.eventId, 'event', 'event');
     if (action.type === 'push_hint') action.hintId = index.resolveAssetId(action.hintId, 'hint', 'hint');
   }
   const post = (suffix: string, body?: unknown) =>
@@ -118,8 +134,7 @@ export async function controlSession(ctx: OpsContext, sessionId: string, action:
     case 'switch_phase':
       return post('/phase', { phaseId: action.phaseId });
     case 'trigger_event':
-      await ctx.api.api(`/sessions/${sessionId}/trigger`, { method: 'POST', body: { eventId: action.eventId } });
-      return { triggered: action.eventId };
+      return triggerSessionEvents(ctx, sessionId, action);
     case 'reset_devices':
       await ctx.api.api(`/sessions/${sessionId}/reset-devices`, { method: 'POST' });
       return { ok: true };
@@ -127,6 +142,25 @@ export async function controlSession(ctx: OpsContext, sessionId: string, action:
       await ctx.api.api(`/sessions/${sessionId}/hint`, { method: 'POST', body: { hintId: action.hintId, step: action.step } });
       return { ok: true };
   }
+}
+
+/**
+ * POST /sessions/:id/trigger with an already-resolved event id or a device
+ * trigger name. Replies with each considered event: started (with its run id
+ * for `skip`/`abort`) or the admission reason it did not start.
+ */
+async function triggerSessionEvents(
+  ctx: OpsContext,
+  sessionId: string,
+  action: Extract<ControlAction, { type: 'trigger_event' }>,
+): Promise<ManualTriggerResult> {
+  const body = {
+    ...(action.eventId !== undefined && { eventId: action.eventId }),
+    ...(action.trigger !== undefined && { trigger: action.trigger }),
+    ...(action.payload !== undefined && { payload: action.payload }),
+    force: action.force ?? false,
+  };
+  return ctx.api.api(`/sessions/${sessionId}/trigger`, { method: 'POST', body, schema: ManualTriggerResultSchema });
 }
 
 /** Run one sequence command against a live session, outside any event (fire-and-forget). */
@@ -144,6 +178,15 @@ export function listSessionRuns(ctx: OpsContext, sessionId: string) {
 export async function abortSessionRun(ctx: OpsContext, sessionId: string, runId: string) {
   await ctx.api.api(`/sessions/${sessionId}/runs/${runId}/abort`, { method: 'POST' });
   return { aborted: runId };
+}
+
+/**
+ * Skip the current entry of an in-flight run: a `wait` ends now, a waited
+ * playback/message stops being awaited, and the sequence continues.
+ */
+export async function skipSessionRun(ctx: OpsContext, sessionId: string, runId: string) {
+  await ctx.api.api(`/sessions/${sessionId}/runs/${runId}/skip`, { method: 'POST' });
+  return { skipped: runId };
 }
 
 export function listSessions(ctx: OpsContext, opts: { themeId?: string; activeOnly?: boolean }): Promise<Session[]> {

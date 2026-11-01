@@ -181,11 +181,15 @@ export interface RoomKitClientEvents extends Record<string, unknown[]> {
    * server's REST reply waits on this ack.
    */
   testCallback: [WireTestCallback, DoneFn];
-  /** Test-only RPC; a Player consumer executes inside the website and replies once. */
+  /**
+   * Debug RPC (any live session, production included — the server only
+   * forwards it for authenticated admins); a Player consumer executes inside
+   * the website and replies once.
+   */
   evaluate: [DeviceEvalRequest, (result: DeviceEvalResult) => void];
   /**
-   * Test-only RPC; a Player consumer brings its window to the front and/or
-   * captures it (no website involved) and replies once.
+   * Debug RPC (any live session); a Player consumer brings its window to the
+   * front and/or captures it (no website involved) and replies once.
    */
   window: [DeviceWindowRequest, (result: DeviceWindowResult) => void];
 }
@@ -222,12 +226,13 @@ export class RoomKitClient {
   }
 
   /**
-   * Test-only request/acknowledgement RPCs (`device:eval`, `device:window`):
-   * validate the request, refuse outside live test sessions, hand it to the
+   * Debug request/acknowledgement RPCs (`device:eval`, `device:window`):
+   * validate the request, refuse unless a session is live (any mode — a
+   * wedged production session must stay debuggable), hand it to the
    * consumer's handler and answer the socket.io ack exactly once (an invalid
    * or late reply becomes a structured failure, never a hung request).
    */
-  private answerTestRpc<
+  private answerDebugRpc<
     K extends 'evaluate' | 'window',
     Req extends { requestId: string; timeoutMs: number },
     Res extends { requestId: string },
@@ -239,7 +244,7 @@ export class RoomKitClient {
       request: { safeParse(value: unknown): { success: true; data: Req } | { success: false } };
       result: { safeParse(value: unknown): { success: true; data: Res } | { success: false } };
       what: string;
-      /** Subject of the "… requires a live test session" refusal. */
+      /** Subject of the "… requires a live session" refusal. */
       requires: string;
       timeoutMessage: string;
       unsupportedMessage: string;
@@ -261,8 +266,8 @@ export class RoomKitClient {
       reply(valid.success && valid.data.requestId === request.requestId
         ? valid.data : fail('invalid_result', `Player returned an invalid ${spec.what} result`));
     };
-    if (this.lastSessionState?.mode !== 'test' || this.lastSessionState.state === 'ended') {
-      done(fail('test_only', `${spec.requires} requires a live test session`));
+    if (!this.lastSessionState || this.lastSessionState.state === 'ended') {
+      done(fail('not_live', `${spec.requires} requires a live session`));
       return;
     }
     const handlers = this.emitter.emitCollect(
@@ -405,7 +410,7 @@ export class RoomKitClient {
       this.handleCommand(payload),
     );
     socket.on(DeviceEvents.evaluate, (payload: unknown, reply: unknown) =>
-      this.answerTestRpc('evaluate', payload, reply, {
+      this.answerDebugRpc('evaluate', payload, reply, {
         request: DeviceEvalRequestSchema,
         result: DeviceEvalResultSchema,
         what: 'evaluation',
@@ -415,7 +420,7 @@ export class RoomKitClient {
       }),
     );
     socket.on(DeviceEvents.window, (payload: unknown, reply: unknown) =>
-      this.answerTestRpc('window', payload, reply, {
+      this.answerDebugRpc('window', payload, reply, {
         request: DeviceWindowRequestSchema,
         result: DeviceWindowResultSchema,
         what: 'window request',

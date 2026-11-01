@@ -10,6 +10,7 @@ import {
 	type HintShow,
 	type JsonValue,
 	type PlayerHintCode,
+	type PlayerMode,
 	type PlayerState,
 	type PlayerSubtitle,
 	type PlayerToHelper,
@@ -20,7 +21,7 @@ import {
 import { call } from '../stores/call.svelte';
 import { connection } from '../stores/connection.svelte';
 import { runHaptics } from '../haptics';
-import { vlog } from '../log';
+import { recordSiteLog, vlog } from '../log';
 import { stage } from '../stores/stage.svelte';
 import { captureStage, afterPaint } from '../screenshot';
 import { WebsiteEvaluator } from './website-evaluator';
@@ -72,7 +73,10 @@ export class HelperBridge {
 		this.targetOrigin = new URL(url).origin;
 		this.evaluator = new WebsiteEvaluator({
 			post: (request) => this.iframe.contentWindow!.postMessage({ ...request, source: PLAYER_SOURCE, type: 'test:eval' }, this.targetOrigin),
-			isTest: () => this.client.sessionState?.mode === 'test' && this.client.sessionState.state !== 'ended',
+			// Any live session, production included: the server only forwards
+			// device:eval for authenticated admins, and a wedged production room
+			// is exactly when an operator needs it.
+			isLive: () => this.client.sessionState !== null && this.client.sessionState.state !== 'ended',
 			afterPaint,
 			capture: captureStage
 		});
@@ -81,14 +85,12 @@ export class HelperBridge {
 		const onStatus = (status: ConnectionStatus) => {
 			if (status !== 'connected') {
 				this.evaluator.invalidate('Player disconnected');
-				this.post({ source: PLAYER_SOURCE, type: 'mode', mode: 'production' });
+				this.postMode('production');
 			}
 		};
 		const onSession = (session: SessionState) => {
-			if (session.mode !== 'test' || session.state === 'ended') {
-				this.evaluator.invalidate('Test session ended');
-				this.post({ source: PLAYER_SOURCE, type: 'mode', mode: 'production' });
-			}
+			if (session.state === 'ended') this.evaluator.invalidate('Session ended');
+			if (session.mode !== 'test' || session.state === 'ended') this.postMode('production');
 		};
 		this.client.on('evaluate', onEvaluate).on('status', onStatus).on('sessionState', onSession);
 		this.cleanups.push(() => this.client.off('evaluate', onEvaluate).off('status', onStatus).off('sessionState', onSession));
@@ -154,7 +156,7 @@ export class HelperBridge {
 			this.send({ source: PLAYER_SOURCE, type: 'hint:error', error });
 		const onWelcome = () => {
 			this.evaluator.hello(this.ready && this.helperEval);
-			this.post({ source: PLAYER_SOURCE, type: 'mode', mode: connection.session?.mode ?? 'production' });
+			this.postMode(connection.session?.mode ?? 'production');
 			if (this.helperVersion !== undefined) {
 				this.client.reportHelperInfo(this.helperVersion, this.helperExtras);
 			}
@@ -265,6 +267,12 @@ export class HelperBridge {
 			return;
 		}
 		const msg = parsed.data;
+		if (msg.type === 'log') {
+			// Website console line: straight into the player log stream (and so
+			// the device-log uploader). No bridge vlog — it would log each line twice.
+			recordSiteLog({ at: msg.at, level: msg.level, message: msg.message });
+			return;
+		}
 		vlog('bridge', '← helper', msg.type, msg);
 		switch (msg.type) {
 			case 'hello': {
@@ -283,12 +291,9 @@ export class HelperBridge {
 				};
 				this.client.reportHelperInfo(this.helperVersion, this.helperExtras);
 				// Replied to every hello so a reloaded page learns it again; test
-				// mode keeps the site's context menu usable (devtools).
-				this.post({
-					source: PLAYER_SOURCE,
-					type: 'mode',
-					mode: connection.session?.mode ?? 'production'
-				});
+				// mode keeps the site's context menu usable (devtools), and
+				// forwardLogs turns on the helper's console forwarding.
+				this.postMode(connection.session?.mode ?? 'production');
 				// Likewise the current durable state — a reloaded page must render
 				// the same display (the helper dedupes against WebsiteFrame's post).
 				this.post({ source: PLAYER_SOURCE, type: 'state', state: stage.state });
@@ -405,6 +410,14 @@ export class HelperBridge {
 				error: err instanceof Error ? err.message : String(err)
 			});
 		}
+	}
+
+	/**
+	 * Every `mode` post carries `forwardLogs: true`: this player collects the
+	 * website's console output (`log` messages) into its device logs.
+	 */
+	private postMode(mode: PlayerMode['mode']): void {
+		this.post({ source: PLAYER_SOURCE, type: 'mode', mode, forwardLogs: true });
 	}
 
 	private send(msg: PlayerToHelper): void {

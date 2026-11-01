@@ -17,6 +17,8 @@ import type {
   HintShow,
   HintSubmit,
   JsonValue,
+  ManualTriggerInput,
+  ManualTriggerResult,
   PlaybackProgress,
   PushHintInput,
   SessionLogEntry,
@@ -156,10 +158,12 @@ export class SessionRuntimeService
     await engine.flush();
   }
 
-  async manualTrigger(sessionId: string, eventId: string): Promise<void> {
-    await this.wrapAsync(() =>
-      this.getEngine(sessionId).manualTrigger(eventId),
-    );
+  /** REST manual trigger by event id or device trigger name (see engine). */
+  async manualTrigger(
+    sessionId: string,
+    input: ManualTriggerInput,
+  ): Promise<ManualTriggerResult> {
+    return this.wrapAsync(() => this.getEngine(sessionId).manualTrigger(input));
   }
 
   async resetAllDevices(sessionId: string): Promise<void> {
@@ -188,7 +192,7 @@ export class SessionRuntimeService
     );
   }
 
-  /** Test tooling: force-reload the website a device shows and await its load ack. */
+  /** Debug tooling: force-reload the website a device shows and await its load ack. */
   async reloadWebsite(
     sessionId: string,
     deviceId: string,
