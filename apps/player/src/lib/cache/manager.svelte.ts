@@ -102,7 +102,8 @@ class CacheManager {
 
 	/**
 	 * Fetch the device manifest and reconcile: download missing files, prune
-	 * unreferenced ones. Serialized — a sync requested while one runs is
+	 * ones nothing has used for a long while (the cache directory is shared
+	 * with other windows and Players, so "not in my manifest" is not enough). Serialized — a sync requested while one runs is
 	 * coalesced into one follow-up pass (welcome fires on every reconnect).
 	 */
 	async sync(client: RoomKitClient): Promise<void> {
@@ -129,7 +130,7 @@ class CacheManager {
 	}
 
 	/**
-	 * A cached src failed to play (pruned by another window, corrupt file):
+	 * A cached src failed to play (aged out by another window, corrupt file):
 	 * stop serving it so playback falls back to the presigned URL.
 	 */
 	invalidate(fileKey: string): void {

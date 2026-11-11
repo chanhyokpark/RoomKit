@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -16,8 +16,33 @@ use tokio::io::AsyncWriteExt;
 /// process-wide: a per-key active set makes the second window wait instead of
 /// truncating the first one's `.part`, and list/prune leave an active key's
 /// files alone.
+///
+/// The directory is also shared with every other Player on the machine
+/// (other processes, other devices' manifests), so pruning is by age, not by
+/// "absent from my manifest": a file's mtime is its last use — refreshed each
+/// time a sync still wants it — and only files unused for `UNUSED_TTL` go.
 
 const PROGRESS_EMIT_STEP: u64 = 1024 * 1024;
+/// How long a file no manifest asked for is kept.
+const UNUSED_TTL: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+/// Last-use stamps are only rewritten once they are this old.
+const TOUCH_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
+/// A `.part` untouched this long belongs to a crashed download, not to a
+/// download in another Player process.
+const PART_STALE_AFTER: Duration = Duration::from_secs(10 * 60);
+
+/// Time since the file was last written/stamped; None when unreadable (or
+/// stamped in the future), which callers treat as "recent".
+fn age(path: &Path) -> Option<Duration> {
+  let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+  SystemTime::now().duration_since(modified).ok()
+}
+
+fn touch(path: &Path) {
+  if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
+    let _ = file.set_modified(SystemTime::now());
+  }
+}
 
 /// Keys with a download in flight (any window).
 fn active_downloads() -> &'static Mutex<HashSet<String>> {
@@ -158,8 +183,9 @@ pub fn cache_list(app: AppHandle) -> Result<Vec<String>, String> {
   Ok(keys)
 }
 
-/// Deletes cached files that are not in `keep` (and stale .part leftovers),
-/// then removes empty directories. Returns the number of files deleted.
+/// Stamps the files in `keep` as used now, deletes the other cached files once
+/// they have gone unused for `UNUSED_TTL` (and stale .part leftovers), then
+/// removes empty directories. Returns the number of files deleted.
 #[tauri::command]
 pub fn cache_prune(app: AppHandle, keep: Vec<String>) -> Result<u32, String> {
   let root = cache_base(&app)?;
@@ -168,10 +194,18 @@ pub fn cache_prune(app: AppHandle, keep: Vec<String>) -> Result<u32, String> {
   collect_files(&root, &root, &mut existing)?;
   let mut deleted = 0u32;
   for key in existing {
-    // Another window may be mid-download for a manifest this window has not
-    // seen (e.g. right after a theme re-import) — leave its file alone.
-    if !keep.contains(key.as_str()) && !is_active(&key) {
-      if std::fs::remove_file(root.join(&key)).is_ok() {
+    let path = root.join(&key);
+    let unused_for = age(&path);
+    if keep.contains(key.as_str()) {
+      if unused_for.is_some_and(|age| age > TOUCH_AFTER) {
+        touch(&path);
+      }
+      continue;
+    }
+    // Not in this window's manifest, but another window or Player may still
+    // use it (a different device, a different theme) — only age it out.
+    if unused_for.is_some_and(|age| age > UNUSED_TTL) && !is_active(&key) {
+      if std::fs::remove_file(&path).is_ok() {
         deleted += 1;
       }
     }
@@ -205,7 +239,8 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), S
       collect_files(root, &path, out)?;
     } else if path.extension().and_then(|e| e.to_str()) == Some("part") {
       // Leftover from a crashed download; treat as garbage — unless a window
-      // is writing it right now (deleting a live .part fails its rename).
+      // (or another Player process: recently written) is writing it right
+      // now (deleting a live .part fails its rename).
       let live = path
         .with_extension("")
         .strip_prefix(root)
@@ -219,7 +254,7 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), S
           Some(is_active(&key))
         })
         .unwrap_or(false);
-      if !live {
+      if !live && age(&path).is_some_and(|age| age > PART_STALE_AFTER) {
         let _ = std::fs::remove_file(&path);
       }
     } else if let Ok(rel) = path.strip_prefix(root) {
