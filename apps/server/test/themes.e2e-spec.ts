@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { SessionRuntimeService } from '../src/runtime/session-runtime.service';
 import { createTestApp, login } from './helpers';
 
 describe('Themes (e2e)', () => {
@@ -52,6 +53,28 @@ describe('Themes (e2e)', () => {
     await auth(request(app.getHttpServer()).get(`/api/themes/${id}`)).expect(
       404,
     );
+  });
+
+  it('ends live sessions before deleting their theme', async () => {
+    const theme = await auth(
+      request(app.getHttpServer()).post('/api/themes').send({ name: 'live' }),
+    ).expect(201);
+    const session = await auth(
+      request(app.getHttpServer())
+        .post('/api/sessions')
+        .send({ themeId: theme.body.id, mode: 'test', deviceCodes: [] }),
+    ).expect(201);
+    const sessionId = session.body.id as string;
+    await auth(
+      request(app.getHttpServer()).post(`/api/sessions/${sessionId}/start`),
+    ).expect(201);
+    const runtime = app.get(SessionRuntimeService);
+    expect(runtime.isLive(sessionId)).toBe(true);
+
+    await auth(
+      request(app.getHttpServer()).delete(`/api/themes/${theme.body.id}`),
+    ).expect(204);
+    expect(runtime.isLive(sessionId)).toBe(false);
   });
 
   it('rejects an invalid create body', () =>

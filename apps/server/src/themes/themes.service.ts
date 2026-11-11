@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { CreateThemeInput, UpdateThemeInput } from '@roomkit/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { SessionRuntimeService } from '../runtime/session-runtime.service';
 
 @Injectable()
 export class ThemesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly runtime: SessionRuntimeService,
+  ) {}
 
   list() {
     return this.prisma.theme.findMany({ orderBy: { createdAt: 'asc' } });
@@ -27,8 +31,17 @@ export class ThemesService {
     return this.prisma.theme.update({ where: { id }, data: input });
   }
 
+  /**
+   * Deleting a theme cascades to its sessions, so live ones are ended first —
+   * otherwise their engines keep running against rows that no longer exist.
+   */
   async remove(id: string) {
     await this.get(id);
+    const live = await this.prisma.session.findMany({
+      where: { themeId: id, state: { not: 'ended' } },
+      select: { id: true },
+    });
+    for (const session of live) await this.runtime.end(session.id);
     await this.prisma.theme.delete({ where: { id } });
   }
 }
