@@ -65,8 +65,8 @@ export class AdminGateway
     private readonly calls: CallService,
     themeEvents: ThemeEventsService,
   ) {
-    themeEvents.onAssetsChanged((themeId) =>
-      this.broadcastThemeAssets({ themeId }),
+    themeEvents.onAssetsChanged((themeId, change) =>
+      this.broadcastThemeAssets({ themeId, ...change }),
     );
     calls.onAdminChange((state) =>
       this.server.to(ADMINS_ROOM).emit(AdminEvents.callState, state),

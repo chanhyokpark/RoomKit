@@ -103,7 +103,8 @@ class LaunchStore {
 			const session = await api<SessionResponse>(`/sessions/${encodeURIComponent(id)}`);
 			if (session.mode !== 'test') throw new Error('테스트 세션만 열 수 있습니다.');
 			if (session.state === 'ended') throw new Error('이미 종료된 세션입니다.');
-			const devices = session.testDeviceCodes ?? [];
+			// Codes minted for devices nobody asked for stay closed (autoOpen false).
+			const devices = (session.testDeviceCodes ?? []).filter((d) => d.autoOpen !== false);
 			if (devices.length === 0) throw new Error('이 세션에는 장치 코드가 없습니다.');
 			vlog('launch', 'opening session', id, devices.length, { debugWindow });
 			const mobile = await isMobile();

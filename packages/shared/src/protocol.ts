@@ -120,9 +120,15 @@ export const AdminEvents = {
   callEnd: 'call:end',
 } as const;
 
-/** /admin `theme:assets` payload. */
+/**
+ * /admin `theme:assets` payload. With `assetId` the change is confined to
+ * that one asset (created/updated, or deleted when `removed`), so a client
+ * can patch its copy; without it anything may have changed — refetch.
+ */
 export const ThemeAssetsChangedSchema = z.object({
   themeId: z.string(),
+  assetId: z.string().optional(),
+  removed: z.boolean().optional(),
 });
 export type ThemeAssetsChanged = z.infer<typeof ThemeAssetsChangedSchema>;
 

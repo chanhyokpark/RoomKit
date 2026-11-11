@@ -30,22 +30,7 @@
 	let now = $state(Date.now());
 
 	const allDevices = $derived(assetsOf(model.assets, 'device'));
-	const codeDeviceIds = $derived(new Set(model.testDeviceCodes.map((entry) => entry.deviceId)));
-	// Test sessions only open the devices that got a code; mirror the devices card.
-	const deviceIds = $derived(
-		new Set(
-			(codeDeviceIds.size > 0
-				? allDevices.filter((device) => codeDeviceIds.has(device.id))
-				: allDevices
-			).map((device) => device.id)
-		)
-	);
-	const players = $derived(
-		assetsOf(model.assets, 'player').filter(
-			(player) =>
-				deviceIds.has(player.data.speakerDeviceId) || deviceIds.has(player.data.screenDeviceId)
-		)
-	);
+	const players = $derived(assetsOf(model.assets, 'player'));
 	const playDialogPlayer = $derived(
 		playDialogPlayerId ? (players.find((player) => player.id === playDialogPlayerId) ?? null) : null
 	);

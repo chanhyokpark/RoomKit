@@ -6,7 +6,7 @@ import {
 	type CreateAssetInput,
 	type UpdateAssetInput
 } from '@roomkit/shared';
-import { api } from './client';
+import { api, apiRevalidated } from './client';
 
 export interface AssetFilters {
 	kind?: AssetKind;
@@ -14,10 +14,14 @@ export interface AssetFilters {
 }
 
 export function listAssets(themeId: string, filters: AssetFilters = {}): Promise<Asset[]> {
-	return api(`/themes/${themeId}/assets`, {
+	return apiRevalidated(`/themes/${themeId}/assets`, {
 		query: { kind: filters.kind, tagId: filters.tagId },
 		schema: z.array(AssetSchema)
 	});
+}
+
+export function getAsset(themeId: string, assetId: string): Promise<Asset> {
+	return api(`/themes/${themeId}/assets/${assetId}`, { schema: AssetSchema });
 }
 
 export function createAsset(themeId: string, input: CreateAssetInput): Promise<Asset> {

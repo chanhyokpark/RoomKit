@@ -146,6 +146,9 @@ model SessionDeviceCode {
   // Operator-entered; globally unique so the /device handshake can look up by
   // code alone. Rows are deleted when the session ends, freeing the codes.
   code      String  @unique
+  // False for codes the server minted for devices the creator did not ask
+  // for: valid for connecting, but a Player does not open a window for them.
+  autoOpen  Boolean @default(true)
 
   @@unique([sessionId, deviceId])
 }

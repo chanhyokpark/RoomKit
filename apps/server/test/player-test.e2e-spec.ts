@@ -112,14 +112,22 @@ describe('Player test sessions (e2e)', () => {
         }),
     ).expect(201);
 
-    expect(created.body.testDeviceCodes).toHaveLength(1);
-    expect(created.body.testDeviceCodes[0].deviceId).toBe(devA);
+    // Every device gets a code; only the selected one is opened by the player.
+    const codes = created.body.testDeviceCodes as {
+      deviceId: string;
+      autoOpen: boolean;
+    }[];
+    expect(codes).toHaveLength(2);
+    expect(codes.filter((c) => c.autoOpen).map((c) => c.deviceId)).toEqual([
+      devA,
+    ]);
     expect(created.body.urlOverrides).toEqual({
       [websiteId]: 'http://localhost:5175/',
     });
     const pushed = await testStart;
     expect(pushed.sessionId).toBe(created.body.id);
     expect(pushed.devices).toHaveLength(1);
+    expect(pushed.devices[0].deviceId).toBe(devA);
 
     await auth(
       request(server()).post(`/api/sessions/${created.body.id}/end`),

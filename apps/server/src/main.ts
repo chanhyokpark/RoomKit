@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import compression from 'compression';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { mountPeerServer } from './peer/peer-server';
@@ -17,9 +18,14 @@ process.on('uncaughtException', (err) => {
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: true, credentials: true });
+  // ETag is read by studio's asset-list cache (not a CORS-safelisted header).
+  app.enableCors({ origin: true, credentials: true, exposedHeaders: ['ETag'] });
+  // Large themes produce asset lists of several hundred KB of JSON; gzip
+  // cuts them ~5x, which dominates load time on a slow uplink.
+  app.use(compression());
   // API responses are live state — never cacheable. Without this, Express's
   // default ETag plus the browser cache serve stale session/asset data.
+  // (The asset list sets its own ETag for explicit If-None-Match revalidation.)
   app.disable('etag');
   // PeerJS signaling for voice calls, next to the socket.io namespaces.
   mountPeerServer(app);

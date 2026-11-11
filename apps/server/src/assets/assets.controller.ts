@@ -1,14 +1,18 @@
+import { createHash } from 'node:crypto';
 import {
   Body,
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   Param,
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   AssetKindSchema,
   CreateAssetInputSchema,
@@ -25,14 +29,31 @@ const ListQuerySchema = AssetKindSchema.optional();
 export class AssetsController {
   constructor(private readonly assetsService: AssetsService) {}
 
+  /**
+   * The list is the heaviest payload of the API (every sequence and dialogue
+   * of the theme), so it answers `If-None-Match` with a bodiless 304 when the
+   * caller's copy is still current. Caching stays opt-in: the response keeps
+   * the global `no-store`, only clients that hold their own copy revalidate.
+   */
   @Get()
-  list(
+  async list(
     @Param('themeId') themeId: string,
+    @Res({ passthrough: true }) res: Response,
     @Query('kind', new ZodValidationPipe(ListQuerySchema))
     kind?: CreateAssetInput['kind'],
     @Query('tagId') tagId?: string,
+    @Headers('if-none-match') ifNoneMatch?: string,
   ) {
-    return this.assetsService.list(themeId, { kind, tagId });
+    const assets = await this.assetsService.list(themeId, { kind, tagId });
+    const body = JSON.stringify(assets);
+    const etag = `"${createHash('sha1').update(body).digest('base64url')}"`;
+    res.setHeader('ETag', etag);
+    if (ifNoneMatch === etag) {
+      res.status(304);
+      return;
+    }
+    res.type('application/json');
+    return body;
   }
 
   @Post()

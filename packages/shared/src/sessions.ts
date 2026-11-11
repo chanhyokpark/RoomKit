@@ -41,6 +41,8 @@ export type DeviceCodeInput = z.infer<typeof DeviceCodeInputSchema>;
  * Test mode takes exactly one of `deviceCodes` (operator-entered, may be
  * empty) or `playerId` (server generates codes for every theme device and
  * pushes them to the connected player). Production mode rejects both.
+ * Either way the server mints codes for the remaining theme devices too
+ * (`autoOpen: false`), so every device of a test session can be connected.
  */
 export const CreateSessionInputSchema = z
   .object({
@@ -97,6 +99,12 @@ export const TestDeviceCodeSchema = z.object({
   deviceName: z.string(),
   displayName: z.string(),
   code: z.string(),
+  /**
+   * False for the codes a test session gets for devices its creator did not
+   * request: any client may connect with them, but a Player opens windows
+   * only for the requested ones.
+   */
+  autoOpen: z.boolean().default(true),
 });
 export type TestDeviceCode = z.infer<typeof TestDeviceCodeSchema>;
 

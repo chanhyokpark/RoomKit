@@ -1502,13 +1502,15 @@ describe('Runtime (e2e)', () => {
 
     await post(`/api/sessions/${sessionId}/runs/${runId}/abort`);
     await waitFor(() => transport.runs.at(-1)?.runs.length === 0);
-    const logs = await getLogs(sessionId);
-    expect(
-      logs.some((l) => l.message.includes('"sleeper" terminated by admin')),
-    ).toBe(true);
-    expect(logs.some((l) => l.message.includes('"sleeper" aborted'))).toBe(
-      true,
-    );
+    // Log rows are written asynchronously, after the run leaves the snapshot.
+    await waitFor(async () => {
+      const logs = await getLogs(sessionId);
+      return (
+        logs.some((l) =>
+          l.message.includes('"sleeper" terminated by admin'),
+        ) && logs.some((l) => l.message.includes('"sleeper" aborted'))
+      );
+    });
 
     // unknown run id → 400
     await auth(

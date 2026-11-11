@@ -29,13 +29,9 @@
 	let logDeviceId = $state<string | null>(null);
 	let now = $state(Date.now());
 
-	const allDevices = $derived(assetsOf(model.assets, 'device'));
-	const codeDeviceIds = $derived(new Set(model.testDeviceCodes.map((entry) => entry.deviceId)));
-	const devices = $derived(
-		codeDeviceIds.size > 0
-			? allDevices.filter((device) => codeDeviceIds.has(device.id))
-			: allDevices
-	);
+	// Every device of the theme, including ones a test session did not open
+	// (no access code): those simply stay offline.
+	const devices = $derived(assetsOf(model.assets, 'device'));
 	const injectDevice = $derived(
 		injectDeviceId ? (devices.find((device) => device.id === injectDeviceId) ?? null) : null
 	);

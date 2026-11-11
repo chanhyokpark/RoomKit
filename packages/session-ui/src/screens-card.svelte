@@ -21,14 +21,7 @@
 	/** A capture older than this is likely from a stalled or paused player. */
 	const STALE_AFTER_MS = 20_000;
 
-	const allDevices = $derived(assetsOf(model.assets, 'device'));
-	const codeDeviceIds = $derived(new Set(model.testDeviceCodes.map((entry) => entry.deviceId)));
-	// Test sessions only open the devices that got a code; mirror the devices card.
-	const devices = $derived(
-		codeDeviceIds.size > 0
-			? allDevices.filter((device) => codeDeviceIds.has(device.id))
-			: allDevices
-	);
+	const devices = $derived(assetsOf(model.assets, 'device'));
 	const screens = $derived(
 		devices.flatMap((device) => {
 			const screenshot = model.screenshotOf(device.id);
@@ -44,7 +37,7 @@
 	}
 
 	function deviceName(deviceId: string): string {
-		const device = allDevices.find((candidate) => candidate.id === deviceId);
+		const device = devices.find((candidate) => candidate.id === deviceId);
 		return device ? device.data.displayName || device.name : deviceId;
 	}
 </script>

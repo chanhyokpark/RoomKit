@@ -90,7 +90,7 @@
 		creating = null;
 		id = asset.id;
 		onchanged();
-		void editorData.refresh();
+		editorData.apply(asset);
 	}}
 	onclose={() => (creating = null)}
 />

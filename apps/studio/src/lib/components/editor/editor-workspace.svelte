@@ -60,11 +60,11 @@
 
 	function handleEventSaved(saved: Asset): void {
 		eventDialog = null;
+		editorData.apply(saved);
 		if (saved.kind !== 'event') return;
 		// Follow the event to its (possibly new) workspace.
 		workspace = saved.data.phaseId ?? 'common';
 		selectedEventId = saved.id;
-		void editorData.refresh();
 	}
 </script>
 

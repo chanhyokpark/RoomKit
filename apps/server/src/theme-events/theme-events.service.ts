@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 
-type AssetsChangedListener = (themeId: string) => void;
+/** A change confined to one asset; absent = anything may have changed. */
+export interface AssetChange {
+  assetId: string;
+  removed?: boolean;
+}
+
+type AssetsChangedListener = (themeId: string, change?: AssetChange) => void;
 
 /**
  * In-process fan-out for theme content changes (assets/tags). REST-layer
@@ -11,8 +17,8 @@ type AssetsChangedListener = (themeId: string) => void;
 export class ThemeEventsService {
   private readonly assetListeners = new Set<AssetsChangedListener>();
 
-  assetsChanged(themeId: string): void {
-    for (const listener of this.assetListeners) listener(themeId);
+  assetsChanged(themeId: string, change?: AssetChange): void {
+    for (const listener of this.assetListeners) listener(themeId, change);
   }
 
   onAssetsChanged(listener: AssetsChangedListener): void {

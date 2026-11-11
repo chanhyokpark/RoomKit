@@ -98,9 +98,8 @@
 				...$state.snapshot(latest.data),
 				sequence: SequenceSchema.parse($state.snapshot(entries))
 			};
-			await updateAsset(editorData.themeId, event.id, { data });
+			editorData.apply(await updateAsset(editorData.themeId, event.id, { data }));
 			saveState = 'saved';
-			await editorData.refresh();
 		} catch {
 			saveState = 'error';
 		} finally {

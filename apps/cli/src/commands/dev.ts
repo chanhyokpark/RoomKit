@@ -240,7 +240,7 @@ export function register(program: Command, ctx: GetContext): void {
         }
         await c.api.ensureLogin();
         const link = playerTestLink(c.state.apiUrl!, session.id);
-        const deviceCodes = (session.testDeviceCodes ?? []).map((d) => ({ deviceId: d.deviceId, deviceName: d.deviceName, displayName: d.displayName, code: d.code }));
+        const deviceCodes = (session.testDeviceCodes ?? []).map((d) => ({ deviceId: d.deviceId, deviceName: d.deviceName, displayName: d.displayName, code: d.code, autoOpen: d.autoOpen }));
 
         let opened: boolean | null = null;
         if (opts.open && !opts.player) {
@@ -267,7 +267,7 @@ export function register(program: Command, ctx: GetContext): void {
             ]),
           );
           out.line(table(['웹사이트', '대체 URL'], result.urlOverrides.map((o) => [o.website ?? o.websiteId, o.url])));
-          if (deviceCodes.length) out.line(table(['장치', '코드'], deviceCodes.map((d) => [d.displayName || d.deviceName, d.code])));
+          if (deviceCodes.length) out.line(table(['장치', '코드', 'Player 창'], deviceCodes.map((d) => [d.displayName || d.deviceName, d.code, d.autoOpen ? '열림' : pc.dim('코드만')])));
           if (!opts.player) out.line(pc.dim(`Player 가 열리지 않으면: Player 테스트 탭 → "세션 ID로 열기" 에 ${session.id} 붙여 넣기`));
           if (!started) out.line(pc.dim('세션 시작은 Player 디버그 창(또는 rk session start) 에서 합니다.'));
         });

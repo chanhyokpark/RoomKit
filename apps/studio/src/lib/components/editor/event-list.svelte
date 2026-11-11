@@ -46,10 +46,10 @@
 		deleting = true;
 		try {
 			await deleteAsset(editorData.themeId, deleteTarget.id);
+			editorData.drop(deleteTarget.id);
 			if (selectedEventId === deleteTarget.id) selectedEventId = null;
 			deleteTarget = null;
 			toast.success('이벤트를 삭제했습니다.');
-			await editorData.refresh();
 		} catch (error) {
 			toastApiError(error, '이벤트 삭제에 실패했습니다.');
 		} finally {

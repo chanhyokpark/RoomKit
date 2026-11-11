@@ -92,7 +92,7 @@ export class AssetsService {
 
     if (input.kind === 'hint' && input.code === undefined) {
       const hint = await this.createHintWithGeneratedCode(base);
-      this.themeEvents.assetsChanged(themeId);
+      this.themeEvents.assetsChanged(themeId, { assetId: hint.id });
       return hint;
     }
 
@@ -102,7 +102,7 @@ export class AssetsService {
         data: { ...base, code },
         include: { tags: true },
       });
-      this.themeEvents.assetsChanged(themeId);
+      this.themeEvents.assetsChanged(themeId, { assetId: created.id });
       return created;
     } catch (e) {
       if (isUniqueViolation(e)) {
@@ -155,7 +155,7 @@ export class AssetsService {
         },
         include: { tags: true },
       });
-      this.themeEvents.assetsChanged(themeId);
+      this.themeEvents.assetsChanged(themeId, { assetId: id });
       return updated;
     } catch (e) {
       if (isUniqueViolation(e)) {
@@ -170,7 +170,7 @@ export class AssetsService {
   async remove(themeId: string, id: string) {
     await this.get(themeId, id);
     await this.prisma.asset.delete({ where: { id } });
-    this.themeEvents.assetsChanged(themeId);
+    this.themeEvents.assetsChanged(themeId, { assetId: id, removed: true });
   }
 
   private async createHintWithGeneratedCode(

@@ -1,18 +1,21 @@
 import { getContext, setContext } from 'svelte';
 import { toast } from 'svelte-sonner';
 import type { Asset, AssetKind, Tag } from '@roomkit/shared';
-import { listAssets } from '$lib/api/assets';
+import { getAsset, listAssets } from '$lib/api/assets';
+import { ApiError } from '$lib/api/client';
 import { listTags } from '$lib/api/tags';
-import { watchThemeAssets } from '$lib/api/live';
+import { watchThemeAssets, type ThemeAssetChange } from '$lib/api/live';
 
 export type PhaseAsset = Extract<Asset, { kind: 'phase' }>;
 export type EventAsset = Extract<Asset, { kind: 'event' }>;
 
 /**
  * All assets of the theme, shared by every editor component via context.
- * Pickers, name resolution, and dangling-reference checks all read from here;
- * every mutation performed in the editor calls refresh() afterwards, and
- * server `theme:assets` broadcasts refresh it when someone else edits.
+ * Pickers, name resolution, and dangling-reference checks all read from here.
+ * The full list is heavy on large themes, so single-asset changes patch it in
+ * place: editor mutations call apply()/drop() with their result, and server
+ * `theme:assets` broadcasts naming one asset fetch just that asset. refresh()
+ * refetches everything (broadcasts without an asset, reconnects, bulk edits).
  */
 export class EditorData {
 	readonly themeId: string;
@@ -22,6 +25,8 @@ export class EditorData {
 	loading = $state(true);
 
 	#requestId = 0;
+	/** Bumped by every in-place patch; a refresh that raced one is retried. */
+	#patches = 0;
 	#unwatch: () => void;
 
 	// Rebuilt wholesale by $derived and never mutated, so a plain Map is fine.
@@ -37,7 +42,7 @@ export class EditorData {
 	constructor(themeId: string) {
 		this.themeId = themeId;
 		void this.refresh();
-		this.#unwatch = watchThemeAssets(themeId, () => void this.refresh());
+		this.#unwatch = watchThemeAssets(themeId, (change) => void this.#sync(change));
 	}
 
 	dispose(): void {
@@ -53,17 +58,57 @@ export class EditorData {
 		return this.events.filter((event) => event.data.phaseId === phaseId);
 	}
 
+	/** Puts a created/updated asset into the list without refetching it. */
+	apply(asset: Asset): void {
+		this.#patches++;
+		const index = this.assets.findIndex((candidate) => candidate.id === asset.id);
+		if (index === -1) {
+			this.assets = [...this.assets, asset];
+			return;
+		}
+		// Out-of-order responses must not roll an asset back.
+		if (this.assets[index].updatedAt > asset.updatedAt) return;
+		this.assets = this.assets.with(index, asset);
+	}
+
+	/** Removes a deleted asset from the list without refetching it. */
+	drop(assetId: string): void {
+		this.#patches++;
+		this.assets = this.assets.filter((asset) => asset.id !== assetId);
+	}
+
 	async refresh(): Promise<void> {
 		const rid = ++this.#requestId;
 		try {
-			const [assets, tags] = await Promise.all([listAssets(this.themeId), listTags(this.themeId)]);
-			if (rid !== this.#requestId) return;
-			this.assets = assets;
-			this.tags = tags;
+			for (;;) {
+				const patches = this.#patches;
+				const [assets, tags] = await Promise.all([
+					listAssets(this.themeId),
+					listTags(this.themeId)
+				]);
+				if (rid !== this.#requestId) return;
+				// A patch landed mid-flight: this snapshot may predate it.
+				if (patches !== this.#patches) continue;
+				this.assets = assets;
+				this.tags = tags;
+				return;
+			}
 		} catch {
 			if (rid === this.#requestId) toast.error('애셋 목록을 불러오지 못했습니다.');
 		} finally {
 			if (rid === this.#requestId) this.loading = false;
+		}
+	}
+
+	async #sync(change: ThemeAssetChange): Promise<void> {
+		if (!change) return this.refresh();
+		if (change.removed) return this.drop(change.assetId);
+		try {
+			this.apply(await getAsset(this.themeId, change.assetId));
+		} catch (error) {
+			// Deleted again before the fetch; anything else falls back to a refetch.
+			if (error instanceof ApiError && error.status === 404) this.drop(change.assetId);
+			else await this.refresh();
 		}
 	}
 }

@@ -87,12 +87,26 @@ export class SessionsService {
       }
     }
 
-    let deviceCodes = input.mode === 'test' ? (input.deviceCodes ?? []) : [];
+    let deviceCodes: (DeviceCodeInput & { autoOpen?: boolean })[] =
+      input.mode === 'test' ? (input.deviceCodes ?? []) : [];
     if (input.mode === 'test' && input.playerId) {
-      deviceCodes = await this.generateDeviceCodes(theme.id, input.deviceIds);
+      deviceCodes = await this.generateDeviceCodes(theme.id, {
+        only: input.deviceIds,
+      });
     }
     if (deviceCodes.length > 0) {
       await this.validateDeviceCodes(theme.id, deviceCodes);
+    }
+    if (input.mode === 'test') {
+      // Every other device gets a code as well, so clients that are not a
+      // Player window (a browser, a custom client) can join as any device.
+      const rest = await this.generateDeviceCodes(theme.id, {
+        except: deviceCodes,
+      });
+      deviceCodes = [
+        ...deviceCodes,
+        ...rest.map((entry) => ({ ...entry, autoOpen: false })),
+      ];
     }
     const urlOverrides = await this.validateUrlOverrides(
       theme.id,
@@ -119,6 +133,7 @@ export class SessionsService {
               sessionId: session.id,
               deviceId: entry.deviceId,
               code: entry.code,
+              autoOpen: entry.autoOpen ?? true,
             })),
           });
         }
@@ -151,7 +166,7 @@ export class SessionsService {
       this.players.sendTestStart(input.playerId, {
         sessionId: row.id,
         themeId: theme.id,
-        devices: response.testDeviceCodes ?? [],
+        devices: (response.testDeviceCodes ?? []).filter((d) => d.autoOpen),
       });
     }
     return response;
@@ -186,29 +201,41 @@ export class SessionsService {
   }
 
   /**
-   * Fresh random codes for every device of the theme, checked against live
-   * sessions. The unique constraint still guards races; a create that loses
-   * one surfaces as the existing 409.
+   * Fresh random codes for the theme's devices — all of them, `only` a
+   * subset, or all `except` the ones that already have a code (whose codes
+   * are avoided too). Checked against live sessions; the unique constraint
+   * still guards races, and a create that loses one surfaces as the
+   * existing 409.
    */
   private async generateDeviceCodes(
     themeId: string,
-    deviceIds?: string[],
+    scope: { only?: string[]; except?: DeviceCodeInput[] } = {},
   ): Promise<DeviceCodeInput[]> {
+    const deviceIds = scope.only;
+    const assigned = scope.except ?? [];
     const devices = await this.prisma.asset.findMany({
       where: {
         themeId,
         kind: 'device',
         ...(deviceIds !== undefined ? { id: { in: deviceIds } } : {}),
+        ...(assigned.length > 0
+          ? { NOT: { id: { in: assigned.map((entry) => entry.deviceId) } } }
+          : {}),
       },
+      orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
     if (deviceIds !== undefined && devices.length !== new Set(deviceIds).size) {
       throw new BadRequestException('deviceIds reference unknown devices');
     }
     if (devices.length === 0) return [];
+    const reserved = new Set(assigned.map((entry) => entry.code));
     for (let attempt = 0; attempt < 5; attempt++) {
       const codes = new Set<string>();
-      while (codes.size < devices.length) codes.add(this.randomCode());
+      while (codes.size < devices.length) {
+        const code = this.randomCode();
+        if (!reserved.has(code)) codes.add(code);
+      }
       const pool = [...codes];
       const taken = await this.prisma.sessionDeviceCode.findFirst({
         where: { code: { in: pool } },
@@ -302,6 +329,7 @@ export class SessionsService {
         deviceName: device?.name ?? '(deleted)',
         displayName: data?.success ? data.data.displayName : '',
         code: c.code,
+        autoOpen: c.autoOpen,
       };
     });
   }

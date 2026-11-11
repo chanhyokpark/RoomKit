@@ -299,6 +299,29 @@ describe('Assets (e2e)', () => {
     ).toBe(true);
   });
 
+  it('revalidates the list with If-None-Match', async () => {
+    const url = `/api/themes/${themeId}/assets`;
+    const first = await auth(request(app.getHttpServer()).get(url)).expect(200);
+    const etag = first.headers.etag;
+    expect(etag).toBeDefined();
+
+    const unchanged = await auth(
+      request(app.getHttpServer()).get(url).set('If-None-Match', etag),
+    ).expect(304);
+    expect(unchanged.text).toBe('');
+
+    await createAsset({
+      kind: 'sfx',
+      name: 'etag-bump',
+      data: { fileKey: 'k' },
+    }).expect(201);
+    const changed = await auth(
+      request(app.getHttpServer()).get(url).set('If-None-Match', etag),
+    ).expect(200);
+    expect(changed.headers.etag).not.toBe(etag);
+    expect(changed.body.length).toBe(first.body.length + 1);
+  });
+
   it('rejects a tag from outside the theme', () =>
     createAsset({
       kind: 'sfx',
