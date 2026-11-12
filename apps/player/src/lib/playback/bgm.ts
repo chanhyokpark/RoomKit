@@ -3,6 +3,7 @@ import type { WirePlayBgm } from '@roomkit/shared';
 import { stage } from '../stores/stage.svelte';
 import { createAudio } from './resolve';
 import { simulate } from './simulate';
+import { getVolume, releaseVolume, setVolume } from './volume';
 
 interface ActiveBgm {
 	audio: HTMLAudioElement | null;
@@ -32,6 +33,13 @@ export const DUCK_ATTACK_MS = 250;
 /** Duck release: BGM comes back slowly so the return is not a jarring jump. */
 export const DUCK_RELEASE_MS = 1000;
 
+/** Silences an element for good and drops its source and volume route. */
+function release(audio: HTMLAudioElement): void {
+	audio.pause();
+	audio.removeAttribute('src');
+	releaseVolume(audio);
+}
+
 /** Linearly ramps a value to `target` over `durationMs`; returns a cancel fn. */
 function fadeValue(
 	start: number,
@@ -59,10 +67,7 @@ function fadeValue(
 
 function applyVolume(entry: ActiveBgm): void {
 	if (entry.audio) {
-		entry.audio.volume = Math.max(
-			0,
-			Math.min(1, entry.baseVolume * entry.volumeFactor * entry.duckFactor)
-		);
+		setVolume(entry.audio, entry.baseVolume * entry.volumeFactor * entry.duckFactor);
 	}
 }
 
@@ -207,12 +212,14 @@ export class BgmChannel {
 			audio.addEventListener('ended', () => {
 				this.active.delete(cmd.playerId);
 				stage.removePlaceholder(cmd.id);
+				releaseVolume(audio);
 				done();
 			});
 		}
 		audio.addEventListener('error', () => {
 			this.active.delete(cmd.playerId);
 			stage.removePlaceholder(cmd.id);
+			releaseVolume(audio);
 			done('failed');
 		});
 		void audio.play().catch(() => done('failed'));
@@ -298,22 +305,20 @@ export class BgmChannel {
 				// Detached ramp works on the audible volume directly — the duck
 				// factor is frozen at its detach-time value.
 				detached.cancel = fadeValue(
-					audio.volume,
+					getVolume(audio),
 					0,
 					fadeOutMs,
 					(value) => {
-						audio.volume = value;
+						setVolume(audio, value);
 					},
 					() => {
 						this.fadingOut.delete(detached);
-						audio.pause();
-						audio.removeAttribute('src');
+						release(audio);
 					}
 				);
 				this.fadingOut.add(detached);
 			} else {
-				audio.pause();
-				audio.removeAttribute('src');
+				release(audio);
 			}
 		}
 		entry.done();
@@ -329,8 +334,7 @@ export class BgmChannel {
 		for (const playerId of [...this.active.keys()]) this.stop(playerId, { instant: true });
 		for (const detached of [...this.fadingOut]) {
 			detached.cancel();
-			detached.audio.pause();
-			detached.audio.removeAttribute('src');
+			release(detached.audio);
 		}
 		this.fadingOut.clear();
 		this.volumeFactors.clear();

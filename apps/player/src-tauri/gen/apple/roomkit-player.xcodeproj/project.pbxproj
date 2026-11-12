@@ -1,0 +1,468 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0AF756A1E9FE5F570D386D2F /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2744E717C6F723183E241D2F /* Security.framework */; };
+		10C623B2C69AE2898512209A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = FA137BFED8F5B42D029CB4BA /* LaunchScreen.storyboard */; };
+		24766F5A6A21C152F0F0AE32 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0D0D8A38443A56A3DE9FDE86 /* WebKit.framework */; };
+		30447E8C8AFB0BB02941636B /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 7DDA075DDEFE32E7CB869BBB /* assets */; };
+		4C6A9FDA1D663246149A4144 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3DBD2FB2CEEB1D0C86AFE63B /* UIKit.framework */; };
+		5FB74B78C460B66CDC06B85C /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6E4C0767DB9EDC5F4C24CED0 /* libapp.a */; };
+		803B399A626B758C620F052E /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 3E66AB34370531FB9B3C8FC9 /* main.mm */; };
+		93EC77F2B194840F3BA5C39F /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8871072FE3773E289BD33A1E /* QuartzCore.framework */; };
+		97D82A26008537C0AC9616A7 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A5A4822C652A0D702836CE04 /* MetalKit.framework */; };
+		BE38052C127E2DF8312F5648 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B315E047BB42EBED63BAD2E5 /* Assets.xcassets */; };
+		DD41141E6C4278DA6385C545 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9CCE5234F1AEFC5AF6480B45 /* Metal.framework */; };
+		E0F185F78BB036885BD190BB /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 62131F265ECD4E95146356C9 /* CoreGraphics.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0D0D8A38443A56A3DE9FDE86 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		1C17238F1B6C8CF518CDC078 /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		2744E717C6F723183E241D2F /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		3DBD2FB2CEEB1D0C86AFE63B /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		3E66AB34370531FB9B3C8FC9 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		62131F265ECD4E95146356C9 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		6E4C0767DB9EDC5F4C24CED0 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		7B58BBE27E464B006C40C43B /* roomkit-player_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "roomkit-player_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7DDA075DDEFE32E7CB869BBB /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		83F1FB2C272C70DC0026001E /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		8871072FE3773E289BD33A1E /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		89EEF35B204B9D4C0FFD4DDF /* media_server.rs */ = {isa = PBXFileReference; path = media_server.rs; sourceTree = "<group>"; };
+		9CCE5234F1AEFC5AF6480B45 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		A5A4822C652A0D702836CE04 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		B315E047BB42EBED63BAD2E5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BFC54129093DDAA577110C6C /* screenshot.rs */ = {isa = PBXFileReference; path = screenshot.rs; sourceTree = "<group>"; };
+		C37F67FD3541BBA0CB05380B /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		CCAAD03C6393EE5E9DEA5104 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D20C6257F009003CA80E6FA8 /* keep_awake.rs */ = {isa = PBXFileReference; path = keep_awake.rs; sourceTree = "<group>"; };
+		D70CAF36EBCD83CD1C2EEC6A /* roomkit-player_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "roomkit-player_iOS.entitlements"; sourceTree = "<group>"; };
+		ECB82D0E643588C4EBEABB3E /* cache.rs */ = {isa = PBXFileReference; path = cache.rs; sourceTree = "<group>"; };
+		FA137BFED8F5B42D029CB4BA /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8AAB3977FF03434770CE3866 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5FB74B78C460B66CDC06B85C /* libapp.a in Frameworks */,
+				E0F185F78BB036885BD190BB /* CoreGraphics.framework in Frameworks */,
+				DD41141E6C4278DA6385C545 /* Metal.framework in Frameworks */,
+				97D82A26008537C0AC9616A7 /* MetalKit.framework in Frameworks */,
+				93EC77F2B194840F3BA5C39F /* QuartzCore.framework in Frameworks */,
+				0AF756A1E9FE5F570D386D2F /* Security.framework in Frameworks */,
+				4C6A9FDA1D663246149A4144 /* UIKit.framework in Frameworks */,
+				24766F5A6A21C152F0F0AE32 /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0ACAD47EE46D9DA12AA1F4D8 = {
+			isa = PBXGroup;
+			children = (
+				7DDA075DDEFE32E7CB869BBB /* assets */,
+				B315E047BB42EBED63BAD2E5 /* Assets.xcassets */,
+				FA137BFED8F5B42D029CB4BA /* LaunchScreen.storyboard */,
+				CE5C4EF892958AFD924DFFF7 /* Externals */,
+				6A044B8B89D6444A9BD0C5C0 /* roomkit-player_iOS */,
+				DEE40D54531FE4752F87E4C9 /* Sources */,
+				E550C4906295C32DFFE6AA1F /* src */,
+				89CE4E33CD4433371C43E3F5 /* Frameworks */,
+				55792B8883D23EF92CB422CE /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		55792B8883D23EF92CB422CE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7B58BBE27E464B006C40C43B /* roomkit-player_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6A044B8B89D6444A9BD0C5C0 /* roomkit-player_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				CCAAD03C6393EE5E9DEA5104 /* Info.plist */,
+				D70CAF36EBCD83CD1C2EEC6A /* roomkit-player_iOS.entitlements */,
+			);
+			path = "roomkit-player_iOS";
+			sourceTree = "<group>";
+		};
+		89CE4E33CD4433371C43E3F5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				62131F265ECD4E95146356C9 /* CoreGraphics.framework */,
+				6E4C0767DB9EDC5F4C24CED0 /* libapp.a */,
+				9CCE5234F1AEFC5AF6480B45 /* Metal.framework */,
+				A5A4822C652A0D702836CE04 /* MetalKit.framework */,
+				8871072FE3773E289BD33A1E /* QuartzCore.framework */,
+				2744E717C6F723183E241D2F /* Security.framework */,
+				3DBD2FB2CEEB1D0C86AFE63B /* UIKit.framework */,
+				0D0D8A38443A56A3DE9FDE86 /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C7C974A3045EB27AA2832DA0 /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				C37F67FD3541BBA0CB05380B /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		CE5C4EF892958AFD924DFFF7 /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		DEE40D54531FE4752F87E4C9 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				F561B97B575C54DE4DBF75B2 /* roomkit-player */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		E550C4906295C32DFFE6AA1F /* src */ = {
+			isa = PBXGroup;
+			children = (
+				ECB82D0E643588C4EBEABB3E /* cache.rs */,
+				D20C6257F009003CA80E6FA8 /* keep_awake.rs */,
+				1C17238F1B6C8CF518CDC078 /* lib.rs */,
+				83F1FB2C272C70DC0026001E /* main.rs */,
+				89EEF35B204B9D4C0FFD4DDF /* media_server.rs */,
+				BFC54129093DDAA577110C6C /* screenshot.rs */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		F561B97B575C54DE4DBF75B2 /* roomkit-player */ = {
+			isa = PBXGroup;
+			children = (
+				3E66AB34370531FB9B3C8FC9 /* main.mm */,
+				C7C974A3045EB27AA2832DA0 /* bindings */,
+			);
+			path = "roomkit-player";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		EDE588B3216F62501A4BF670 /* roomkit-player_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 95384463D4ED58375E42745A /* Build configuration list for PBXNativeTarget "roomkit-player_iOS" */;
+			buildPhases = (
+				2A21C0B3B1C0AD74097D5159 /* Build Rust Code */,
+				1CF0EE84A071508718554407 /* Sources */,
+				49C3E2D7BCAD91CB0383862E /* Resources */,
+				8AAB3977FF03434770CE3866 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "roomkit-player_iOS";
+			packageProductDependencies = (
+			);
+			productName = "roomkit-player_iOS";
+			productReference = 7B58BBE27E464B006C40C43B /* roomkit-player_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CFFE5506E6B60A7C9AEC22B8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 179AAC1B55471CCBAA386A96 /* Build configuration list for PBXProject "roomkit-player" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 0ACAD47EE46D9DA12AA1F4D8;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 55792B8883D23EF92CB422CE /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EDE588B3216F62501A4BF670 /* roomkit-player_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		49C3E2D7BCAD91CB0383862E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BE38052C127E2DF8312F5648 /* Assets.xcassets in Resources */,
+				10C623B2C69AE2898512209A /* LaunchScreen.storyboard in Resources */,
+				30447E8C8AFB0BB02941636B /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		2A21C0B3B1C0AD74097D5159 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1CF0EE84A071508718554407 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				803B399A626B758C620F052E /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BC3AC8D61063FC9109A1513D /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "roomkit-player_iOS/roomkit-player_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "roomkit-player_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = app.roomkit.player;
+				PRODUCT_NAME = "RoomKit Player";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		C80B272B7BF29CD7236D5A8E /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+		E558D32143BB1AB207477133 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "roomkit-player_iOS/roomkit-player_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "roomkit-player_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = app.roomkit.player;
+				PRODUCT_NAME = "RoomKit Player";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+		EAE571C9CDEA61CB8C39C5A2 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		179AAC1B55471CCBAA386A96 /* Build configuration list for PBXProject "roomkit-player" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C80B272B7BF29CD7236D5A8E /* debug */,
+				EAE571C9CDEA61CB8C39C5A2 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		95384463D4ED58375E42745A /* Build configuration list for PBXNativeTarget "roomkit-player_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E558D32143BB1AB207477133 /* debug */,
+				BC3AC8D61063FC9109A1513D /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CFFE5506E6B60A7C9AEC22B8 /* Project object */;
+}

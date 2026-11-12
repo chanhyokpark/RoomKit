@@ -1,5 +1,6 @@
 import { cache } from '../cache/manager.svelte';
 import { registerAudio } from './mute';
+import { hasVolumeRoute, volumeIsWritable } from './volume';
 
 /**
  * Media source for a wire play command: the local cache when the file is
@@ -29,7 +30,12 @@ export function resolveSrc(fileKey: string, url: string): string {
  */
 export function createAudio(fileKey: string, url: string): HTMLAudioElement {
 	const src = resolveSrc(fileKey, url);
-	const audio = new Audio(src);
+	const audio = new Audio();
+	// Where volume goes through a Web Audio gain (iOS, see volume.ts) the
+	// element must be CORS-clean; the cache origins answer CORS, presigned
+	// storage URLs may not.
+	if (src !== url && !volumeIsWritable()) audio.crossOrigin = 'anonymous';
+	audio.src = src;
 	registerAudio(audio); // call mute applies to every stage audio element
 	if (src === url) return audio;
 
@@ -43,6 +49,10 @@ export function createAudio(fileKey: string, url: string): HTMLAudioElement {
 		fellBack = true;
 		cache.invalidate(fileKey);
 		console.warn('[player] cached media failed, falling back to presigned url', fileKey);
+		// An element already behind a gain must stay CORS-clean (it would go
+		// silent otherwise) and so fails when storage answers without CORS;
+		// any other element drops the requirement and plays as usual.
+		if (!hasVolumeRoute(audio)) audio.removeAttribute('crossorigin');
 		audio.src = url;
 		return true;
 	};

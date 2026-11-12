@@ -1,4 +1,5 @@
 mod cache;
+mod keep_awake;
 mod media_server;
 mod screenshot;
 
@@ -43,6 +44,7 @@ pub fn run() {
       cache::cache_prune,
       cache::cache_read,
       cache::cache_root,
+      keep_awake::keep_awake,
       media_server::media_server_port,
       screenshot::capture_webview
     ])

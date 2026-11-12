@@ -22,7 +22,7 @@
 	import { isMobile } from '../tauri';
 	import { openDeviceWindow } from '../windows';
 
-	// Single-window platforms (Android): opening a device replaces the
+	// Single-window platforms (Android, iOS): opening a device replaces the
 	// launcher, so batch-open is hidden and a notice explains the escape path.
 	// The test tab (multi-window + debug window) is desktop-only.
 	let mobile = $state(false);

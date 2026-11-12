@@ -7,9 +7,11 @@
     "dev": "tauri dev",
     "dev:web": "vite",
     "dev:android": "tauri android dev",
+    "dev:ios": "tauri ios dev",
     "build": "vite build",
     "build:app": "tauri build",
     "build:android": "tauri android build --apk",
+    "build:ios": "./build-ios.sh",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri"

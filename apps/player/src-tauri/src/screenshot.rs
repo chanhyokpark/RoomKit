@@ -2,8 +2,9 @@
 //!
 //! Instead of grabbing the screen (macOS Screen Recording TCC, Android
 //! MediaProjection), the webview renders its own layer tree into an image:
-//! WKWebView `takeSnapshot`, WebView2 `CapturePreview`, and on Android a
-//! `PixelCopy` of the WebView's window rect (see `ScreenshotPlugin.kt`).
+//! WKWebView `takeSnapshot` (macOS and iOS), WebView2 `CapturePreview`, and on
+//! Android a `PixelCopy` of the WebView's window rect (see
+//! `ScreenshotPlugin.kt`).
 //! Cross-origin helper iframes and `<video>` are included since they are part
 //! of the same webview. The command returns encoded image bytes (PNG); the
 //! frontend downscales/re-encodes and ships the result to the server.
@@ -33,7 +34,8 @@ pub fn init<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
 }
 
 /// Capture the calling webview. `max_width` (CSS px) lets the platform
-/// downscale early where it can (macOS, Android); the frontend clamps again.
+/// downscale early where it can (macOS, iOS, Android); the frontend clamps
+/// again.
 #[tauri::command]
 pub async fn capture_webview<R: Runtime>(
   webview: Webview<R>,
@@ -43,12 +45,17 @@ pub async fn capture_webview<R: Runtime>(
   Ok(Response::new(bytes))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 async fn capture<R: Runtime>(webview: &Webview<R>, max_width: Option<u32>) -> Result<Vec<u8>, String> {
+  #[cfg(target_os = "ios")]
+  use ios as apple;
+  #[cfg(target_os = "macos")]
+  use macos as apple;
+
   let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<u8>, String>>();
   webview
     .with_webview(move |platform| {
-      let result = macos::snapshot(platform, max_width, tx);
+      let result = apple::snapshot(platform, max_width, tx);
       if let Err((tx, message)) = result {
         let _ = tx.send(Err(message));
       }
@@ -117,6 +124,74 @@ mod macos {
       .representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new())
       .ok_or("PNG encoding failed")?;
     Ok(png.to_vec())
+  }
+}
+
+/// Same WKWebView snapshot as macOS, but the result is a `UIImage`. The typed
+/// objc2-web-kit binding only exists for AppKit's `NSImage`, so the two
+/// messages are sent by hand.
+#[cfg(target_os = "ios")]
+mod ios {
+  use block2::RcBlock;
+  use objc2::rc::Retained;
+  use objc2::runtime::AnyObject;
+  use objc2::{class, msg_send};
+  use objc2_foundation::{NSData, NSError, NSNumber};
+  use std::sync::Mutex;
+  use tauri::webview::PlatformWebview;
+  use tokio::sync::oneshot::Sender;
+
+  type Reply = Sender<Result<Vec<u8>, String>>;
+
+  #[link(name = "UIKit", kind = "framework")]
+  extern "C" {
+    /// Returns an autoreleased `NSData`, or nil when the image has no bitmap.
+    fn UIImagePNGRepresentation(image: *mut AnyObject) -> *mut NSData;
+  }
+
+  /// Runs on the main thread (guaranteed by `with_webview`). The completion
+  /// block fires later on the main thread and answers through `tx`.
+  pub fn snapshot(
+    platform: PlatformWebview,
+    max_width: Option<u32>,
+    tx: Reply,
+  ) -> Result<(), (Reply, String)> {
+    let wk = platform.inner() as *mut AnyObject;
+    if wk.is_null() {
+      return Err((tx, "no WKWebView handle".into()));
+    }
+    let config: Retained<AnyObject> = unsafe { msg_send![class!(WKSnapshotConfiguration), new] };
+    if let Some(width) = max_width {
+      // Points, not pixels: the image still comes out at the screen scale.
+      let width = NSNumber::new_u32(width);
+      let _: () = unsafe { msg_send![&*config, setSnapshotWidth: &*width] };
+    }
+    let tx = Mutex::new(Some(tx));
+    let handler = RcBlock::new(move |image: *mut AnyObject, error: *mut NSError| {
+      let result = if image.is_null() {
+        Err(if error.is_null() {
+          "snapshot failed".to_string()
+        } else {
+          unsafe { (*error).localizedDescription().to_string() }
+        })
+      } else {
+        let png = unsafe { UIImagePNGRepresentation(image) };
+        if png.is_null() {
+          Err("PNG encoding failed".to_string())
+        } else {
+          Ok(unsafe { (*png).to_vec() })
+        }
+      };
+      if let Some(tx) = tx.lock().ok().and_then(|mut slot| slot.take()) {
+        let _ = tx.send(result);
+      }
+    });
+    // SAFETY: tauri hands us the live WKWebView of this webview; we only use
+    // it synchronously on the main thread.
+    let _: () = unsafe {
+      msg_send![wk, takeSnapshotWithConfiguration: &*config, completionHandler: &*handler]
+    };
+    Ok(())
   }
 }
 
@@ -220,7 +295,7 @@ async fn capture<R: Runtime>(webview: &Webview<R>, max_width: Option<u32>) -> Re
     .map_err(|e| format!("invalid screenshot payload: {e}"))
 }
 
-#[cfg(not(any(target_os = "macos", windows, target_os = "android")))]
+#[cfg(not(any(target_os = "macos", target_os = "ios", windows, target_os = "android")))]
 async fn capture<R: Runtime>(_webview: &Webview<R>, _max_width: Option<u32>) -> Result<Vec<u8>, String> {
   Err("screenshots are not supported on this platform".into())
 }

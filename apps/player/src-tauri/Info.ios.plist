@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the iOS Info.plist on top of Info.plist (the microphone text lives there). -->
+<plist version="1.0">
+<dict>
+	<!-- A RoomKit server on the venue LAN: iOS asks once before the first connection. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>같은 네트워크의 RoomKit 서버에 연결합니다.</string>
+	<!-- Plain http to LAN/loopback addresses: the cache media server on 127.0.0.1. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

@@ -25,10 +25,12 @@ pnpm --filter player check
 pnpm --filter player build
 pnpm --filter player build:app
 pnpm --filter player build:android
+pnpm --filter player build:ios <profile.mobileprovision>
 ```
 
 - `build` compiles only the web frontend.
 - `build:app` produces the platform Tauri bundle.
 - `build:android` requires the Android SDK/NDK and produces an APK.
+- `build:ios` (`build-ios.sh`) requires Xcode, xcodegen, CocoaPods and the `aarch64-apple-ios` Rust target. It archives unsigned, signs with the given provisioning profile and the matching keychain certificate, and writes `src-tauri/target/ios/RoomKit-Player-<version>.ipa`. Run `pnpm --filter player tauri ios init` once beforehand to generate `src-tauri/gen/apple`.
 
-Release CI builds desktop artifacts for macOS arm64, Linux AppImage, and Windows NSIS, plus a signed Android arm64 APK when release secrets are available. Android uses a single stage webview and cannot open multiple device windows.
+Release CI builds desktop artifacts for macOS arm64, Linux AppImage, and Windows NSIS, plus a signed Android arm64 APK when release secrets are available. Android and iOS use a single stage webview and cannot open multiple device windows. iOS is built locally only; CI does not produce it.

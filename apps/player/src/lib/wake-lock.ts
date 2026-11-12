@@ -1,4 +1,16 @@
 import { vlog } from './log';
+import { isTauri } from './tauri';
+
+/**
+ * Native half of the lock: iOS switches off the system idle timer, since
+ * WKWebView there cannot be counted on for the web API. A no-op elsewhere.
+ */
+function setNativeKeepAwake(on: boolean): void {
+	if (!isTauri()) return;
+	void import('@tauri-apps/api/core')
+		.then(({ invoke }) => invoke('keep_awake', { on }))
+		.catch((e: unknown) => vlog('wake-lock', 'native keep-awake failed', e));
+}
 
 /**
  * Keep the display awake while a stage window is open — a hintphone tablet
@@ -11,10 +23,11 @@ import { vlog } from './log';
  * page is hidden, so it is re-requested on every return to visibility.
  */
 export function keepScreenAwake(): () => void {
+	setNativeKeepAwake(true);
 	const wakeLock = navigator.wakeLock;
 	if (!wakeLock) {
 		vlog('wake-lock', 'Screen Wake Lock API unavailable');
-		return () => {};
+		return () => setNativeKeepAwake(false);
 	}
 
 	let stopped = false;
@@ -56,6 +69,7 @@ export function keepScreenAwake(): () => void {
 
 	return () => {
 		stopped = true;
+		setNativeKeepAwake(false);
 		document.removeEventListener('visibilitychange', onVisibility);
 		const lock = sentinel;
 		sentinel = null;

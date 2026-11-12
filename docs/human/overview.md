@@ -15,7 +15,7 @@ Studio ── REST/Socket.io ── RoomKit Server ── PostgreSQL / S3
 
 - **Server**는 로그인, 애셋, 세션, 타이머와 이벤트 시퀀스를 관리합니다.
 - **Studio**는 테마 제작과 실제 세션 운영에 사용하는 웹 화면입니다.
-- **Player**는 방 안의 장치에서 웹사이트, 소리, 영상과 자막을 재생하는 데스크톱/Android 앱입니다.
+- **Player**는 방 안의 장치에서 웹사이트, 소리, 영상과 자막을 재생하는 데스크톱/Android/iOS 앱입니다.
 - **`@roomkit/helper`**는 Player 안의 웹사이트가 Player와 통신하도록 연결합니다.
 - **`@roomkit/client`**는 Player 없이 독립적으로 동작하는 장치를 서버에 직접 연결합니다.
 
