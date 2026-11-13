@@ -13,7 +13,8 @@
 #   xcrun devicectl device install app --device <udid> <ipa>
 #
 # Needs Xcode, xcodegen, CocoaPods and the Rust iOS target
-# (`rustup target add aarch64-apple-ios`).
+# (`rustup target add aarch64-apple-ios`); with Xcode 27+ also rustup's
+# llvm-tools component.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -90,6 +91,12 @@ echo "build-ios: identity \"$IDENTITY_NAME\""
 # --- build -------------------------------------------------------------------
 if [ ! -d src-tauri/gen/apple ]; then
 	die "src-tauri/gen/apple is missing — run \`pnpm tauri ios init\` once and commit it"
+fi
+# Xcode 27's SwiftPM hides the Swift exports tauri links against; swift-rs
+# re-exports them with llvm-objcopy and the link fails without it.
+XCODE_MAJOR="$(xcodebuild -version | sed -n 's/^Xcode \([0-9]*\).*/\1/p')"
+if [ "${XCODE_MAJOR:-0}" -ge 27 ] && ! rustup component list --installed | grep -q '^llvm-tools'; then
+	die "Xcode $XCODE_MAJOR needs rustup's llvm-tools: run \`rustup component add llvm-tools\`"
 fi
 APPLE_DEVELOPMENT_TEAM="$TEAM_ID" pnpm tauri ios build --no-sign "$@"
 

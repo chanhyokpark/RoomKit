@@ -12,5 +12,13 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- UIScene lifecycle: apps built with the iOS 27 SDK are killed at launch
+	     without it. tao only runs in scene mode when multiple scenes are
+	     declared, and supplies the scene configuration itself. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

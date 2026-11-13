@@ -2,7 +2,9 @@
 <html lang="ko" class="dark">
 	<head>
 		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<!-- viewport-fit=cover: on iOS the page also paints the safe-area strips
+		     (status bar, home indicator) instead of leaving them white. -->
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 		<link rel="icon" href="/favicon.svg" />
 		<title>RoomKit Player</title>
 	</head>

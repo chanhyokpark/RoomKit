@@ -17,7 +17,7 @@ tauri-build = { version = "2.6.3", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.3", features = ["protocol-asset"] }
+tauri = { version = "2.12.5", features = ["protocol-asset"] }
 tauri-plugin-log = "2"
 # Timestamp formatting for the log plugin's custom line format (see lib.rs).
 time = { version = "0.3", features = ["formatting", "macros"] }
@@ -56,8 +56,8 @@ block2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSData", "NSError", "NSString", "NSValue"] }
 
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
+webview2-com = "0.39"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 base64 = "0.22"

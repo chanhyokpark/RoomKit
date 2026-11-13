@@ -209,7 +209,7 @@ async fn capture<R: Runtime>(webview: &Webview<R>, _max_width: Option<u32>) -> R
   rx.await.map_err(|_| "snapshot callback dropped".to_string())?
 }
 
-// NOTE: written against webview2-com 0.38 / windows 0.61 but not compiled on
+// NOTE: written against webview2-com 0.39 / windows 0.62 (must match wry's) but not compiled on
 // a Windows host yet — verify with `cargo check` there before shipping.
 #[cfg(windows)]
 mod win {

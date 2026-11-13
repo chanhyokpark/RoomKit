@@ -1,4 +1,6 @@
 mod cache;
+#[cfg(target_os = "ios")]
+mod ios_chrome;
 mod keep_awake;
 mod media_server;
 mod screenshot;
@@ -48,6 +50,12 @@ pub fn run() {
       media_server::media_server_port,
       screenshot::capture_webview
     ])
+    .on_page_load(|webview, _payload| {
+      #[cfg(target_os = "ios")]
+      ios_chrome::hide(webview);
+      #[cfg(not(target_os = "ios"))]
+      let _ = webview;
+    })
     .setup(|app| {
       // Installers register the scheme (macOS: Info.plist, Windows/Linux:
       // registry / .desktop). `tauri dev` has no installer, so register at
